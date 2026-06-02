@@ -31,7 +31,9 @@ public typealias Methods = Map<String, MethodOverloads>
  * meaningless and rejected at parse time.
  */
 @Serializable(with = MethodOverloadsSerializer::class)
-public data class MethodOverloads(val entries: List<MethodEntry>) {
+public data class MethodOverloads(
+    val entries: List<MethodEntry>,
+) {
     init {
         require(entries.isNotEmpty()) { "a method must declare at least one overload" }
     }
@@ -65,7 +67,10 @@ public object MethodOverloadsSerializer : KSerializer<MethodOverloads> {
         }
     }
 
-    override fun serialize(encoder: Encoder, value: MethodOverloads) {
+    override fun serialize(
+        encoder: Encoder,
+        value: MethodOverloads,
+    ) {
         val jsonEncoder =
             encoder as? JsonEncoder
                 ?: error("MethodOverloads can only be written to JSON")

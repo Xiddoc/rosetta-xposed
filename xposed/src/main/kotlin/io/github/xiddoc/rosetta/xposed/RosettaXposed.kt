@@ -50,13 +50,17 @@ public class RosettaXposed(
     ): MethodTarget = MethodTarget(backend.resolveMethod(realClass, realMethod, argTypes), classLoader)
 
     /** A field target. */
-    public fun field(realClass: String, realField: String): FieldTarget =
-        FieldTarget(backend.resolveField(realClass, realField), classLoader)
+    public fun field(
+        realClass: String,
+        realField: String,
+    ): FieldTarget = FieldTarget(backend.resolveField(realClass, realField), classLoader)
 
     public companion object {
         /** Build over a single static map. */
-        public fun fromMap(map: RosettaMap, classLoader: ClassLoader): RosettaXposed =
-            RosettaXposed(StaticResolutionBackend(map), classLoader)
+        public fun fromMap(
+            map: RosettaMap,
+            classLoader: ClassLoader,
+        ): RosettaXposed = RosettaXposed(StaticResolutionBackend(map), classLoader)
 
         /**
          * Select a map from a registry by the running app's identity, then

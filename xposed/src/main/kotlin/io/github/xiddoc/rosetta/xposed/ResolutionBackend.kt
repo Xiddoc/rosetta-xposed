@@ -37,5 +37,8 @@ public interface ResolutionBackend {
         argTypes: List<String>? = null,
     ): ResolvedMethod
 
-    public fun resolveField(realClass: String, realField: String): ResolvedField
+    public fun resolveField(
+        realClass: String,
+        realField: String,
+    ): ResolvedField
 }

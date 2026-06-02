@@ -40,7 +40,8 @@ public object VersionMatch {
         versionLabel: String? = null,
     ): SelectedMap? {
         if (versionCode != null) {
-            registry.values.firstOrNull { it.versionCode == versionCode }
+            registry.values
+                .firstOrNull { it.versionCode == versionCode }
                 ?.let { return SelectedMap(it, "version_code") }
         }
         if (versionLabel != null) {

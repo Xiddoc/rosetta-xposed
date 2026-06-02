@@ -17,7 +17,10 @@ class ObfClient {
         a = s
     }
 
-    fun d(s: String, n: Long) {
+    fun d(
+        s: String,
+        n: Long,
+    ) {
         a = "$s$n"
     }
 }

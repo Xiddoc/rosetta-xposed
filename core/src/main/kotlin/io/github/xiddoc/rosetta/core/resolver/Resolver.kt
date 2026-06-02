@@ -23,7 +23,9 @@ import io.github.xiddoc.rosetta.core.ResolveException
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 
-public class Resolver(private val map: RosettaMap) {
+public class Resolver(
+    private val map: RosettaMap,
+) {
     /** Runtime overrides — take precedence over [RosettaMap.classes]. */
     private val overrides = mutableMapOf<String, ClassEntry>()
 
@@ -41,8 +43,7 @@ public class Resolver(private val map: RosettaMap) {
     }
 
     /** True if [realName] is a known class real-name (override or map). */
-    public fun hasClass(realName: String): Boolean =
-        overrides.containsKey(realName) || map.classes.containsKey(realName)
+    public fun hasClass(realName: String): Boolean = overrides.containsKey(realName) || map.classes.containsKey(realName)
 
     /** Resolve a class by real name. */
     public fun resolveClass(realName: String): ResolvedClass {
@@ -79,7 +80,9 @@ public class Resolver(private val map: RosettaMap) {
 
         val cls = resolveClass(className)
         val overloads =
-            cls.entry.methods?.get(methodName)?.entries
+            cls.entry.methods
+                ?.get(methodName)
+                ?.entries
                 ?: throw ResolveException(
                     missMessage("method", "$className.$methodName"),
                     methodName,
@@ -131,7 +134,10 @@ public class Resolver(private val map: RosettaMap) {
     }
 
     /** Resolve a field by real names. */
-    public fun resolveField(className: String, fieldName: String): ResolvedField {
+    public fun resolveField(
+        className: String,
+        fieldName: String,
+    ): ResolvedField {
         val key = "$className.$fieldName"
         fieldCache[key]?.let { return it }
 
@@ -176,7 +182,10 @@ public class Resolver(private val map: RosettaMap) {
     }
 
     /** Register a runtime override for [realName] (e.g. a discovered entry). */
-    public fun override(realName: String, entry: ClassEntry) {
+    public fun override(
+        realName: String,
+        entry: ClassEntry,
+    ) {
         overrides[realName] = entry
         reverseClassIndex[entry.obfuscated] = realName
         invalidate(realName)
@@ -194,6 +203,8 @@ public class Resolver(private val map: RosettaMap) {
         return "$className#$methodName$args"
     }
 
-    private fun missMessage(target: String, name: String): String =
-        "rosetta-xposed: no $target mapping for '$name' in map for ${map.app}@${map.version}."
+    private fun missMessage(
+        target: String,
+        name: String,
+    ): String = "rosetta-xposed: no $target mapping for '$name' in map for ${map.app}@${map.version}."
 }
