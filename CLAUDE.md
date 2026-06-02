@@ -11,6 +11,12 @@ obfuscation-name rotation for Frida; this repo gives the same benefit to
 Xposed-family **modules** — which run *inside the app JVM*, not as an
 injected Frida JS host — by consuming the **exact same per-version maps**.
 
+This repo is a **client** of the map schema, not its owner. The canonical,
+language-neutral `schema_version: 2` schema is owned by `rosetta-maps`
+(`schema/rosetta-map.schema.json`, the single source of truth);
+rosetta-frida (TS/Zod) and rosetta-xposed (Kotlin) are both clients that
+must track it.
+
 It is a **thin resolver, not a hook framework** (RFC 0001 Decision 2): it
 resolves a real name to a concrete `java.lang.reflect.Member` and hands it
 to the developer's chosen hook API (libxposed or legacy `XposedHelpers`)
@@ -38,8 +44,13 @@ These come from RFC 0001 and were confirmed with the project owner.
 
 1. **Unify at the map artifact, not at the signature.** The same
    `schema_version: 2` JSON that rosetta-frida emits/consumes is loaded
-   here. Keep the Kotlin model in lockstep with `src/types/map.ts`;
-   `CURRENT_SCHEMA_VERSION` is hard-gated in `MapLoader`.
+   here. That format is owned by `rosetta-maps`
+   (`schema/rosetta-map.schema.json`); this Kotlin side is a client that
+   tracks it. Keep the Kotlin model in lockstep with the schema (and with
+   rosetta-frida's `src/types/map.ts`); `CURRENT_SCHEMA_VERSION` is
+   hard-gated in `MapLoader`. The schema is language-neutral JSON Schema,
+   consumed directly / via codegen — **no** npm or git-URL dependency on it
+   today; that waits for a distribution phase.
 2. **Two resolver implementations (TS + Kotlin), one conformance suite.**
    Behaviour parity is enforced by shared golden fixtures
    (`core/src/test/resources/conformance/`), not shared runtime code.
@@ -80,7 +91,10 @@ These come from RFC 0001 and were confirmed with the project owner.
 
 ## Related repos
 
-- **`rosetta-frida`** — the Frida adapter; canonical home of the schema,
-  resolver reference, and RFC 0001.
-- **`rosetta-maps`** — the community knowledge base (signatures + generated
-  maps) both adapters consume.
+- **`rosetta-maps`** — **owns** the canonical, language-neutral map schema
+  (`schema/rosetta-map.schema.json`, source of truth for `schema_version: 2`)
+  and is the community knowledge base of signatures + generated maps both
+  clients consume.
+- **`rosetta-frida`** — the Frida adapter and the other, first-class client
+  of the maps-owned schema; canonical home of the resolver reference and
+  RFC 0001.
