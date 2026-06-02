@@ -1,0 +1,61 @@
+# detekt configuration for rosetta-xposed.
+#
+# Layered on top of detekt's default rule set (buildUponDefaultConfig = true
+# in the root build script): only the deltas from the defaults live here.
+# This is the Kotlin static-analysis analogue of rosetta-frida's ESLint
+# config — structural/code-smell rules, with formatting left to Spotless.
+
+build:
+  # Any finding fails the build; we keep the tree clean rather than budgeting.
+  maxIssues: 0
+
+config:
+  # Fail fast if this file references rules that no longer exist after an
+  # upgrade, instead of silently ignoring them.
+  validation: true
+  warningsAsErrors: true
+
+complexity:
+  # The reflection-heavy descriptor matching in JvmDescriptors.of() is a flat
+  # primitive-type `when`; it is readable and not worth splitting up.
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 20
+  LongMethod:
+    active: true
+    threshold: 80
+
+style:
+  # The codebase deliberately uses multi-line, descriptive exception messages
+  # built from string templates; that is clarity, not magic numbers.
+  MagicNumber:
+    active: true
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  # Line length is owned by Spotless/ktlint (the formatting authority); detekt
+  # stays purely structural so the two tools never disagree on wrapping.
+  MaxLineLength:
+    active: false
+  # Idiomatic Kotlin guard-clause functions (toJvmDescriptor, translateType,
+  # VersionMatch.select) use a few early returns for readability; the default
+  # of 2 is too strict for this style.
+  ReturnCount:
+    active: true
+    max: 6
+  # resolveMethod() raises three distinct, well-messaged failures (miss,
+  # ambiguous overload, no-overload-matches); collapsing them would hurt the
+  # error taxonomy that mirrors rosetta-frida's errors.ts.
+  ThrowsCount:
+    active: true
+    max: 3
+
+exceptions:
+  # NotImplementedError is intentional in the architected-but-unbuilt backends
+  # (DynamicResolutionBackend, DeferredBinding); those are tracked phases, not
+  # forgotten TODOs.
+  NotImplementedDeclaration:
+    active: false
+  # `error(...)` (which throws IllegalStateException) is used for genuinely
+  # unreachable encoder/decoder branches; allow it.
+  TooGenericExceptionThrown:
+    active: true
