@@ -96,37 +96,11 @@ dependencies {
 
 kover {
     reports {
-        filters {
-            excludes {
-                // The schema-mirror DTOs are pure data holders: their only
-                // bytecode is compiler/kotlinx-serialization-generated
-                // `equals`/`hashCode`/`copy`/`componentN`/`toString` and the
-                // serializer's `write$Self` "skip this optional field at its
-                // default?" branches. Exhaustively covering 2^n optional-field
-                // combinations on generated code is busywork that measures the
-                // compiler, not our logic — so they are excluded here, exactly
-                // as a TypeScript project would not count generated Zod glue.
-                //
-                // Note: only DTOs with NO hand-written branches are listed.
-                // MethodOverloads (its non-empty `require`), its custom
-                // MethodOverloadsSerializer, MapLoader, the Resolver, the
-                // signature helpers and all of :xposed stay fully in scope.
-                classes(
-                    "io.github.xiddoc.rosetta.core.model.RosettaMap",
-                    "io.github.xiddoc.rosetta.core.model.ClassEntry",
-                    "io.github.xiddoc.rosetta.core.model.FieldEntry",
-                    "io.github.xiddoc.rosetta.core.model.MethodEntry",
-                    "io.github.xiddoc.rosetta.core.model.MapSource",
-                    "io.github.xiddoc.rosetta.core.model.Confidence",
-                    "io.github.xiddoc.rosetta.core.model.ClassKind",
-                )
-                // The generated `serializer()` accessors on every DTO's
-                // synthetic `$Companion` are likewise compiler glue. (The
-                // hand-written MethodOverloads class itself stays in scope;
-                // only its generated companion accessor is excluded.)
-                classes("io.github.xiddoc.rosetta.core.model.*\$Companion")
-            }
-        }
+        // No coverage excludes: the schema-mirror DTOs (and their generated
+        // equals/hashCode/copy/toString + serializer write$Self optional-field
+        // branches) are covered legitimately by value-semantics and
+        // serialization-branch tests (see core's DataClassSemanticsTest). The
+        // gate measures real behaviour, not a filtered subset.
 
         // Verification rule: the build fails below 100% on BOTH line and
         // branch coverage, aggregated across both modules. This is the hard
