@@ -1,0 +1,103 @@
+{
+    "description": "Shared Rosetta resolver conformance cases. The same fixture format is intended to drive both the TypeScript (rosetta-frida) and Kotlin (rosetta-xposed) resolvers so the two implementations stay behaviour-identical (RFC 0001, Decision 1). Keep this provider-neutral: no Frida- or Xposed-specific fields.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "3.4.5",
+        "version_code": 30405,
+        "classes": {
+            "com.example.app.IRemoteService$Stub": {
+                "obfuscated": "aaaa",
+                "kind": "aidl_stub",
+                "methods": {
+                    "requestTicket": [
+                        {
+                            "obfuscated": "c",
+                            "signature": "(Landroid/os/Bundle;Lbbbb;)V",
+                            "aidl_txn": 2
+                        },
+                        {
+                            "obfuscated": "d",
+                            "signature": "(Landroid/os/Bundle;Ljava/lang/String;Lbbbb;)V",
+                            "aidl_txn": 4
+                        }
+                    ],
+                    "requestPrompt": {
+                        "obfuscated": "f",
+                        "signature": "(Landroid/os/Bundle;Lcccc;)V"
+                    }
+                },
+                "fields": {
+                    "DESCRIPTOR": {
+                        "obfuscated": "DESCRIPTOR",
+                        "type": "Ljava/lang/String;",
+                        "static": true
+                    }
+                }
+            },
+            "com.example.app.IServiceCallback": {
+                "obfuscated": "bbbb",
+                "kind": "aidl_callback"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "resolve class",
+            "kind": "class",
+            "class": "com.example.app.IRemoteService$Stub",
+            "expectObf": "aaaa"
+        },
+        {
+            "name": "resolve single-overload method",
+            "kind": "method",
+            "class": "com.example.app.IRemoteService$Stub",
+            "method": "requestPrompt",
+            "expectObf": "f"
+        },
+        {
+            "name": "disambiguate overload by arg types (real name translated to obf)",
+            "kind": "method",
+            "class": "com.example.app.IRemoteService$Stub",
+            "method": "requestTicket",
+            "argTypes": ["android.os.Bundle", "com.example.app.IServiceCallback"],
+            "expectObf": "c",
+            "expectSignature": "(Landroid/os/Bundle;Lbbbb;)V"
+        },
+        {
+            "name": "disambiguate the 3-arg overload",
+            "kind": "method",
+            "class": "com.example.app.IRemoteService$Stub",
+            "method": "requestTicket",
+            "argTypes": ["android.os.Bundle", "java.lang.String", "com.example.app.IServiceCallback"],
+            "expectObf": "d"
+        },
+        {
+            "name": "ambiguous overload without arg types",
+            "kind": "method",
+            "class": "com.example.app.IRemoteService$Stub",
+            "method": "requestTicket",
+            "expectError": "AmbiguousOverload"
+        },
+        {
+            "name": "missing method",
+            "kind": "method",
+            "class": "com.example.app.IRemoteService$Stub",
+            "method": "noSuchMethod",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "resolve static field",
+            "kind": "field",
+            "class": "com.example.app.IRemoteService$Stub",
+            "field": "DESCRIPTOR",
+            "expectObf": "DESCRIPTOR"
+        },
+        {
+            "name": "missing class",
+            "kind": "class",
+            "class": "com.example.app.DoesNotExist",
+            "expectError": "Resolve"
+        }
+    ]
+}

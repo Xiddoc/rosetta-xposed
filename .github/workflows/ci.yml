@@ -1,0 +1,46 @@
+name: CI
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build:
+        name: build + test (JDK ${{ matrix.java }})
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                # The modules request a JDK 17 toolchain; we run the build on
+                # 17 and 21 to catch toolchain/runtime drift early.
+                java: ['17', '21']
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up JDK ${{ matrix.java }}
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: ${{ matrix.java }}
+
+            - name: Set up Gradle (with build cache)
+              uses: gradle/actions/setup-gradle@v4
+
+            - name: Build + test (core is pure-JVM; the conformance suite runs here)
+              run: ./gradlew build --stacktrace
+
+            - name: Upload test reports
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: test-reports-jdk${{ matrix.java }}
+                  path: '**/build/reports/tests/'
+                  retention-days: 14
