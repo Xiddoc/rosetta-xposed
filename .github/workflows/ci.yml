@@ -34,8 +34,15 @@ jobs:
             - name: Set up Gradle (with build cache)
               uses: gradle/actions/setup-gradle@v4
 
-            - name: Build + test (core is pure-JVM; the conformance suite runs here)
-              run: ./gradlew build --stacktrace
+            # The full quality suite — the Kotlin equivalents of rosetta-frida's
+            # format + lint + 100%-coverage + test gate:
+            #   spotlessCheck → formatting (ktlint)
+            #   detekt        → static analysis
+            #   test          → unit + conformance suite (core is pure-JVM)
+            #   koverVerify   → fails below 100% line + branch coverage
+            #   build         → assemble + the standard `check` lifecycle
+            - name: Quality gate (spotless + detekt + test + 100% coverage) and build
+              run: ./gradlew spotlessCheck detekt test koverVerify build --stacktrace
 
             - name: Upload test reports
               if: always()
