@@ -43,7 +43,10 @@ private val PRIMITIVE_LETTERS = Regex("^[VZBCSIJFD]$")
  * [translate] only ever sees the bare class name (no wrappers, no array
  * prefix) and returns the bare name; the wrappers are added here.
  */
-public fun toJvmDescriptor(typeName: String, translate: (String) -> String): String {
+public fun toJvmDescriptor(
+    typeName: String,
+    translate: (String) -> String,
+): String {
     require(typeName.isNotEmpty()) { "empty type name" }
 
     // Already-descriptor passthrough.

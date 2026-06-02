@@ -243,4 +243,6 @@ fabric.properties
 # Claude Code local workspace
 .claude/
 .workspace
+# Kotlin 2.0 build/daemon scratch directory (e.g. .kotlin/sessions).
+.kotlin/
 # (The Gradle wrapper jar is force-tracked by the template's negations above.)

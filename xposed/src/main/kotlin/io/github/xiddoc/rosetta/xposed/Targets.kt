@@ -17,8 +17,10 @@ import java.lang.reflect.Field
 import java.lang.reflect.Member
 
 /** A class could not be loaded, or a resolved member was not found on it. */
-public class BindException(message: String, cause: Throwable? = null) :
-    RuntimeException(message, cause)
+public class BindException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /** A resolved class plus the loader used to realise it. */
 public class ClassTarget internal constructor(
@@ -51,18 +53,20 @@ public class MethodTarget internal constructor(
         val wantArgs = parseSignatureArgs(resolved.signature)
 
         if (resolved.obfName == "<init>") {
-            return cls.declaredConstructors.firstOrNull {
-                JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs
-            }?.also { it.isAccessible = true }
+            return cls.declaredConstructors
+                .firstOrNull {
+                    JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs
+                }?.also { it.isAccessible = true }
                 ?: throw BindException(
                     "rosetta-xposed: no constructor of '${resolved.className}' matches " +
                         "${resolved.signature}.",
                 )
         }
 
-        return cls.declaredMethods.firstOrNull {
-            it.name == resolved.obfName && JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs
-        }?.also { it.isAccessible = true }
+        return cls.declaredMethods
+            .firstOrNull {
+                it.name == resolved.obfName && JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs
+            }?.also { it.isAccessible = true }
             ?: throw BindException(
                 "rosetta-xposed: no method '${resolved.obfName}${resolved.signature}' on " +
                     "'${resolved.className}'.",
@@ -81,7 +85,8 @@ public class FieldTarget internal constructor(
     /** Find the concrete [Field] on the loaded class. */
     public fun field(): Field {
         val cls = Class.forName(resolved.className, false, classLoader)
-        return cls.declaredFields.firstOrNull { it.name == resolved.obfName }
+        return cls.declaredFields
+            .firstOrNull { it.name == resolved.obfName }
             ?.also { it.isAccessible = true }
             ?: throw BindException(
                 "rosetta-xposed: no field '${resolved.obfName}' on '${resolved.className}'.",

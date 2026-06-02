@@ -11,13 +11,25 @@ package io.github.xiddoc.rosetta.xposed.fixtures
 class ObfClient {
     @JvmField var a: String = ""
 
+    // A no-arg constructor plus a (String) one. The binding coverage test
+    // resolves a `<init>` target against the (String) signature, so the
+    // constructor-matching path has a real constructor to bind to.
+    constructor()
+
+    constructor(s: String) {
+        a = s
+    }
+
     fun c(s: String): String = s
 
     fun d(s: String) {
         a = s
     }
 
-    fun d(s: String, n: Long) {
+    fun d(
+        s: String,
+        n: Long,
+    ) {
         a = "$s$n"
     }
 }

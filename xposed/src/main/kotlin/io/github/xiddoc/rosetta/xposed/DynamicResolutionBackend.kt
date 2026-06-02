@@ -36,7 +36,10 @@ public class DynamicResolutionBackend : ResolutionBackend {
         argTypes: List<String>?,
     ): ResolvedMethod = notYet()
 
-    override fun resolveField(realClass: String, realField: String): ResolvedField = notYet()
+    override fun resolveField(
+        realClass: String,
+        realField: String,
+    ): ResolvedField = notYet()
 
     private fun notYet(): Nothing =
         throw NotImplementedError(

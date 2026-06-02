@@ -22,6 +22,11 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
+    // A non-JSON serialization format, used only to exercise the
+    // "this serializer can only be read from / written to JSON" guard in
+    // MethodOverloadsSerializer (the `decoder as? JsonDecoder ?: error(...)`
+    // and the encoder twin) — paths a JSON-only test could never hit.
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-properties:1.7.3")
 }
 
 kotlin {

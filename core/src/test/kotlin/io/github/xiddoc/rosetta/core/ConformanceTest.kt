@@ -47,7 +47,10 @@ class ConformanceTest {
         return tests
     }
 
-    private fun runCase(resolver: Resolver, case: JsonObject) {
+    private fun runCase(
+        resolver: Resolver,
+        case: JsonObject,
+    ) {
         val kind = case["kind"]!!.jsonPrimitive.content
         val expectError = case["expectError"]?.jsonPrimitive?.content
 
@@ -74,7 +77,11 @@ class ConformanceTest {
         }
     }
 
-    private fun invoke(resolver: Resolver, kind: String, case: JsonObject) {
+    private fun invoke(
+        resolver: Resolver,
+        kind: String,
+        case: JsonObject,
+    ) {
         when (kind) {
             "class" -> resolver.resolveClass(case.cls())
             "method" -> resolver.resolveMethod(case.cls(), case.str("method"), case.argTypes())
@@ -87,6 +94,5 @@ class ConformanceTest {
 
     private fun JsonObject.str(key: String): String = this[key]!!.jsonPrimitive.content
 
-    private fun JsonObject.argTypes(): List<String>? =
-        (this["argTypes"] as? JsonArray)?.map { it.jsonPrimitive.content }
+    private fun JsonObject.argTypes(): List<String>? = (this["argTypes"] as? JsonArray)?.map { it.jsonPrimitive.content }
 }

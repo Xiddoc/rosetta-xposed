@@ -90,8 +90,18 @@ class CoreTest {
 
         val singleMap = json.decodeFromString(RosettaMap.serializer(), single)
         val multiMap = json.decodeFromString(RosettaMap.serializer(), multi)
-        assertEquals(1, singleMap.classes["C"]!!.methods!!["m"]!!.entries.size)
-        assertEquals(2, multiMap.classes["C"]!!.methods!!["m"]!!.entries.size)
+        assertEquals(
+            1,
+            singleMap.classes["C"]!!
+                .methods!!["m"]!!
+                .entries.size,
+        )
+        assertEquals(
+            2,
+            multiMap.classes["C"]!!
+                .methods!!["m"]!!
+                .entries.size,
+        )
 
         // Re-emit and ensure the single form stays an object, the multi an array.
         assertTrue(json.encodeToString(RosettaMap.serializer(), singleMap).contains("\"m\":{"))

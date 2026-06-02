@@ -23,7 +23,13 @@ public object DeferredBinding {
      *
      * Not yet implemented — see the file header. The synchronous binding
      * path on the target types covers apps that load their dex up front.
+     *
+     * [onAvailable] is part of the settled public shape (callers compile
+     * against it today) but is unused until the deferred path is built in a
+     * later phase; the stub throws rather than invoking it — hence the
+     * `UnusedParameter` suppression.
      */
+    @Suppress("UnusedParameter")
     public fun whenClassAvailable(
         realClass: String,
         onAvailable: (RosettaXposed) -> Unit,

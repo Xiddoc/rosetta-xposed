@@ -7,11 +7,16 @@
 package io.github.xiddoc.rosetta.core
 
 /** Base type for every error the Rosetta core raises. */
-public sealed class RosettaException(message: String, cause: Throwable? = null) :
-    RuntimeException(message, cause)
+public sealed class RosettaException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /** A structured validation issue: a JSON path plus a human message. */
-public data class ValidationIssue(val path: String, val message: String)
+public data class ValidationIssue(
+    val path: String,
+    val message: String,
+)
 
 /** The loaded value did not satisfy the map schema. */
 public class MapValidationException(

@@ -55,13 +55,15 @@ class RosettaXposedTest {
     @Test
     fun `disambiguates an overload by arg types`() {
         val twoArg =
-            rosetta.method("com.example.RealClient", "over", listOf("java.lang.String", "long"))
+            rosetta
+                .method("com.example.RealClient", "over", listOf("java.lang.String", "long"))
                 .member() as java.lang.reflect.Method
         assertEquals("d", twoArg.name)
         assertEquals(2, twoArg.parameterCount)
 
         val oneArg =
-            rosetta.method("com.example.RealClient", "over", listOf("java.lang.String"))
+            rosetta
+                .method("com.example.RealClient", "over", listOf("java.lang.String"))
                 .member() as java.lang.reflect.Method
         assertEquals(1, oneArg.parameterCount)
     }

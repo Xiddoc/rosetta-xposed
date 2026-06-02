@@ -10,7 +10,9 @@ import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
 import io.github.xiddoc.rosetta.core.resolver.Resolver
 
-public class StaticResolutionBackend(public val map: RosettaMap) : ResolutionBackend {
+public class StaticResolutionBackend(
+    public val map: RosettaMap,
+) : ResolutionBackend {
     private val resolver = Resolver(map)
 
     override fun canResolve(realClass: String): Boolean = resolver.hasClass(realClass)
@@ -23,6 +25,8 @@ public class StaticResolutionBackend(public val map: RosettaMap) : ResolutionBac
         argTypes: List<String>?,
     ): ResolvedMethod = resolver.resolveMethod(realClass, realMethod, argTypes)
 
-    override fun resolveField(realClass: String, realField: String): ResolvedField =
-        resolver.resolveField(realClass, realField)
+    override fun resolveField(
+        realClass: String,
+        realField: String,
+    ): ResolvedField = resolver.resolveField(realClass, realField)
 }

@@ -1,0 +1,25 @@
+#!/bin/sh
+#
+# rosetta-xposed pre-commit hook (tracked source of truth).
+#
+# Installed into .git/hooks/pre-commit by the Gradle `installGitHooks` task,
+# which runs automatically on a build. This is the Kotlin-native analogue of
+# rosetta-frida's husky + lint-staged: it keeps formatting from ever landing
+# in a commit by running Spotless before the commit is created.
+#
+# It deliberately checks ONLY formatting (fast, deterministic) so the hook
+# stays lightweight; detekt / tests / coverage are the gate's job in CI.
+# If the check fails, the developer runs `./gradlew spotlessApply` and re-adds.
+
+set -e
+
+echo "[pre-commit] running spotlessCheck..."
+if ! ./gradlew --quiet spotlessCheck; then
+    echo ""
+    echo "[pre-commit] FAILED: formatting issues found." >&2
+    echo "[pre-commit] Fix them with:  ./gradlew spotlessApply" >&2
+    echo "[pre-commit] then 'git add' the changes and commit again." >&2
+    exit 1
+fi
+
+echo "[pre-commit] OK"
