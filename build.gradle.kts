@@ -9,6 +9,8 @@
  * (Prettier + ESLint + 100%-coverage + husky):
  *   - Spotless (ktlint) → formatting gate (`spotlessCheck` / `spotlessApply`)
  *   - detekt            → static analysis (`detekt`)
+ *   - Kover             → coverage, aggregated across both modules, gated at
+ *                         100% line + branch (`koverVerify`)
  * Both modules and every `*.gradle.kts` script are formatted uniformly so
  * the gate never depends on which directory a file lives in.
  *
@@ -24,6 +26,9 @@ plugins {
     // Static analysis (detekt). Declared at the root and applied per subproject
     // so each module gets its own `detekt` task over its own sources.
     id("io.gitlab.arturbosch.detekt") version "1.23.7" apply false
+    // Coverage (Kover). Applied at the root, which aggregates both modules'
+    // coverage into one report + verification gate (see below).
+    id("org.jetbrains.kotlinx.kover") version "0.8.3"
 }
 
 allprojects {
@@ -51,6 +56,9 @@ spotless {
 subprojects {
     apply(plugin = "com.diffplug.spotless")
     apply(plugin = "io.gitlab.arturbosch.detekt")
+    // Kover must be applied in each module so it instruments that module's
+    // own test task; the root aggregates the per-module measurements below.
+    apply(plugin = "org.jetbrains.kotlinx.kover")
 
     configure<com.diffplug.gradle.spotless.SpotlessExtension> {
         kotlin {
@@ -75,5 +83,27 @@ subprojects {
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
         // Formatting is Spotless/ktlint's job; detekt stays purely structural.
         ignoreFailures = false
+    }
+}
+
+// Aggregate both modules' coverage into the root project. Kover merges the
+// `:core` and `:xposed` measurements so a single `./gradlew koverVerify`
+// gates the whole codebase (rosetta-frida's "100% or the build fails" rule).
+dependencies {
+    kover(project(":core"))
+    kover(project(":xposed"))
+}
+
+kover {
+    reports {
+        // Verification rule: the build fails below 100% on BOTH line and
+        // branch coverage, aggregated across both modules. This is the hard
+        // gate `koverVerify` enforces.
+        verify {
+            rule("100% line + branch coverage (aggregated)") {
+                minBound(100, coverageUnits = kotlinx.kover.gradle.plugin.dsl.CoverageUnit.LINE)
+                minBound(100, coverageUnits = kotlinx.kover.gradle.plugin.dsl.CoverageUnit.BRANCH)
+            }
+        }
     }
 }
