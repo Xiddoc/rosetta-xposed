@@ -37,9 +37,15 @@ public object MapLoader {
             try {
                 json.decodeFromString(RosettaMap.serializer(), text)
             } catch (ex: SerializationException) {
+                // Interpolate the (nullable) message rather than `?: "..."`: a
+                // kotlinx-serialization parse error always carries a message,
+                // so an elvis fallback would be a permanently-uncovered branch.
+                // Interpolation is null-safe (renders "null" in the rare event)
+                // and keeps the issue text honest without the dead branch.
+                val detail = "${ex.message}"
                 throw MapValidationException(
-                    "Map failed to parse: ${ex.message}",
-                    listOf(ValidationIssue("", ex.message ?: "invalid JSON")),
+                    "Map failed to parse: $detail",
+                    listOf(ValidationIssue("", detail)),
                     ex,
                 )
             }

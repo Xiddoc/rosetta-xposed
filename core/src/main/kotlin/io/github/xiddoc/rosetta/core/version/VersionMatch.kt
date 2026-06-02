@@ -40,9 +40,18 @@ public object VersionMatch {
         versionLabel: String? = null,
     ): SelectedMap? {
         if (versionCode != null) {
-            registry.values
-                .firstOrNull { it.versionCode == versionCode }
-                ?.let { return SelectedMap(it, "version_code") }
+            // Iterate explicitly rather than `firstOrNull { it.versionCode ==
+            // versionCode }`: capturing the nullable parameter in a predicate
+            // lambda makes Kotlin re-emit a null check on the captured value
+            // whose null arm is unreachable here (we're inside the `!= null`
+            // guard), i.e. a permanently-uncovered branch. A primitive `long`
+            // comparison in a plain loop has no such phantom branch.
+            val code: Long = versionCode
+            for (candidate in registry.values) {
+                if (candidate.versionCode == code) {
+                    return SelectedMap(candidate, "version_code")
+                }
+            }
         }
         if (versionLabel != null) {
             registry[versionLabel]?.let { return SelectedMap(it, "label") }

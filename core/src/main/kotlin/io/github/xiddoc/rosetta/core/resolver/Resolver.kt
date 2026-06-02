@@ -79,10 +79,12 @@ public class Resolver(
         methodCache[key]?.let { return it }
 
         val cls = resolveClass(className)
-        val overloads =
-            cls.entry.methods
-                ?.get(methodName)
-                ?.entries
+        // Resolve the nullable `MethodOverloads` first (absent methods map, or
+        // no such method name), then read its non-null `entries`. Chaining
+        // `?.entries` onto the safe-call would emit an unreachable null-branch,
+        // since MethodOverloads.entries is non-nullable by construction.
+        val methodOverloads =
+            cls.entry.methods?.get(methodName)
                 ?: throw ResolveException(
                     missMessage("method", "$className.$methodName"),
                     methodName,
@@ -91,6 +93,7 @@ public class Resolver(
                     "method",
                     className,
                 )
+        val overloads = methodOverloads.entries
 
         val picked =
             if (argTypes == null) {
