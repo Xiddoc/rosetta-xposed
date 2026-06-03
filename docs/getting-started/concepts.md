@@ -1,8 +1,7 @@
 # Concepts
 
 `rosetta-xposed` is the **layer-4 Xposed binding** of the Rosetta
-cross-framework architecture described in
-[RFC 0001](https://github.com/Xiddoc/rosetta-frida/blob/master/docs/rfcs/0001-unified-cross-framework-signatures.md).
+cross-framework architecture.
 rosetta-frida already solved obfuscation-rotation **for Frida**; the
 dominant obfuscation-resilient *modules* in the wild (WaEnhancer,
 InstaEclipse, …) are Xposed modules running **inside the app JVM**, so they

@@ -1,7 +1,7 @@
 # Resolution backends
 
 A single resolution API (`ResolutionBackend`) sits in front of two
-interchangeable backends (RFC 0001 Decision 2).
+interchangeable backends.
 
 ## Static (default, built)
 

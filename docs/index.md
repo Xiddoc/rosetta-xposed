@@ -9,7 +9,7 @@ written against hard-coded obfuscated names break on the next update.
 obfuscated names the running build actually uses, so a module can keep
 referencing stable, real names across versions.
 
-It is a **thin resolver, not a hook framework** (RFC 0001 Decision 2): it
+It is a **thin resolver, not a hook framework**: it
 resolves a real name to a `java.lang.reflect.Member` and hands it to your
 chosen hook API — the modern libxposed API or legacy `XposedHelpers`. It
 does **not** own the hook call. This mirrors rosetta-frida's "just makes
@@ -22,7 +22,7 @@ format. That format is **owned** by
 [rosetta-maps](https://github.com/Xiddoc/rosetta-maps)
 (`schema/rosetta-map.schema.json` is the single source of truth);
 [rosetta-frida](https://github.com/Xiddoc/rosetta-frida) is the other,
-first-class client and the home of RFC 0001. This repo tracks that schema
+first-class client. This repo tracks that schema
 from the Kotlin side and consumes the maps both clients share. See
 [Related repos](reference/related.md) for the full picture.
 
