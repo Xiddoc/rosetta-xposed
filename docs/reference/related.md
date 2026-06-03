@@ -20,7 +20,7 @@ that waits for a distribution phase.
 ## rosetta-frida — the other client
 
 [rosetta-frida](https://github.com/Xiddoc/rosetta-frida) is the Frida
-(layer-4) adapter and the home of **RFC 0001**. It is the other, first-class
+(layer-4) adapter. It is the other, first-class
 client of the maps-owned schema (TypeScript/Zod side). rosetta-xposed is its
 JVM twin: a faithful Kotlin port of the neutral core, kept honest by a
 **shared conformance suite** so both clients resolve identically.
