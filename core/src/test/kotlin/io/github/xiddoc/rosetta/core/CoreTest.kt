@@ -75,6 +75,26 @@ class CoreTest {
     }
 
     @Test
+    fun `parseSignatureArgs rejects an unknown primitive descriptor char`() {
+        // The Frida twin validates [VZBCSIJFD] and throws; the Kotlin side
+        // must not emit a bare `Q` (or any non-primitive char) verbatim.
+        assertFailsWith<IllegalArgumentException> { parseSignatureArgs("(Q)V") }
+        assertFailsWith<IllegalArgumentException> { parseSignatureArgs("(X)V") }
+        // An unknown char inside an array element is rejected too.
+        assertFailsWith<IllegalArgumentException> { parseSignatureArgs("([Q)V") }
+    }
+
+    @Test
+    fun `parseSignatureArgs accepts every valid primitive descriptor letter`() {
+        // V is a return type only, but parsing an arg list of each primitive
+        // must succeed for the full closed set.
+        assertEquals(
+            listOf("Z", "B", "C", "S", "I", "J", "F", "D"),
+            parseSignatureArgs("(ZBCSIJFD)V"),
+        )
+    }
+
+    @Test
     fun `method overloads round-trip single-object and array forms faithfully`() {
         val single =
             """

@@ -97,6 +97,13 @@ public fun parseSignatureArgs(signature: String): List<String> {
                     out += args.substring(i, semi + 1)
                     i = semi + 1
                 } else {
+                    // Array of a primitive: the element char must be in the
+                    // closed primitive set (mirrors the bare-primitive branch
+                    // and the Frida twin).
+                    val elem = args[j]
+                    require(PRIMITIVE_LETTERS.matches(elem.toString())) {
+                        "signature: unknown array element char '$elem': $signature"
+                    }
                     out += args.substring(i, j + 1)
                     i = j + 1
                 }
@@ -108,8 +115,15 @@ public fun parseSignatureArgs(signature: String): List<String> {
                 i = semi + 1
             }
             else -> {
-                // Primitive single-letter descriptor.
-                out += args[i].toString()
+                // Primitive single-letter descriptor. Validate against the
+                // closed primitive set (matches the Frida twin, which throws on
+                // an unknown char): a bare `Q`, `X`, etc. is a malformed
+                // descriptor, surfaced loudly rather than emitted verbatim.
+                val ch = args[i]
+                require(PRIMITIVE_LETTERS.matches(ch.toString())) {
+                    "signature: unknown descriptor char '$ch': $signature"
+                }
+                out += ch.toString()
                 i++
             }
         }
