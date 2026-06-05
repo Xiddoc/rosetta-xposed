@@ -55,10 +55,13 @@ value the consuming module fills from `PackageManager`; `:xposed` itself
 does not compile against `android.jar`, which keeps it unit-testable
 without an emulator.
 
-The `signer_sha256` guard is **enforced** (fail-closed) when a map carries
-one: `RosettaXposed.fromRegistry` and the identity-bearing
-`fromMap(map, classLoader, identity)` compare it against
-`AppIdentity.signerSha256` and throw `SignerMismatchException` /
-`MissingSignerException` rather than binding against a map for a
+The `signer_sha256` guard is **enforced** (fail-closed, no opt-out) when a
+map carries one: `RosettaXposed.fromRegistry` and the identity-bearing
+`fromMap(map, classLoader, identity)` compare the map's single expected
+hash against the app's set of signing-certificate hashes
+(`AppIdentity.signerSha256s`), matching **any** member, and throw
+`SignerMismatchException` / `MissingSignerException` /
+`MalformedSignerException` rather than binding against a map for a
 differently-signed (possibly repackaged) build. The guard is opt-in per
-map — a map with no `signer_sha256` is not checked.
+map — a map with no `signer_sha256` is not checked — and the unchecked
+construction path is the explicit `fromMapUnverified`.

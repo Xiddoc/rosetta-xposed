@@ -11,10 +11,13 @@ conformance suite) and the static `:xposed` binding (resolve → bind →
 - `:xposed` static path — `RosettaXposed`, the static resolution backend,
   bind targets, the `Hooker` seam, and `AppIdentity`.
 - **`signer_sha256` enforcement** — fail-closed authenticity guard
-  (`SignerGuard` / `RosettaXposed.verifySigner`), enforced by
-  `fromRegistry` and the identity-bearing `fromMap` overload. Opt-in per
-  map (a map with no `signer_sha256` is not checked); hashes are normalized
-  (lowercase hex, colons/whitespace stripped) before comparison.
+  (`SignerGuard.verify`), enforced by `fromRegistry` and the
+  identity-bearing `fromMap`. Opt-in per map (a map with no `signer_sha256`
+  is not checked) but no opt-out once present. The map pins one expected
+  hash; the app presents a SET (`AppIdentity.signerSha256s`) and the guard
+  matches **any** member. Hashes are normalized (lowercase 64-hex, `:`
+  stripped, surrounding whitespace trimmed); a malformed map hash throws
+  `MalformedSignerException`. The unchecked path is `fromMapUnverified`.
 
 ## Planned (architected as skeletons, not yet built)
 

@@ -64,8 +64,11 @@ These come from RFC 0001 and were confirmed with the project owner.
    (enforced).** `AppIdentity` is a plain value the consuming module fills
    from `PackageManager`; `:xposed` must not compile against `android.jar`.
    When a map carries a `signer_sha256`, it is enforced fail-closed
-   (`SignerGuard` / `RosettaXposed.verifySigner`, used by `fromRegistry` and
-   the identity-bearing `fromMap`); a map without one is not checked.
+   (`SignerGuard.verify`, used by `fromRegistry` and the identity-bearing
+   `fromMap`); a map without one is not checked. `AppIdentity` carries the
+   app's signing-cert hashes as a SET (`signerSha256s`) and the guard
+   matches-any (the map pins one hash, a real app may present several).
+   The unchecked construction path is the explicit `fromMapUnverified`.
 5. **Static backend now, DexKit dynamic backend later.** The dynamic
    (self-healing) backend and deferred binding for late-loaded dex are
    architected as skeletons; DexKit is an *optional* dependency added in a
