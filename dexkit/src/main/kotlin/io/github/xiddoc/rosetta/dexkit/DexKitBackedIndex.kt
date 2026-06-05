@@ -36,7 +36,14 @@ import org.luckypray.dexkit.result.MethodData
  * A [DexKitIndex] backed by a live [DexKitBridge].
  *
  * The [bridge] is owned by the caller (it is [java.io.Closeable]; create it in
- * a `use { }` block and pass it in). This adapter never closes it.
+ * a `use { }` block and pass it in). This adapter never closes it. Calling any
+ * adapter method AFTER the caller has closed the bridge is undefined behaviour
+ * (the native handle is gone) — keep the adapter's lifetime within the bridge's.
+ *
+ * Note on matching facets: [MethodQuery.descriptor] is intentionally NOT
+ * matched on here — only the return-type, parameter-type, and using-strings
+ * facets drive [findMethod] (see its KDoc for why the JVM descriptor is not
+ * decomposed).
  *
  * @property bridge the live DexKit bridge over the running app's dex files.
  */

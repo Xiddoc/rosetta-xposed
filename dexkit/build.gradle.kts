@@ -61,12 +61,6 @@ abstract class ExtractClassesJar : TransformAction<TransformParameters.None> {
 val dexkitClassesJar = "dexkit-classes-jar"
 
 dependencies {
-    attributesSchema {
-        attribute(
-            org.gradle.api.attributes.Attribute
-                .of("artifactType", String::class.java),
-        )
-    }
     artifactTypes.maybeCreate("aar")
     registerTransform(ExtractClassesJar::class) {
         from.attribute(
@@ -111,6 +105,11 @@ dependencies {
     // The integration test runs REAL DexKit, so it needs the bridge classes +
     // DexKit's flatbuffers runtime dep at test runtime.
     testImplementation(files(dexkitAar))
+    // flatbuffers-java MUST track the flatbuffers runtime that DexKit 2.2.0
+    // bundles/generates against (DexKit's generated FlatBuffers readers are
+    // ABI-coupled to this runtime) — bump the two together when bumping DexKit.
+    // It is a LEAF dependency (verified: no transitives on testRuntimeClasspath),
+    // so pinning the one coordinate is sufficient.
     testImplementation("com.google.flatbuffers:flatbuffers-java:23.5.26")
 
     testImplementation(kotlin("test"))
