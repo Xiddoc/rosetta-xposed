@@ -158,14 +158,9 @@ class CoverageTest {
         }
     }
 
-    @Test
-    fun `DynamicResolutionBackend never resolves and every entry point throws`() {
-        val backend = DynamicResolutionBackend()
-        assertTrue(!backend.canResolve("com.example.RealClient"))
-        assertFailsWith<NotImplementedError> { backend.resolveClass("com.example.RealClient") }
-        assertFailsWith<NotImplementedError> { backend.resolveMethod("com.example.RealClient", "single") }
-        assertFailsWith<NotImplementedError> { backend.resolveField("com.example.RealClient", "id") }
-    }
+    // The dynamic backend is now built (B.1); its behaviour is covered in
+    // DynamicResolutionBackendTest. See that file for the strategy + miss +
+    // feedback + provenance + ReDoS-bounds cases.
 
     // ---- Public RosettaXposed constructor with the default policy.
 
