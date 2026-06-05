@@ -1,0 +1,100 @@
+{
+    "description": "argType -> JVM descriptor translation as exercised through method overload matching: arrays, multi-dimensional arrays, primitive arrays, inner-class ($) arg types, short vs fully-qualified names, and the raw-descriptor / lone-primitive-letter escape hatches. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Sink": {
+                "obfuscated": "aaaa",
+                "methods": {
+                    "h": [
+                        {
+                            "obfuscated": "a",
+                            "signature": "([Ljava/lang/String;)V"
+                        },
+                        {
+                            "obfuscated": "b",
+                            "signature": "([[I)V"
+                        },
+                        {
+                            "obfuscated": "c",
+                            "signature": "([B)V"
+                        },
+                        {
+                            "obfuscated": "d",
+                            "signature": "(Lbbbb;)V"
+                        },
+                        {
+                            "obfuscated": "e",
+                            "signature": "([Lbbbb;)V"
+                        }
+                    ]
+                }
+            },
+            "com.example.app.Outer$Inner": {
+                "obfuscated": "bbbb",
+                "kind": "class"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "object array arg type",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["java.lang.String[]"],
+            "expectObf": "a"
+        },
+        {
+            "name": "multi-dimensional primitive array arg type",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["int[][]"],
+            "expectObf": "b"
+        },
+        {
+            "name": "primitive array arg type (byte[])",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["byte[]"],
+            "expectObf": "c"
+        },
+        {
+            "name": "inner-class ($-nested) arg type translates to obf",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["com.example.app.Outer$Inner"],
+            "expectObf": "d"
+        },
+        {
+            "name": "array of inner-class arg type",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["com.example.app.Outer$Inner[]"],
+            "expectObf": "e"
+        },
+        {
+            "name": "raw descriptor passthrough matches (Lbbbb; given directly)",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["Lbbbb;"],
+            "expectObf": "d"
+        },
+        {
+            "name": "raw array-descriptor passthrough matches ([B given directly)",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "h",
+            "argTypes": ["[B"],
+            "expectObf": "c"
+        }
+    ]
+}

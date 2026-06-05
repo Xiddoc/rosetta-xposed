@@ -51,7 +51,10 @@ class CoverageTest {
             """.trimIndent(),
         )
 
-    private val rosetta = RosettaXposed.fromMap(map, javaClass.classLoader)
+    // The fixture obf class is outside the app namespace; allowlist it (the
+    // guard itself is covered in TargetGuardTest / RosettaXposedTest).
+    private val rosetta =
+        RosettaXposed.fromMapUnverified(map, javaClass.classLoader, TargetPolicy(allow = listOf(obf)))
 
     // ---- JvmDescriptors: every primitive, plus array and object wrapping.
 
@@ -128,12 +131,12 @@ class CoverageTest {
                 packageName = "com.example.app",
                 versionCode = 42,
                 versionName = "1.2.3",
-                signerSha256 = "deadbeef",
+                signerSha256s = setOf("a".repeat(64), "b".repeat(64)),
             )
         assertEquals("com.example.app", id.packageName)
         assertEquals(42, id.versionCode)
         assertEquals("1.2.3", id.versionName)
-        assertEquals("deadbeef", id.signerSha256)
+        assertEquals(setOf("a".repeat(64), "b".repeat(64)), id.signerSha256s)
     }
 
     @Test
@@ -155,13 +158,19 @@ class CoverageTest {
         }
     }
 
+    // The dynamic backend is now built (B.1); its behaviour is covered in
+    // DynamicResolutionBackendTest. See that file for the strategy + miss +
+    // feedback + provenance + ReDoS-bounds cases.
+
+    // ---- Public RosettaXposed constructor with the default policy.
+
     @Test
-    fun `DynamicResolutionBackend never resolves and every entry point throws`() {
-        val backend = DynamicResolutionBackend()
-        assertTrue(!backend.canResolve("com.example.RealClient"))
-        assertFailsWith<NotImplementedError> { backend.resolveClass("com.example.RealClient") }
-        assertFailsWith<NotImplementedError> { backend.resolveMethod("com.example.RealClient", "single") }
-        assertFailsWith<NotImplementedError> { backend.resolveField("com.example.RealClient", "id") }
+    fun `public constructor uses the default policy`() {
+        // Exercise the public (backend, classLoader, appName) constructor with
+        // the default-valued policy argument; an app-prefixed but unknown class
+        // passes the guard and surfaces as a BindException, not a policy denial.
+        val r = RosettaXposed(StaticResolutionBackend(map), javaClass.classLoader, "com.example.app")
+        assertTrue(r.knows("com.example.RealClient"))
     }
 
     // ---- The ResolutionBackend default-argument bridge (DefaultImpls).

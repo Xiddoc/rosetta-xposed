@@ -25,6 +25,22 @@ public class MapValidationException(
     cause: Throwable? = null,
 ) : RosettaException(message, cause)
 
+/**
+ * The raw input handed to [MapLoader.fromJson] was rejected by a cheap
+ * pre-parse denial-of-service guard, before any deserialization ran.
+ *
+ * Two distinct abuse shapes are caught fail-fast: an input larger than
+ * [MapLoader.MAX_INPUT_BYTES] (a memory-pressure / pathological-parse
+ * vector), and JSON nested deeper than [MapLoader.MAX_NESTING_DEPTH] (a
+ * stack-overflow vector against kotlinx-serialization's recursive
+ * descent). These caps mirror the canonical rosetta-maps JSON Schema
+ * (the authoritative reference; the frida Zod and this Kotlin client
+ * track it).
+ */
+public class MapInputTooLargeException(
+    message: String,
+) : RosettaException(message)
+
 /** A real name could not be resolved to an obfuscated one. */
 public class ResolveException(
     message: String,
@@ -36,6 +52,33 @@ public class ResolveException(
     public val classScope: String? = null,
 ) : RosettaException(message)
 
+/**
+ * A resolution target (the fully-qualified class name a map points at, which
+ * would be handed to `Class.forName`) was rejected by the namespace guard.
+ *
+ * Fail-closed (RFC 0001 C1): a community map maps a real name to an arbitrary
+ * obfuscated string, and that string is loaded reflectively and made
+ * accessible. A malicious or buggy map could redirect a hook at a sensitive
+ * framework class (e.g. `java.lang.Runtime`, `android.app.*`). The guard
+ * confines targets to package-local / app-owned namespaces (plus an explicit
+ * escape-hatch allowlist) and THROWS this — before any class load or
+ * `setAccessible` — for anything else.
+ *
+ * This is distinct from the "class not present yet" case (which the layer-4
+ * binding reports as its own `BindException`): a [TargetPolicyException] means
+ * the target is *forbidden*, not merely *absent*.
+ */
+public class TargetPolicyException(
+    /** The real name being resolved when the forbidden target was produced. */
+    public val name: String,
+    /** The rejected target FQN (what would have been passed to `Class.forName`). */
+    public val target: String,
+    /** Why the target was rejected (which rule denied it). */
+    public val reason: String,
+) : RosettaException(
+        "rosetta: target '$target' for real name '$name' is forbidden by the namespace guard: $reason",
+    )
+
 /** A method name had several overloads and no arg types were supplied. */
 public class AmbiguousOverloadException(
     message: String,
@@ -43,3 +86,49 @@ public class AmbiguousOverloadException(
     public val className: String,
     public val overloadCount: Int,
 ) : RosettaException(message)
+
+/**
+ * A map's `signer_sha256` authenticity guard did not match the running
+ * app's signing certificate hash. Fail-closed: the map is for a build
+ * signed by a different (possibly repackaged/spoofed) certificate, so its
+ * obfuscated names cannot be trusted against this process.
+ *
+ * Both hashes are normalized (lowercase hex, colons/whitespace stripped)
+ * before comparison; the values stored here are the normalized forms.
+ */
+public class SignerMismatchException(
+    message: String,
+    /** The normalized signer hash the map demands. */
+    public val expected: String,
+    /**
+     * A readable rendering of the normalized signer hash set the running
+     * app actually presented (a real app may be signed by several certs).
+     */
+    public val actual: String,
+) : RosettaException(message)
+
+/**
+ * A map declares a `signer_sha256` guard but the running app presented no
+ * signing-certificate hash (the app signer set was empty), so the guard
+ * cannot be evaluated. Fail-closed: a map that demands authentication must
+ * not be used un-authenticated.
+ */
+public class MissingSignerException(
+    message: String,
+    /** The normalized signer hash the map demands but could not verify. */
+    public val expected: String,
+) : RosettaException(message)
+
+/**
+ * A `signer_sha256` hash is not well-formed. After normalization
+ * (lowercase, with `:` separators and surrounding whitespace stripped) a
+ * signer hash must be exactly 64 lowercase hex characters (a SHA-256
+ * digest). This is thrown for a malformed *map* hash, which is the
+ * load-bearing case: a map that demands a signer must demand a valid one.
+ */
+public class MalformedSignerException(
+    /** The offending hash value, as supplied (before/around normalization). */
+    public val value: String,
+    /** Why it was rejected (e.g. "expected 64 hex chars, got 8"). */
+    public val reason: String,
+) : RosettaException("Malformed signer_sha256 \"$value\": $reason")

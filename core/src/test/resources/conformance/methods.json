@@ -1,0 +1,110 @@
+{
+    "description": "Single-method resolution: lone overload auto-pick (with and without argTypes), metadata propagation (static, aidl_txn, obf class name, overload count), and method/methods-map misses. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Api": {
+                "obfuscated": "aaaa",
+                "methods": {
+                    "noArgs": {
+                        "obfuscated": "c",
+                        "signature": "()V"
+                    },
+                    "create": {
+                        "obfuscated": "d",
+                        "signature": "()Lcom/example/Obj;",
+                        "static": true,
+                        "aidl_txn": 7
+                    },
+                    "consume": {
+                        "obfuscated": "e",
+                        "signature": "(Landroid/os/Bundle;)V"
+                    }
+                }
+            },
+            "com.example.app.NoMethods": {
+                "obfuscated": "bbbb"
+            },
+            "com.example.app.EmptyMethods": {
+                "obfuscated": "cccc",
+                "methods": {}
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "single overload auto-picks without argTypes",
+            "kind": "method",
+            "class": "com.example.app.Api",
+            "method": "noArgs",
+            "expectObf": "c",
+            "expectSignature": "()V",
+            "expectClassName": "aaaa",
+            "expectOverloadCount": 1
+        },
+        {
+            "name": "single overload still resolves WITH matching argTypes",
+            "kind": "method",
+            "class": "com.example.app.Api",
+            "method": "consume",
+            "argTypes": ["android.os.Bundle"],
+            "expectObf": "e"
+        },
+        {
+            "name": "single overload: non-matching argTypes is a miss",
+            "kind": "method",
+            "class": "com.example.app.Api",
+            "method": "consume",
+            "argTypes": ["java.lang.String"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "static + aidl_txn metadata propagates",
+            "kind": "method",
+            "class": "com.example.app.Api",
+            "method": "create",
+            "expectObf": "d",
+            "expectStatic": true,
+            "expectAidlTxn": 7
+        },
+        {
+            "name": "non-static method defaults static=false",
+            "kind": "method",
+            "class": "com.example.app.Api",
+            "method": "noArgs",
+            "expectObf": "c",
+            "expectStatic": false
+        },
+        {
+            "name": "miss: unknown method on known class",
+            "kind": "method",
+            "class": "com.example.app.Api",
+            "method": "nope",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: method on class with no methods map",
+            "kind": "method",
+            "class": "com.example.app.NoMethods",
+            "method": "anything",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: method on class with empty methods map",
+            "kind": "method",
+            "class": "com.example.app.EmptyMethods",
+            "method": "anything",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: method on unknown class",
+            "kind": "method",
+            "class": "com.example.app.Ghost",
+            "method": "x",
+            "expectError": "Resolve"
+        }
+    ]
+}

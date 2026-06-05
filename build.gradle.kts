@@ -118,27 +118,34 @@ kover {
 // Git hooks — the Kotlin-native analogue of rosetta-frida's husky install.
 //
 // The tracked hook lives at gradle/hooks/pre-commit; `installGitHooks` copies
-// it into .git/hooks and makes it executable. It is wired so a normal build
-// installs it (the equivalent of npm's `prepare` lifecycle running husky), so
-// contributors get the formatting gate without a manual setup step.
+// it into .git/hooks and makes it executable.
+//
+// SECURITY (audit H5): this is now OPT-IN. The task is no longer wired into
+// the default `build` lifecycle, because writing into `.git/hooks` as a side
+// effect of an ordinary build is a build-time filesystem write outside the
+// project tree (a supply-chain footgun — a compromised dependency that runs
+// at configuration/build time could ride that write to plant a hook). Install
+// hooks explicitly instead:
+//
+//     ./gradlew installGitHooks
+//
+// One-time per clone; no need to repeat it on every build. The worktree-safe
+// `isDirectory` guard below is preserved.
 // ---------------------------------------------------------------------------
 val installGitHooks by tasks.registering(Copy::class) {
-    description = "Installs the tracked git pre-commit hook into .git/hooks."
+    description = "Installs the tracked git pre-commit hook into .git/hooks (run explicitly; not part of `build`)."
     group = "git hooks"
 
     val gitDir = rootProject.layout.projectDirectory.dir(".git")
-    // Skip silently when there is no .git dir (e.g. a source tarball or a CI
-    // checkout that builds without repo metadata) so the build never fails for
-    // lack of a hooks directory.
-    onlyIf { gitDir.asFile.exists() }
+    // Skip silently unless `.git` is a real directory. In a `git worktree`,
+    // `.git` is a POINTER FILE (not a directory) and has no `hooks/` subdir to
+    // copy into, so an `.exists()` guard would wrongly pass and then fail the
+    // copy. `isDirectory` also covers the source-tarball / CI-without-metadata
+    // case (no `.git` at all), so the build never fails for lack of hooks.
+    onlyIf { gitDir.asFile.isDirectory }
 
     from(rootProject.layout.projectDirectory.file("gradle/hooks/pre-commit"))
     into(gitDir.dir("hooks"))
     // Mark the installed hook executable (rwxr-xr-x).
     fileMode = "755".toInt(radix = 8)
-}
-
-// Run the install as part of a build, like husky's `prepare` script.
-tasks.named("build") {
-    dependsOn(installGitHooks)
 }

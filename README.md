@@ -25,11 +25,13 @@ tracks and consumes it from the Kotlin side.
 
 ```kotlin
 import io.github.xiddoc.rosetta.core.MapLoader
+import io.github.xiddoc.rosetta.xposed.AppIdentity
 import io.github.xiddoc.rosetta.xposed.RosettaXposed
 
 // In your Xposed module, once the package is ready: load the map for the
-// running version_code and capture the app class loader.
-val rosetta = RosettaXposed.fromMap(MapLoader.fromJson(mapJson), classLoader)
+// running version_code, capture the app class loader and identity. The
+// map's signer_sha256 guard (if any) is enforced fail-closed.
+val rosetta = RosettaXposed.fromMap(MapLoader.fromJson(mapJson), classLoader, identity)
 
 // Resolve by REAL names; hook with the framework YOU already use.
 rosetta
