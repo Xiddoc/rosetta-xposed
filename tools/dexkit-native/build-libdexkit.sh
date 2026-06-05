@@ -92,6 +92,13 @@ mkdir -p "$DEST_DIR"
 cp "$BUILD_DIR/libdexkit.so" "$DEST_SO"
 echo "Copied -> $DEST_SO"
 
+# ---- Strip -----------------------------------------------------------------
+# Drop debug + local symbols to shrink the committed binary. `--strip-unneeded`
+# preserves the dynamic symbol table (.dynsym), so the JNI exports DexKit needs
+# (Java_org_luckypray_dexkit_*) survive — verified below.
+echo "Stripping (--strip-unneeded; keeps .dynsym JNI exports) ..."
+strip --strip-unneeded "$DEST_SO"
+
 # ---- Verify -----------------------------------------------------------------
 echo "==== file ===="
 file "$DEST_SO"
@@ -99,7 +106,9 @@ echo "==== NEEDED ===="
 readelf -d "$DEST_SO" | grep NEEDED
 echo "==== JNI exports (sample) ===="
 nm -D "$DEST_SO" | grep -i 'Java_org_luckypray_dexkit' | head -5
-echo "==== JNI export count ===="
+echo "==== JNI export count (expect 39 for DexKit 2.2.0) ===="
 nm -D "$DEST_SO" | grep -ic 'Java_org_luckypray_dexkit'
+echo "==== sha256 (record this in tools/dexkit-native/README.md) ===="
+sha256sum "$DEST_SO"
 
 echo "Done."

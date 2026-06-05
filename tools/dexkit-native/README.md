@@ -91,25 +91,55 @@ classpath uses, so the JNI symbol names match the Kotlin `native*` declarations.
 
 ## How the test consumes the library
 
-The test side loads the absolute path of:
+The build (`dexkit/build.gradle.kts`) PREPENDS this directory to the test JVM's
+`-Djava.library.path`:
 
 ```
-dexkit/src/test/resources/native/linux-x86_64/libdexkit.so
+dexkit/src/test/resources/native/linux-x86_64/
 ```
 
-via `System.load(...)` on a plain (non-Android) JVM, then drives
-`org.luckypray.dexkit.DexKitBridge`. If the file is absent (e.g. on a non-x86_64
-host where this build wasn't run), the test is expected to `assumeTrue`-skip
-rather than fail — so a missing `.so` must not break the build.
+The test then calls `System.loadLibrary("dexkit")` (NOT `System.load(<abs
+path>)`) on a plain (non-Android) JVM, and the JVM resolves the platform library
+name `dexkit` → `libdexkit.so` from that path. The file MUST therefore be named
+exactly `libdexkit.so` (the `lib` prefix + `.so` suffix is the Linux mapping
+`System.mapLibraryName("dexkit")` applies); renaming it breaks `loadLibrary`.
+
+Skip vs. fail semantics (see `DexKitBackedIndexIntegrationTest`):
+
+- On a **supported platform** — Linux on an `amd64`/`x86_64` JVM (e.g. CI on
+  `ubuntu-latest`) — the committed native is expected to load, so an
+  `UnsatisfiedLinkError` is **fatal**: the test fails with a pointer back to
+  this script. CI thus runs the full suite for real and goes red if the native
+  drifts or breaks.
+- On any **other platform** (mac / arm / non-glibc), a load failure is benign
+  and the test `assumeTrue`-skips, so a missing/incompatible `.so` does not
+  break the build there.
+
+### GLIBC floor
+
+This `.so` is built against the host's glibc and requires **GLIBC_2.38 or
+newer** at load time (CI's `ubuntu-latest` ships glibc 2.39). An older glibc
+will surface as an `UnsatisfiedLinkError` (version-symbol mismatch) — rebuild on
+a host with the required glibc via `build-libdexkit.sh` if you need a lower
+floor.
 
 ## Verification (this build)
+
+The committed `.so` is **stripped** (`strip --strip-unneeded`, the final step of
+`build-libdexkit.sh`) to shrink it; this preserves the `.dynsym` table so all 39
+`Java_org_luckypray_dexkit_*` JNI exports remain (verified below).
+
+| Item | Value |
+|------|-------|
+| sha256 (stripped) | `4f182433f23ffcea9e6e9320bd46755dba5300642f38721263c84a1bfa946fef` |
+| GLIBC floor | **GLIBC_2.38** (built on Ubuntu 24.04 / glibc 2.39) |
 
 `file`:
 
 ```
 libdexkit.so: ELF 64-bit LSB shared object, x86-64, version 1 (GNU/Linux),
 dynamically linked, BuildID[sha1]=3c9ab0e149a08ea5bb817c954d58d37f7e4295dc,
-not stripped
+stripped
 ```
 
 `readelf -d libdexkit.so | grep NEEDED` — all **desktop** libs, no Android/bionic:
