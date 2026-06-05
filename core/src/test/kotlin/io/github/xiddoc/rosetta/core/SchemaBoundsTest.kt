@@ -235,6 +235,46 @@ class SchemaBoundsTest {
     }
 
     @Test
+    fun `rejects an empty method obfuscated name independently of the signature`() {
+        // F7: obfuscated empty but signature valid — the obfuscated check must
+        // fire on its own (no short-circuit hiding it behind the signature one).
+        val map =
+            base.copy(
+                classes =
+                    mapOf(
+                        "com.example.Foo" to
+                            ClassEntry(
+                                "a",
+                                methods = mapOf("m" to MethodOverloads(listOf(MethodEntry(obfuscated = "", signature = "()V")))),
+                            ),
+                    ),
+            )
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].methods[m][0].obfuscated" && it.message.contains("empty") })
+        assertTrue(ex.issues.none { it.path == "classes[com.example.Foo].methods[m][0].signature" })
+    }
+
+    @Test
+    fun `rejects an empty method signature independently of the obfuscated name`() {
+        // F7: signature empty but obfuscated valid — the signature check must
+        // fire on its own.
+        val map =
+            base.copy(
+                classes =
+                    mapOf(
+                        "com.example.Foo" to
+                            ClassEntry(
+                                "a",
+                                methods = mapOf("m" to MethodOverloads(listOf(MethodEntry(obfuscated = "c", signature = "")))),
+                            ),
+                    ),
+            )
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].methods[m][0].signature" && it.message.contains("empty") })
+        assertTrue(ex.issues.none { it.path == "classes[com.example.Foo].methods[m][0].obfuscated" })
+    }
+
+    @Test
     fun `rejects an empty field obfuscated name and type`() {
         val map =
             base.copy(
