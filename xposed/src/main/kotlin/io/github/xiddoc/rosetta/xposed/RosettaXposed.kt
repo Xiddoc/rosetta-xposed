@@ -70,6 +70,33 @@ public class RosettaXposed internal constructor(
         realField: String,
     ): FieldTarget = FieldTarget(backend.resolveField(realClass, realField), loader)
 
+    /**
+     * Defer a hook until [realClass]'s declaring obfuscated class is loadable,
+     * then run [onAvailable]. A thin convenience that forwards to
+     * [DeferredBinding.whenClassAvailable]; the object API there is the full
+     * surface (see it for the guarded-probe + run-once semantics).
+     */
+    public fun deferred(
+        realClass: String,
+        watcher: ClassAvailabilityWatcher,
+        onAvailable: (RosettaXposed) -> Unit,
+    ): Registration = DeferredBinding.whenClassAvailable(this, realClass, watcher, onAvailable)
+
+    /**
+     * Resolve [realClass] to its obfuscated FQN and probe whether it is
+     * loadable NOW through the C1-guarded chokepoint. Internal seam for
+     * [DeferredBinding] so the deferred probe shares the exact guard path used
+     * by every other target (a denied target throws [TargetPolicyException]
+     * before any load — the M1 lesson).
+     */
+    internal fun probeClassLoadable(realClass: String): Boolean {
+        val resolved = backend.resolveClass(realClass)
+        return loader.probeLoadable(resolved.realName, resolved.obfName)
+    }
+
+    /** The obfuscated FQN [realClass] resolves to (used by [DeferredBinding]). */
+    internal fun obfNameOf(realClass: String): String = backend.resolveClass(realClass).obfName
+
     public companion object {
         /**
          * Build over a single static map, enforcing the map's
