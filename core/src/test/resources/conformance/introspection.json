@@ -1,0 +1,37 @@
+{
+    "description": "Reverse introspection: reverseLookup maps an obfuscated class short name back to its real fully-qualified name (tier-3 introspection), returning null when no class has that obf name. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Service": {
+                "obfuscated": "aaaa"
+            },
+            "com.example.app.Callback": {
+                "obfuscated": "bbbb"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "reverseLookup: known obf name -> real FQN",
+            "kind": "reverseLookup",
+            "obf": "aaaa",
+            "expectResult": "com.example.app.Service"
+        },
+        {
+            "name": "reverseLookup: second known obf name",
+            "kind": "reverseLookup",
+            "obf": "bbbb",
+            "expectResult": "com.example.app.Callback"
+        },
+        {
+            "name": "reverseLookup: unknown obf name -> null",
+            "kind": "reverseLookup",
+            "obf": "zzzz",
+            "expectResult": null
+        }
+    ]
+}

@@ -1,0 +1,95 @@
+{
+    "description": "Class resolution: hits and misses across top-level, inner ($-nested), and short-name entries. Provider-neutral; see README.md for the fixture schema.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Service": {
+                "obfuscated": "a",
+                "kind": "class"
+            },
+            "com.example.app.Service$Stub": {
+                "obfuscated": "a$a",
+                "kind": "aidl_stub",
+                "extends": "com.example.app.Service"
+            },
+            "com.example.app.Service$Stub$Proxy": {
+                "obfuscated": "a$a$a",
+                "kind": "class"
+            },
+            "IShortName": {
+                "obfuscated": "z",
+                "kind": "interface"
+            },
+            "com.example.app.NoExtends": {
+                "obfuscated": "b"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "resolve top-level class",
+            "kind": "class",
+            "class": "com.example.app.Service",
+            "expectObf": "a"
+        },
+        {
+            "name": "resolve inner class Outer$Inner",
+            "kind": "class",
+            "class": "com.example.app.Service$Stub",
+            "expectObf": "a$a",
+            "expectExtends": "com.example.app.Service"
+        },
+        {
+            "name": "resolve doubly-nested inner class",
+            "kind": "class",
+            "class": "com.example.app.Service$Stub$Proxy",
+            "expectObf": "a$a$a"
+        },
+        {
+            "name": "resolve short (unqualified) class name",
+            "kind": "class",
+            "class": "IShortName",
+            "expectObf": "z"
+        },
+        {
+            "name": "class with no extends has null extends",
+            "kind": "class",
+            "class": "com.example.app.NoExtends",
+            "expectObf": "b",
+            "expectExtends": null
+        },
+        {
+            "name": "miss: unknown top-level class",
+            "kind": "class",
+            "class": "com.example.app.DoesNotExist",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: known outer but unknown inner",
+            "kind": "class",
+            "class": "com.example.app.Service$Unknown",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: empty class name",
+            "kind": "class",
+            "class": "",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "hasClass: present",
+            "kind": "hasClass",
+            "class": "com.example.app.Service",
+            "expectResult": true
+        },
+        {
+            "name": "hasClass: absent",
+            "kind": "hasClass",
+            "class": "com.example.app.Nope",
+            "expectResult": false
+        }
+    ]
+}
