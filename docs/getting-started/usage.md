@@ -88,3 +88,44 @@ Beyond methods, the entry point exposes:
 - `rosetta.useClass(realClass)` — load the obfuscated `Class` behind a real name.
 - `rosetta.field(realClass, realField)` — resolve a field to a `java.lang.reflect.Field`.
 - `rosetta.knows(realClass)` — check whether the loaded map (or backend) knows a class.
+
+## Target namespace guard (security)
+
+A community map maps a real name to an **arbitrary** obfuscated string,
+and that string is the FQN handed to `Class.forName` + `setAccessible`.
+To stop a malicious or buggy map from redirecting a hook at a sensitive
+framework class (e.g. `java.lang.Runtime`, `android.app.*`,
+`dagger.internal.Provider`), every resolution target is checked against
+a **namespace guard** (`TargetGuard` / `TargetPolicy`) before any load.
+
+Decision order (fail-closed, strict — a denied target **throws**
+`TargetPolicyException`, there is no warn-and-proceed):
+
+1. exact-FQN allowlist (`TargetPolicy.allow`) → ALLOW;
+2. top-level prefix on the reserved denylist
+   (`DEFAULT_DENY_PREFIXES` — `java.`, `android.`, `androidx.`,
+   `kotlin.`, `dalvik.`, `dagger.`, …) → DENY (even under the app prefix);
+3. package-local (no `.`) → ALLOW;
+4. under the app's own prefix (first two labels of `map.app`,
+   configurable via `appNamespaceLabels`) → ALLOW;
+5. otherwise → DENY.
+
+Targets are normalized first: array markers are stripped to the element
+class, primitives/`void` are always allowed, and the namespace is split
+on `.` (so `com.example.app.Foo$Bar` is allowed but `android.os.Foo$Bar`
+is denied). Matching is case-sensitive. As defense-in-depth, after a
+successful `Class.forName` the binding hard-denies a target realised by
+the boot/system/platform class loader unless it was explicitly
+allowlisted.
+
+```kotlin
+// Default policy: app-owned + package-local targets only.
+val rosetta = RosettaXposed.fromMap(map, classLoader, identity)
+
+// Escape hatch for a legitimate framework hook:
+val policy = TargetPolicy(allow = listOf("android.app.Activity"))
+val rosetta = RosettaXposed.fromMap(map, classLoader, identity, policy)
+```
+
+The Frida-side twin mirrors these exact semantics and the same
+`DEFAULT_DENY_PREFIXES`.
