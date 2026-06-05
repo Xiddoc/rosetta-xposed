@@ -39,6 +39,8 @@ import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
+import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
+import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
 
 /**
  * Per-method discovery facets — how to find ONE method's obfuscated name by
@@ -144,6 +146,25 @@ public class DynamicResolutionBackend(
                         "(partial discovery fails closed; the cache is not poisoned).",
                 )
         val methodEntry = overloads.entries.first()
+        // Honour argTypes when supplied (Liskov parity with the static
+        // Resolver / StaticResolutionBackend): the caller pinned a specific
+        // overload, so the discovered overload's descriptor MUST match it.
+        // Discovered descriptors already carry obfuscated class refs, so the
+        // arg-type names are translated as-is (identity translate). A mismatch
+        // fails closed rather than silently returning the wrong overload.
+        if (argTypes != null) {
+            val wanted = argTypes.map { toJvmDescriptor(it) { name -> name } }
+            val actual = parseSignatureArgs(methodEntry.signature)
+            if (actual != wanted) {
+                throw DiscoveryException(
+                    "rosetta-xposed: dynamic discovery resolved '$realClass.$realMethod' to a " +
+                        "single overload '${methodEntry.signature}', but it does not match the " +
+                        "requested arg types [${argTypes.joinToString(", ")}] " +
+                        "(discovery records one overload per name; pass the matching arg types " +
+                        "or omit them).",
+                )
+            }
+        }
         return ResolvedMethod(
             realName = realMethod,
             obfName = methodEntry.obfuscated,

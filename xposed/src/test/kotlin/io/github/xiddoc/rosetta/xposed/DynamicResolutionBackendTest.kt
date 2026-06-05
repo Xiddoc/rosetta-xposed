@@ -129,6 +129,66 @@ class DynamicResolutionBackendTest {
         assertEquals(2, m.aidlTxn)
     }
 
+    @Test
+    fun `resolveMethod honours matching argTypes on a discovered overload`() {
+        // Liskov parity with the static backend: when the caller pins arg
+        // types that match the single discovered overload, it resolves.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(Ljava/lang/String;)Ljava/lang/String;"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(
+                    real to
+                        DiscoveryHints(
+                            aidlDescriptor = "Lcom/example/IFoo;",
+                            methods =
+                                listOf(
+                                    MethodDiscoveryHint(
+                                        realName = "single",
+                                        descriptor = "(Ljava/lang/String;)Ljava/lang/String;",
+                                    ),
+                                ),
+                        ),
+                ),
+            )
+        val m = backend.resolveMethod(real, "single", listOf("java.lang.String"))
+        assertEquals("c", m.obfName)
+    }
+
+    @Test
+    fun `resolveMethod fails closed when argTypes do not match the discovered overload`() {
+        // The single discovered overload takes (String); the caller asks for
+        // (int) — a wrong-overload request must NOT silently return the String
+        // one (the Liskov bug). Fail closed.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(Ljava/lang/String;)Ljava/lang/String;"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(
+                    real to
+                        DiscoveryHints(
+                            aidlDescriptor = "Lcom/example/IFoo;",
+                            methods =
+                                listOf(
+                                    MethodDiscoveryHint(
+                                        realName = "single",
+                                        descriptor = "(Ljava/lang/String;)Ljava/lang/String;",
+                                    ),
+                                ),
+                        ),
+                ),
+            )
+        assertFailsWith<DiscoveryException> { backend.resolveMethod(real, "single", listOf("int")) }
+    }
+
     // ---- Misses + partial discovery → DiscoveryException --------------------
 
     @Test
