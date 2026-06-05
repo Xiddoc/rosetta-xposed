@@ -336,11 +336,19 @@ private fun overloadMissException(
  *     so it never excludes a legitimate class name; the length check is purely
  *     "is this a lone descriptor letter," not an arbitrary length cap.
  *
- * PARITY: this drives WHICH exception fires (precise [UnknownArgTypeException]
- * vs generic no-overload [ResolveException]) and is real resolution semantics,
- * so the Frida twin must make the equivalent distinction. (Flagged for the
- * cross-repo parity agent — see the report's Parity hand-off; the shared
- * conformance fixtures are owned there, not edited from this branch.)
+ * KEEP IN SYNC — this function is DUPLICATED by value in two languages:
+ * rosetta-xposed (Kotlin, here) and rosetta-frida (TS, the
+ * `unknownArgTypeOrNull` twin in `src/resolver/resolver.ts`). The duplication
+ * is intentional (each client stays pure-JVM / pure-TS with no shared
+ * runtime), so the two copies MUST make the same distinction — it drives WHICH
+ * exception fires (precise [UnknownArgTypeException] vs generic no-overload
+ * [ResolveException]) — or the clients raise different errors for the same
+ * input. The shared conformance fixtures (`errors.json`, `methods.json`,
+ * `overloads.json`) PIN the boundary cases. Changing the heuristic here
+ * requires: (a) making the same change in the Frida twin, (b) verifying the
+ * conformance fixtures still cover the new boundary, and (c) adding a fixture
+ * case (byte-identical in both repos, with both sha256 manifests regenerated)
+ * if they do not.
  */
 private fun unknownArgTypeOrNull(
     argTypes: List<String>,
