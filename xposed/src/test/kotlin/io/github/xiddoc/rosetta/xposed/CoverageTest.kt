@@ -108,7 +108,7 @@ class CoverageTest {
 
     @Test
     fun `fromRegistry selects by version_code and binds`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map)
+        val registry: MapRegistry = MapRegistry.of(map)
         val identity = AppIdentity(packageName = "com.example.app", versionCode = 100, versionName = "1.0.0")
         val bound = RosettaXposed.fromRegistry(registry, identity, javaClass.classLoader)
         assertNotNull(bound)
@@ -117,7 +117,7 @@ class CoverageTest {
 
     @Test
     fun `fromRegistry returns null when no map matches`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map)
+        val registry: MapRegistry = MapRegistry.of(map)
         val identity = AppIdentity(packageName = "com.example.app", versionCode = 999)
         assertNull(RosettaXposed.fromRegistry(registry, identity, javaClass.classLoader))
     }

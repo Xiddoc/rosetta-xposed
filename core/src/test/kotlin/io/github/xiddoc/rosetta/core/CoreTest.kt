@@ -7,6 +7,7 @@ package io.github.xiddoc.rosetta.core
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.MatchedBy
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.json.Json
@@ -132,8 +133,13 @@ class CoreTest {
     @Test
     fun `version selection prefers version_code over label`() {
         val a = MapLoader.fromJson(minimalMap)
-        val b = MapLoader.fromJson(minimalMap.replace("\"version_code\": 100", "\"version_code\": 200"))
-        val registry = mapOf("1.0.0" to a, "1.0.0-b" to b)
+        val b =
+            MapLoader.fromJson(
+                minimalMap
+                    .replace("\"version_code\": 100", "\"version_code\": 200")
+                    .replace("\"version\": \"1.0.0\"", "\"version\": \"1.0.0-b\""),
+            )
+        val registry = MapRegistry.of(a, b)
 
         val byCode = VersionMatch.select(registry, versionCode = 200)
         assertEquals(200, byCode!!.map.versionCode)
@@ -141,7 +147,29 @@ class CoreTest {
 
         val byLabel = VersionMatch.select(registry, versionLabel = "1.0.0-b")
         assertEquals(MatchedBy.LABEL, byLabel!!.matchedBy)
+        assertEquals(200, byLabel.map.versionCode)
 
         assertNull(VersionMatch.select(registry, versionCode = 999))
+    }
+
+    @Test
+    fun `MapRegistry indexes by version_code (primary) and label (fallback)`() {
+        val a = MapLoader.fromJson(minimalMap)
+        val b =
+            MapLoader.fromJson(
+                minimalMap
+                    .replace("\"version_code\": 100", "\"version_code\": 200")
+                    .replace("\"version\": \"1.0.0\"", "\"version\": \"2.0.0\""),
+            )
+        val registry = MapRegistry.fromCollection(listOf(a, b))
+        assertEquals(2, registry.size)
+        // O(1) by version_code (the authoritative key).
+        assertEquals(100, registry.byVersionCode(100)!!.versionCode)
+        assertEquals(200, registry.byVersionCode(200)!!.versionCode)
+        assertNull(registry.byVersionCode(999))
+        // Label fallback index.
+        assertEquals(100, registry.byLabel("1.0.0")!!.versionCode)
+        assertEquals(200, registry.byLabel("2.0.0")!!.versionCode)
+        assertNull(registry.byLabel("nope"))
     }
 }

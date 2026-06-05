@@ -19,6 +19,7 @@ import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.Resolver
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.MatchedBy
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.properties.Properties
@@ -339,7 +340,7 @@ class CoverageTest {
 
     @Test
     fun `version selection returns null when neither code nor label matches`() {
-        val registry = mapOf("1.0.0" to map)
+        val registry = MapRegistry.of(map)
         // Both null → falls through to the final `return null`.
         assertNull(VersionMatch.select(registry))
         // A label miss after no code given also returns null.
@@ -348,7 +349,7 @@ class CoverageTest {
         // code block falls through and the label branch wins.
         val byLabel = VersionMatch.select(registry, versionCode = 999, versionLabel = "1.0.0")
         assertEquals(MatchedBy.LABEL, byLabel!!.matchedBy)
-        // A matching code → the firstOrNull predicate's true arm + early return.
+        // A matching code → the O(1) version_code index hit + early return.
         val byCode = VersionMatch.select(registry, versionCode = 100)
         assertEquals(MatchedBy.VERSION_CODE, byCode!!.matchedBy)
         // Code given, no match, no label → reaches the final `return null`
