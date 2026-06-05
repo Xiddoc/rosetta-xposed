@@ -60,6 +60,22 @@ jobs:
                   # fully strict. See docs/reference/building.md.
                   develocity-injection-enabled: false
 
+            # Deterministic kill-switch for the Develocity auto-injection.
+            # The `develocity-injection-enabled` input + DEVELOCITY_INJECTION_ENABLED
+            # env are not always honoured (the injection can come from an
+            # org-level Actions variable and/or be restored from the Gradle
+            # user-home cache), so we also physically remove the auto-applied
+            # init script from $GRADLE_USER_HOME/init.d before the build. With
+            # the script gone, the Develocity plugin is never added to the
+            # buildscript `:classpath`, so its unpinned junit-bom /
+            # kotlinx-coroutines-bom metadata never gets resolved and strict
+            # dependency verification (verify-metadata=true) stays green.
+            - name: Remove Develocity auto-injection init script
+              run: |
+                  init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+                  rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+                  echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
+
             # The full quality suite — the Kotlin equivalents of rosetta-frida's
             # format + lint + 100%-coverage + test gate:
             #   spotlessCheck → formatting (ktlint)
