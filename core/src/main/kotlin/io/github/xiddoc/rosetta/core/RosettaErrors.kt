@@ -25,6 +25,22 @@ public class MapValidationException(
     cause: Throwable? = null,
 ) : RosettaException(message, cause)
 
+/**
+ * The raw input handed to [MapLoader.fromJson] was rejected by a cheap
+ * pre-parse denial-of-service guard, before any deserialization ran.
+ *
+ * Two distinct abuse shapes are caught fail-fast: an input larger than
+ * [MapLoader.MAX_INPUT_BYTES] (a memory-pressure / pathological-parse
+ * vector), and JSON nested deeper than [MapLoader.MAX_NESTING_DEPTH] (a
+ * stack-overflow vector against kotlinx-serialization's recursive
+ * descent). These caps mirror the canonical rosetta-maps JSON Schema
+ * (the authoritative reference; the frida Zod and this Kotlin client
+ * track it).
+ */
+public class MapInputTooLargeException(
+    message: String,
+) : RosettaException(message)
+
 /** A real name could not be resolved to an obfuscated one. */
 public class ResolveException(
     message: String,
