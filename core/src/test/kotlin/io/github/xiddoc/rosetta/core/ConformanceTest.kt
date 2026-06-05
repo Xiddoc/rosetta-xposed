@@ -35,6 +35,7 @@ import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class ConformanceTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -216,7 +217,19 @@ class ConformanceTest {
             // the generic Resolve so a generic ResolveException can't satisfy
             // an UnknownArgType case (it is a ResolveException subtype).
             "UnknownArgType" -> assertFailsWith<UnknownArgTypeException> { block() }
-            "Resolve" -> assertFailsWith<ResolveException> { block() }
+            // A generic Resolve case must NOT be the precise UnknownArgType
+            // subtype: because UnknownArgTypeException IS-A ResolveException,
+            // a bare assertFailsWith<ResolveException> would also accept the
+            // subtype and mask a resolver that wrongly fired UnknownArgType
+            // here. Assert the negative explicitly, mirroring the Frida
+            // runner's `expect(thrown).not.toBeInstanceOf(UnknownArgTypeError)`.
+            "Resolve" -> {
+                val ex = assertFailsWith<ResolveException> { block() }
+                assertFalse(
+                    ex is UnknownArgTypeException,
+                    "Resolve case must not fire the distinct UnknownArgType subtype",
+                )
+            }
             "IllegalArgument" -> assertFailsWith<IllegalArgumentException> { block() }
             else -> error("unknown expectError '$expectError'")
         }
