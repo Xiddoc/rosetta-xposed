@@ -17,9 +17,13 @@ import io.github.xiddoc.rosetta.core.model.Methods
  * needs, NOT the whole map [io.github.xiddoc.rosetta.core.model.ClassEntry].
  *
  * The full entry stays private to the [Resolver]; only the fields a consumer
- * actually reads are surfaced here, so the map model never leaks across the
- * resolution boundary. The self-healing write-back travels the other way as
- * a typed [DiscoveredClass] (see [Resolver.override]).
+ * actually reads are surfaced here, so the *read side* of the resolution
+ * boundary carries resolved coordinates rather than the map model. (The
+ * write-back is a separate, deliberately typed contract — the
+ * [DiscoveredClass] below — and it DOES reference the model method/field value
+ * types it has to rebuild into a [io.github.xiddoc.rosetta.core.model.ClassEntry];
+ * see [Resolver.override]. The boundary is model-free on the way out, not on
+ * the way back in.)
  */
 public data class ResolvedClass(
     /** Real fully-qualified name. */
@@ -39,6 +43,12 @@ public data class ResolvedClass(
  * its methods, and its fields — and nothing else. Provenance (kind / source /
  * confidence / anchors) is the discovery sink's concern, not the resolver's,
  * so it is intentionally absent here.
+ *
+ * NOTE: unlike [ResolvedClass] (the read side), this write-back contract DOES
+ * reference the model value types [Methods] and [FieldEntry] — it has to, to
+ * rebuild a [io.github.xiddoc.rosetta.core.model.ClassEntry] in
+ * [Resolver.override]. The resolver boundary is therefore model-free outbound
+ * (read) but not inbound (write-back); that is by design for a skeleton.
  */
 public data class DiscoveredClass(
     /** Real fully-qualified name being healed into the static path. */
