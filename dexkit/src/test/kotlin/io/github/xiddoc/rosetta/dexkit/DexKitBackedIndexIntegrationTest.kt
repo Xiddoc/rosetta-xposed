@@ -4,21 +4,35 @@
  * and proves the whole dynamic-discovery path through [DexKitBackedIndex]:
  *
  *   1. anchor / superclass / AIDL-descriptor class discovery,
- *   2. method-by-signature discovery,
- *   3. the composite self-healing write-back (index consulted at most once),
- *   4. the C1 target guard wrapping a DISCOVERED name,
- *   5. the signer guard running BEFORE discovery (fail-closed).
+ *   2. method-by-signature discovery (return+param, returnType-only,
+ *      paramTypes-only, and the usingStrings facet),
+ *   3. member enumeration ([DexKitBackedIndex.membersOf]) + its miss branch,
+ *   4. the composite self-healing write-back (index consulted at most once),
+ *   5. the C1 target guard wrapping a DISCOVERED name,
+ *   6. the signer guard running BEFORE discovery (fail-closed).
  *
  * It is hermetic: the dex fixture + its real→obf mapping + the host-built
- * `libdexkit.so` all live under `src/test/resources/` and are committed. The
- * test JVM is given `-Djava.library.path=.../native/linux-x86_64` by the build
- * script so DexKit's `System.loadLibrary("dexkit")` resolves the native.
+ * `libdexkit.so` all live under `src/test/resources/` and are committed.
  *
- * GRACEFUL SKIP. On a runner WITHOUT the native (or the fixture), the setup
- * skips cleanly via JUnit `Assumptions` so the suite stays green everywhere —
- * which is also why this module's coverage is NOT wired into the root 100%
- * Kover gate. On THIS runner the native IS present, so the assertions actually
- * run against real DexKit.
+ * TWO-STEP NATIVE CONTRACT. The build (`dexkit/build.gradle.kts`) supplies the
+ * test JVM with `-Djava.library.path=.../native/linux-x86_64`; `@BeforeAll`
+ * then does `System.loadLibrary("dexkit")` and creates the bridge as two
+ * SEPARATE steps. The two failure modes are treated differently:
+ *
+ *   - A *load* failure (`UnsatisfiedLinkError` / `NoClassDefFoundError` /
+ *     a missing resource) is the genuine "DexKit native unavailable" signal.
+ *     On an UNSUPPORTED platform (mac / arm / non-glibc) it is benign and the
+ *     suite skips cleanly via `assumeTrue(ready)`. On a SUPPORTED platform
+ *     (linux + amd64/x86_64 — i.e. CI on ubuntu-latest) it is FATAL: the
+ *     committed native is expected to load, so a load failure FAILS setup with
+ *     a clear pointer at the GLIBC_2.38 floor and the refresh script.
+ *   - Any OTHER throwable (e.g. `DexKitBridge.create` choking on a broken
+ *     dex) is a real regression and is left to PROPAGATE — never skipped.
+ *
+ * This guarantees CI actually runs all the tests for real and goes red if the
+ * native breaks, while non-supported dev machines still skip cleanly. Because
+ * the suite legitimately skips on those machines, this module's coverage is NOT
+ * wired into the root 100% Kover gate.
  */
 package io.github.xiddoc.rosetta.dexkit
 
@@ -78,20 +92,54 @@ class DexKitBackedIndexIntegrationTest {
         val mapFile = resource("dex/fixture-mapping.json") ?: return
         mapping = FixtureMapping.parse(mapFile.readText())
 
-        // The native is mandatory for a real run. Load it explicitly (DexKit's
-        // own tests do the same); on a host without it / wrong arch we leave
-        // `ready` false so every test skips cleanly — but DO run where it loads.
-        bridge =
-            try {
-                System.loadLibrary("dexkit")
-                DexKitBridge.create(arrayOf(dexFile.readBytes()))
-            } catch (t: Throwable) {
-                println("rosetta-xposed:dexkit: native unavailable (${t.javaClass.simpleName}) — tests will skip.")
-                return
-            }
+        // STEP 1 — load the native, separately from bridge creation. Only a
+        // genuine "native unavailable" signal (UnsatisfiedLinkError, the
+        // DexKit class missing, or a missing resource) is caught here. On a
+        // SUPPORTED platform the committed `libdexkit.so` is expected to load,
+        // so a load failure is FATAL (a broken / drifted native must go red,
+        // not silently skip). On an UNSUPPORTED platform it is benign: leave
+        // `ready` false so every test skips via `assumeTrue`.
+        try {
+            System.loadLibrary("dexkit")
+        } catch (e: UnsatisfiedLinkError) {
+            if (isSupportedPlatform()) throw nativeLoadFailure(e)
+            println("rosetta-xposed:dexkit: native unavailable (${e.javaClass.simpleName}) — tests will skip.")
+            return
+        } catch (e: NoClassDefFoundError) {
+            // DexKit class itself missing from the classpath — unavailable.
+            if (isSupportedPlatform()) throw nativeLoadFailure(e)
+            println("rosetta-xposed:dexkit: DexKit classes unavailable (${e.javaClass.simpleName}) — tests will skip.")
+            return
+        }
+
+        // STEP 2 — create the bridge. This is NOT in the skip-gate: any failure
+        // here (e.g. DexKitBridge.create choking on a broken dex) is a real
+        // regression and is allowed to PROPAGATE and fail the run.
+        bridge = DexKitBridge.create(arrayOf(dexFile.readBytes()))
         index = DexKitBackedIndex(bridge!!)
         ready = true
     }
+
+    /**
+     * The platform where the committed native is expected to load: Linux on an
+     * x86_64 / amd64 JVM (the CI runner). On any other platform an
+     * `UnsatisfiedLinkError` is benign and the suite skips.
+     */
+    private fun isSupportedPlatform(): Boolean {
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        val arch = System.getProperty("os.arch").orEmpty().lowercase()
+        return os.contains("linux") && (arch == "amd64" || arch == "x86_64")
+    }
+
+    private fun nativeLoadFailure(cause: Throwable): AssertionError =
+        AssertionError(
+            "DexKit native failed to load on a SUPPORTED platform " +
+                "(${System.getProperty("os.name")}/${System.getProperty("os.arch")}). " +
+                "The committed dexkit/src/test/resources/native/linux-x86_64/libdexkit.so must load here. " +
+                "It requires GLIBC_2.38 or newer; refresh it with tools/dexkit-native/build-libdexkit.sh. " +
+                "Cause: ${cause.javaClass.name}: ${cause.message}",
+            cause,
+        )
 
     @AfterAll
     fun tearDownClass() {
@@ -207,6 +255,105 @@ class DexKitBackedIndexIntegrationTest {
         assertEquals(process.signature, resolved.signature, "discovered method descriptor")
     }
 
+    // --- 4b. findMethod optional-facet branches (returnType / paramTypes /
+    //         usingStrings), each exercised in isolation -----------------------
+
+    @Test
+    fun `findMethod resolves process by returnType only`() {
+        val network = mapping.cls("com.rosetta.dexfixture.NetworkHandler")
+        val process = network.methods.getValue("process")
+
+        // Drives the `query.returnType?.let { ... }` branch alone: no param
+        // facet. process is the only String-returning method on NetworkHandler.
+        val match =
+            index.findMethod(
+                MethodQuery(
+                    declaringClass = network.obfuscated,
+                    returnType = "java.lang.String",
+                ),
+            )
+        assertEquals(
+            MethodMatch(network.obfuscated, process.obfuscated, process.signature),
+            match,
+            "returnType-only findMethod must resolve process",
+        )
+    }
+
+    @Test
+    fun `findMethod resolves process by paramTypes only`() {
+        val network = mapping.cls("com.rosetta.dexfixture.NetworkHandler")
+        val process = network.methods.getValue("process")
+
+        // Drives the `query.paramTypes?.let { ... }` branch alone: no return
+        // facet. process is the only (String)-taking method on NetworkHandler.
+        val match =
+            index.findMethod(
+                MethodQuery(
+                    declaringClass = network.obfuscated,
+                    paramTypes = listOf("java.lang.String"),
+                ),
+            )
+        assertEquals(
+            MethodMatch(network.obfuscated, process.obfuscated, process.signature),
+            match,
+            "paramTypes-only findMethod must resolve process",
+        )
+    }
+
+    @Test
+    fun `findMethod resolves getAnchor by its unique usingStrings literal`() {
+        val widget = mapping.cls("com.rosetta.dexfixture.AnchoredWidget")
+        val anchor = widget.anchors.single()
+
+        // Drives the `usingStrings` facet: AnchoredWidget.getAnchor() is the
+        // sole method that references the (globally unique) anchor literal, so
+        // it resolves even without return/param facets. This proves the
+        // usingStrings arm of findMethod against the real bridge.
+        val match =
+            index.findMethod(
+                MethodQuery(
+                    declaringClass = widget.obfuscated,
+                    usingStrings = listOf(anchor),
+                ),
+            )
+        assertTrue(
+            match != null && match.declaringClass == widget.obfuscated,
+            "usingStrings findMethod must resolve a method on the obfuscated AnchoredWidget",
+        )
+        // getAnchor returns String and takes no args; cross-check the descriptor
+        // shape rather than the obfuscated name (which the mapping does not pin).
+        assertEquals(
+            "()Ljava/lang/String;",
+            match!!.descriptor,
+            "the usingStrings-matched method must be getAnchor()Ljava/lang/String;",
+        )
+    }
+
+    // --- 4c. membersOf: hit enumerates the class, miss is empty --------------
+
+    @Test
+    fun `membersOf enumerates the obfuscated NetworkHandler and includes process`() {
+        val network = mapping.cls("com.rosetta.dexfixture.NetworkHandler")
+        val process = network.methods.getValue("process")
+
+        val members = index.membersOf(network.obfuscated)
+        assertTrue(members.isNotEmpty(), "membersOf must enumerate the class's methods")
+        assertTrue(
+            members.contains(MethodMatch(network.obfuscated, process.obfuscated, process.signature)),
+            "membersOf must include process with its obfuscated name + descriptor",
+        )
+    }
+
+    @Test
+    fun `membersOf returns empty for a class not in the dex`() {
+        // Drives the `getClassData(...)?...orEmpty()` null/miss branch.
+        assertEquals(
+            emptyList(),
+            index.membersOf("com.rosetta.dexfixture.does.not.Exist"),
+            "membersOf must return empty for a class absent from the dex",
+        )
+    }
+
     // --- 5. Composite write-back (index consulted at most once) --------------
 
     @Test
@@ -246,7 +393,10 @@ class DexKitBackedIndexIntegrationTest {
         // guard wraps DISCOVERED names (not just static ones).
         val poisonIndex =
             object : DexKitIndex {
-                override fun findClassByAnchors(anchors: List<String>): String = "java.lang.Runtime"
+                // `String?` mirrors the seam + the real adapter (a non-null
+                // return would narrow the contract). Still resolves a reserved
+                // name to prove the guard wraps DISCOVERED names.
+                override fun findClassByAnchors(anchors: List<String>): String? = "java.lang.Runtime"
 
                 override fun findClassByAidlDescriptor(descriptor: String): String? = null
 
@@ -257,10 +407,13 @@ class DexKitBackedIndexIntegrationTest {
                 override fun membersOf(obfClass: String): List<MethodMatch> = emptyList()
             }
 
+        // Wrap the poison index so we can prove the discovered name actually
+        // reached the guard (non-vacuous), mirroring the signer-guard test.
+        val counting = CountingDexKitIndex(poisonIndex)
         val rosetta =
             RosettaXposed.fromMapWithDiscovery(
                 map = emptyFixtureMap(),
-                index = poisonIndex,
+                index = counting,
                 classLoader = javaClass.classLoader,
                 discovery =
                     DiscoveryConfig(
@@ -273,6 +426,10 @@ class DexKitBackedIndexIntegrationTest {
         ) {
             rosetta.useClass("Evil").load()
         }
+        assertTrue(
+            counting.calls > 0,
+            "discovery must have run — the reserved name must reach the C1 guard via the index",
+        )
     }
 
     // --- 7. Signer guard runs BEFORE discovery -------------------------------
