@@ -6,6 +6,12 @@ on:
     pull_request:
         branches: [master]
 
+# Least privilege (audit): the CI job only reads the repository — it checks
+# out, builds, tests, and uploads artifacts (the artifact upload uses the job
+# token, not repo write). Drop the default GITHUB_TOKEN scopes to read-only.
+permissions:
+    contents: read
+
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
     group: ci-${{ github.workflow }}-${{ github.ref }}
