@@ -170,10 +170,12 @@ class CoverageTest {
     fun `resolveMethod surfaces static flag and aidl transaction code`() {
         val resolver = Resolver(map)
         val m = resolver.resolveMethod("com.example.Foo", "single")
-        assertTrue(m.static)
+        // Tri-state: an asserted true stays true (not folded away).
+        assertEquals(true, m.static)
         assertEquals(7, m.aidlTxn)
-        // The multi-overload method is non-static (static == null → false).
-        assertTrue(!resolver.resolveMethod("com.example.Foo", "over", listOf("int")).static)
+        // The multi-overload method omits `static`, so it stays null
+        // (asserted-vs-unknown preserved — NOT folded to false).
+        assertNull(resolver.resolveMethod("com.example.Foo", "over", listOf("int")).static)
     }
 
     @Test
@@ -182,9 +184,9 @@ class CoverageTest {
         val f = resolver.resolveField("com.example.Foo", "id")
         assertSame(f, resolver.resolveField("com.example.Foo", "id"))
         assertEquals("f", f.obfName)
-        // Non-static field (static == null → false) vs an explicit static one.
-        assertTrue(!f.static)
-        assertTrue(resolver.resolveField("com.example.Foo", "COUNT").static)
+        // Unknown staticness stays null (not folded to false) vs an explicit one.
+        assertNull(f.static)
+        assertEquals(true, resolver.resolveField("com.example.Foo", "COUNT").static)
         assertFailsWith<ResolveException> { resolver.resolveField("com.example.Foo", "ghost") }
         // A class with no `fields` map at all → the null-collection arm.
         assertFailsWith<ResolveException> { resolver.resolveField("com.example.Bare", "any") }

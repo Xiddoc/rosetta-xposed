@@ -131,7 +131,13 @@ class ConformanceTest {
         assertEquals(case.str("expectObf"), m.obfName)
         case["expectSignature"]?.strOrNull()?.let { assertEquals(it, m.signature) }
         case["expectClassName"]?.strOrNull()?.let { assertEquals(it, m.className) }
-        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, m.static) }
+        // The shared golden fixture encodes the null->false PROJECTION of the
+        // static flag (a map that omits `static` expects `false`). The resolved
+        // type now preserves the tri-state Boolean? (null == "unknown"), so the
+        // fixture's boolean is compared against the folded value here. This
+        // keeps cross-language parity at the fixture boundary while the Kotlin
+        // resolved type stays asserted-vs-unknown.
+        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, m.static == true) }
         case["expectAidlTxn"]?.let { assertEquals((it as JsonPrimitive).int, m.aidlTxn) }
         case["expectOverloadCount"]?.let { assertEquals(it.jsonPrimitive.int, m.allOverloads.size) }
     }
@@ -142,7 +148,9 @@ class ConformanceTest {
     ) {
         val f = resolver.resolveField(case.cls(), case.str("field"))
         assertEquals(case.str("expectObf"), f.obfName)
-        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, f.static) }
+        // See assertMethod: the fixture asserts the null->false projection; the
+        // resolved field static flag is the tri-state Boolean?, folded here.
+        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, f.static == true) }
         case["expectType"]?.strOrNull()?.let { assertEquals(it, f.type) }
         case["expectClassName"]?.strOrNull()?.let { assertEquals(it, f.className) }
     }

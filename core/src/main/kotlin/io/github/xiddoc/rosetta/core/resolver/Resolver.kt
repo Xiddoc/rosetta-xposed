@@ -138,7 +138,9 @@ public class Resolver(
                 className = cls.obfName,
                 signature = picked.signature,
                 aidlTxn = picked.aidlTxn,
-                static = picked.static == true,
+                static = picked.static,
+                synthetic = picked.synthetic,
+                isConstructor = picked.isConstructor,
                 allOverloads = ordered,
             )
         methodCache[key] = value
@@ -171,7 +173,7 @@ public class Resolver(
                 obfName = entry.obfuscated,
                 className = cls.obfName,
                 type = entry.type,
-                static = entry.static == true,
+                static = entry.static,
             )
         fieldCache[key] = value
         return value

@@ -189,7 +189,9 @@ public class DynamicResolutionBackend(
             className = classEntry.obfuscated,
             signature = methodEntry.signature,
             aidlTxn = methodEntry.aidlTxn,
-            static = methodEntry.static == true,
+            static = methodEntry.static,
+            synthetic = methodEntry.synthetic,
+            isConstructor = methodEntry.isConstructor,
             allOverloads = listOf(methodEntry),
         )
     }

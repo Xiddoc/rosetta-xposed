@@ -53,7 +53,14 @@ public data class DiscoveredClass(
     val fields: Map<String, FieldEntry>? = null,
 )
 
-/** Result of resolving a method on a class. */
+/**
+ * Result of resolving a method on a class.
+ *
+ * The tri-state flags ([static] / [synthetic] / [isConstructor]) are kept as
+ * `Boolean?` to preserve the asserted-vs-unknown distinction the map carries:
+ * `null` means "the map did not state it" (NOT "false"). A consumer that wants
+ * the old fold can read `static == true`.
+ */
 public data class ResolvedMethod(
     /** Real method name. */
     val realName: String,
@@ -65,13 +72,22 @@ public data class ResolvedMethod(
     val signature: String,
     /** Optional AIDL transaction code. */
     val aidlTxn: Int?,
-    /** Static flag. */
-    val static: Boolean,
+    /** Static flag, or `null` when the map did not assert it. */
+    val static: Boolean?,
+    /** Synthetic (compiler-generated) flag, or `null` when not asserted. */
+    val synthetic: Boolean? = null,
+    /** Constructor flag, or `null` when the map did not assert it. */
+    val isConstructor: Boolean? = null,
     /** All overloads when the real name had several — the selected one is at [0]. */
     val allOverloads: List<MethodEntry>,
 )
 
-/** Result of resolving a field on a class. */
+/**
+ * Result of resolving a field on a class.
+ *
+ * [static] is `Boolean?` for the same reason as on [ResolvedMethod]: `null`
+ * means the map did not assert staticness, not that the field is non-static.
+ */
 public data class ResolvedField(
     /** Real field name. */
     val realName: String,
@@ -81,6 +97,6 @@ public data class ResolvedField(
     val className: String,
     /** Field type in JVM descriptor form. */
     val type: String,
-    /** Static flag. */
-    val static: Boolean,
+    /** Static flag, or `null` when the map did not assert it. */
+    val static: Boolean?,
 )

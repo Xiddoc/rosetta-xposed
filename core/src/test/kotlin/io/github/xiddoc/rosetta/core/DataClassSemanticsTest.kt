@@ -282,11 +282,24 @@ class DataClassSemanticsTest {
                 signature = "()V",
                 aidlTxn = 7,
                 static = true,
+                synthetic = false,
+                isConstructor = false,
                 allOverloads = listOf(MethodEntry("c", "()V")),
             )
         assertValueSemantics(
             base = rm,
-            identical = ResolvedMethod("single", "c", "a", "()V", 7, true, listOf(MethodEntry("c", "()V"))),
+            identical =
+                ResolvedMethod(
+                    realName = "single",
+                    obfName = "c",
+                    className = "a",
+                    signature = "()V",
+                    aidlTxn = 7,
+                    static = true,
+                    synthetic = false,
+                    isConstructor = false,
+                    allOverloads = listOf(MethodEntry("c", "()V")),
+                ),
             variants =
                 listOf(
                     rm.copy(realName = "other"),
@@ -295,6 +308,12 @@ class DataClassSemanticsTest {
                     rm.copy(signature = "(I)V"),
                     rm.copy(aidlTxn = 8),
                     rm.copy(static = false),
+                    // Tri-state flags are distinct values: null != false != true.
+                    rm.copy(static = null),
+                    rm.copy(synthetic = true),
+                    rm.copy(synthetic = null),
+                    rm.copy(isConstructor = true),
+                    rm.copy(isConstructor = null),
                     rm.copy(allOverloads = listOf(MethodEntry("d", "()V"))),
                 ),
         )
