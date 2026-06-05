@@ -38,3 +38,10 @@ rootProject.name = "rosetta-xposed"
 
 include(":core")
 include(":xposed")
+
+// :dexkit — the REAL on-device DexKit adapter that implements the `DexKitIndex`
+// seam (RFC 0001 Decision 5 — DexKit is an OPTIONAL later-phase dependency,
+// kept out of the default :xposed build). It is the SOLE place
+// `org.luckypray.dexkit` is imported, plus a hermetic integration test that
+// runs REAL DexKit against a committed obfuscated classes.dex fixture.
+include(":dexkit")
