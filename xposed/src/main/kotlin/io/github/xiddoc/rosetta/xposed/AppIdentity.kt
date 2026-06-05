@@ -7,22 +7,26 @@
  * lives in the consuming module, not here, so we don't compile against
  * android.jar):
  *
- *     // Read the signing certificate's SHA-256. On API 28+ use
- *     // GET_SIGNING_CERTIFICATES (SigningInfo); on older devices fall back
- *     // to the deprecated GET_SIGNATURES.
- *     fun readSignerSha256(pm: PackageManager, pkg: String): String? =
+ *     // Read ALL of the app's signing-certificate SHA-256 hashes. A real
+ *     // app may be signed by multiple certs, and the map pins exactly one,
+ *     // so collect the whole set and let SignerGuard match-any. On API 28+
+ *     // use GET_SIGNING_CERTIFICATES (SigningInfo.apkContentsSigners); on
+ *     // older devices fall back to the deprecated GET_SIGNATURES array.
+ *     fun readSignerSha256s(pm: PackageManager, pkg: String): Set<String> =
  *         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
  *             val info = pm.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES)
  *             info.signingInfo
  *                 ?.apkContentsSigners
- *                 ?.firstOrNull()
- *                 ?.let { sha256Hex(it.toByteArray()) }   // your hash helper
+ *                 ?.map { sha256Hex(it.toByteArray()) }   // your hash helper
+ *                 ?.toSet()
+ *                 ?: emptySet()
  *         } else {
  *             @Suppress("DEPRECATION")
  *             pm.getPackageInfo(pkg, PackageManager.GET_SIGNATURES)
  *                 .signatures
- *                 ?.firstOrNull()
- *                 ?.let { sha256Hex(it.toByteArray()) }
+ *                 ?.map { sha256Hex(it.toByteArray()) }
+ *                 ?.toSet()
+ *                 ?: emptySet()
  *         }
  *
  *     val info = pm.getPackageInfo(context.packageName, 0)
@@ -30,14 +34,16 @@
  *         packageName = info.packageName,
  *         versionCode = info.longVersionCode,            // API 28+
  *         versionName = info.versionName,
- *         signerSha256 = readSignerSha256(pm, context.packageName),
+ *         signerSha256s = readSignerSha256s(pm, context.packageName),
  *     )
  *
- * `versionCode` selects the map; `signerSha256`, when the map carries one,
- * is ENFORCED (fail-closed) by [RosettaXposed.verifySigner] /
- * [RosettaXposed.fromRegistry] to guard against a repackaged/spoofed build
- * that shares a version_code. Supply it whenever a map you bundle declares
- * a `signer_sha256`, or verification fails closed.
+ * `versionCode` selects the map; `signerSha256s`, when the map carries a
+ * `signer_sha256`, is ENFORCED (fail-closed) by [SignerGuard.verify]
+ * (used by [RosettaXposed.fromRegistry] and the identity-bearing
+ * [RosettaXposed.fromMap]) to guard against a repackaged/spoofed build that
+ * shares a version_code. The guard passes when the map's single expected
+ * hash equals ANY hash in this set. Populate it whenever a map you bundle
+ * declares a `signer_sha256`, or verification fails closed.
  */
 package io.github.xiddoc.rosetta.xposed
 
@@ -48,6 +54,10 @@ public data class AppIdentity(
     val versionCode: Long,
     /** `PackageInfo.versionName` — a human label, not authoritative. */
     val versionName: String? = null,
-    /** Lowercase hex SHA-256 of the signing certificate, if read. */
-    val signerSha256: String? = null,
+    /**
+     * Hex SHA-256 hashes of ALL the app's signing certificates, if read.
+     * A real app may carry several; the map pins one and [SignerGuard]
+     * matches any. Empty when no signer hashes were read.
+     */
+    val signerSha256s: Set<String> = emptySet(),
 )
