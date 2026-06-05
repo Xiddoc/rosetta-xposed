@@ -76,6 +76,33 @@ jobs:
                   rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
                   echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
 
+            # The :dexkit integration test runs the REAL DexKit native, which
+            # is NOT committed (binary bloat). Build it here from pinned DexKit
+            # 2.2.0 source via build-libdexkit.sh, but cache the resulting `.so`
+            # so the slow source-build only reruns when the DexKit version or
+            # the build script changes. The cache key is shared across the JDK
+            # 17/21 matrix legs, so at most one cold build happens; the others
+            # restore the prebuilt `.so` in seconds. The native lands at the
+            # exact `java.library.path` the test JVM reads, so the integration
+            # test finds it PRESENT and runs for real (present ⇒ run; absent ⇒
+            # skip). See docs/reference/dexkit-integration.md.
+            - name: Cache DexKit host native
+              id: dexkit-native
+              uses: actions/cache@v4
+              with:
+                  path: dexkit/src/test/resources/native/linux-x86_64/libdexkit.so
+                  key: dexkit-native-${{ runner.os }}-x86_64-2.2.0-${{ hashFiles('tools/dexkit-native/build-libdexkit.sh') }}
+
+            - name: Build DexKit host native (on cache miss)
+              if: steps.dexkit-native.outputs.cache-hit != 'true'
+              run: |
+                  sudo apt-get update
+                  # cmake + ninja drive the build; g++/git/zlib1g-dev are the
+                  # compile deps (zlib1g-dev for DexKit Core's dynamic `z` link).
+                  # The JDK (JNI headers) comes from the setup-java step above.
+                  sudo apt-get install -y cmake ninja-build g++ git zlib1g-dev
+                  bash tools/dexkit-native/build-libdexkit.sh
+
             # The full quality suite — the Kotlin equivalents of rosetta-frida's
             # format + lint + 100%-coverage + test gate:
             #   spotlessCheck → formatting (ktlint)

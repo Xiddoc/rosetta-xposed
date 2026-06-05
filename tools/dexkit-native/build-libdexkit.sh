@@ -93,7 +93,7 @@ cp "$BUILD_DIR/libdexkit.so" "$DEST_SO"
 echo "Copied -> $DEST_SO"
 
 # ---- Strip -----------------------------------------------------------------
-# Drop debug + local symbols to shrink the committed binary. `--strip-unneeded`
+# Drop debug + local symbols to shrink the built binary. `--strip-unneeded`
 # preserves the dynamic symbol table (.dynsym), so the JNI exports DexKit needs
 # (Java_org_luckypray_dexkit_*) survive — verified below.
 echo "Stripping (--strip-unneeded; keeps .dynsym JNI exports) ..."
@@ -108,7 +108,7 @@ echo "==== JNI exports (sample) ===="
 nm -D "$DEST_SO" | grep -i 'Java_org_luckypray_dexkit' | head -5
 echo "==== JNI export count (expect 39 for DexKit 2.2.0) ===="
 nm -D "$DEST_SO" | grep -ic 'Java_org_luckypray_dexkit'
-echo "==== sha256 (record this in tools/dexkit-native/README.md) ===="
+echo "==== sha256 (printed for verification; the .so is NOT committed) ===="
 sha256sum "$DEST_SO"
 
 echo "Done."
