@@ -223,6 +223,55 @@ class CoverageTest {
         // Reverse lookup resolves obf → real, and is null for an unknown obf.
         assertEquals("com.example.Ghost", resolver.reverseLookup("g"))
         assertNull(resolver.reverseLookup("nope"))
+        // The override re-pointed Foo from "a" to "z": the new obf resolves to
+        // Foo, and the STALE old obf entry is cleaned (no longer maps to Foo).
+        assertEquals("com.example.Foo", resolver.reverseLookup("z"))
+        assertNull(resolver.reverseLookup("a"))
+    }
+
+    @Test
+    fun `reverse index is first-write-wins on a build-time obf collision`() {
+        // Two real names map to the same obf short name "dup" — a degenerate
+        // map. Policy: the first real name (by sorted construction) owns the
+        // reverse entry deterministically, not last-write-wins.
+        val colliding =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                // LinkedHashMap preserves insertion order; Alpha is inserted first.
+                classes =
+                    linkedMapOf(
+                        "com.example.Alpha" to ClassEntry(obfuscated = "dup"),
+                        "com.example.Beta" to ClassEntry(obfuscated = "dup"),
+                    ),
+            )
+        val resolver = Resolver(colliding)
+        // First-write-wins: Alpha owns "dup"; Beta's colliding write is ignored.
+        assertEquals("com.example.Alpha", resolver.reverseLookup("dup"))
+        // Both forward resolutions still work (the forward map is unaffected).
+        assertEquals("dup", resolver.resolveClass("com.example.Alpha").obfName)
+        assertEquals("dup", resolver.resolveClass("com.example.Beta").obfName)
+    }
+
+    @Test
+    fun `override re-pointing to a colliding obf takes the reverse entry`() {
+        // An override is the documented exception to first-write-wins: it is an
+        // intentional re-point, so it claims the obf even on a collision.
+        val base =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes = mapOf("com.example.Alpha" to ClassEntry(obfuscated = "x")),
+            )
+        val resolver = Resolver(base)
+        assertEquals("com.example.Alpha", resolver.reverseLookup("x"))
+        // Override Beta onto the SAME obf "x" — the intentional re-point wins.
+        resolver.override(DiscoveredClass(realName = "com.example.Beta", obfName = "x"))
+        assertEquals("com.example.Beta", resolver.reverseLookup("x"))
     }
 
     @Test

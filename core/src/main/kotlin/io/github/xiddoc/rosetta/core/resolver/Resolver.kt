@@ -34,12 +34,30 @@ public class Resolver(
     private val methodCache = mutableMapOf<String, ResolvedMethod>()
     private val fieldCache = mutableMapOf<String, ResolvedField>()
 
-    /** Reverse index: obfuscated class short name → real FQN. */
+    /**
+     * Reverse index: obfuscated class short name → real FQN, for tier-3
+     * introspection.
+     *
+     * COLLISION POLICY — first-write-wins. Two real names that map to the same
+     * obfuscated short name is a degenerate (usually invalid) map, but we make
+     * the behaviour deterministic: the FIRST real name encountered owns the
+     * reverse entry, and later collisions are ignored (rather than the previous
+     * silent last-write-wins, which depended on map iteration order). A runtime
+     * [override] is the one exception — it is an explicit, intentional re-point
+     * and DOES take the obf entry, after cleaning the overridden real name's
+     * previous (now stale) obf entry.
+     */
     private val reverseClassIndex = mutableMapOf<String, String>()
+
+    /** The obf short name each real name currently owns, so [override] can clean its stale reverse entry. */
+    private val forwardObfIndex = mutableMapOf<String, String>()
 
     init {
         for ((realName, entry) in map.classes) {
-            reverseClassIndex[entry.obfuscated] = realName
+            forwardObfIndex[realName] = entry.obfuscated
+            // First-write-wins: do not clobber an obf already claimed by an
+            // earlier real name (deterministic regardless of iteration order).
+            reverseClassIndex.putIfAbsent(entry.obfuscated, realName)
         }
     }
 
@@ -212,7 +230,19 @@ public class Resolver(
                 fields = discovered.fields,
             )
         overrides[discovered.realName] = entry
+
+        // Clean the stale reverse entry: if this real name previously owned a
+        // (different) obf short name in the reverse index, drop it so a lookup
+        // of the OLD obf no longer resolves to this real name.
+        val previousObf = forwardObfIndex[discovered.realName]
+        if (previousObf != null && previousObf != entry.obfuscated && reverseClassIndex[previousObf] == discovered.realName) {
+            reverseClassIndex.remove(previousObf)
+        }
+        // An override is an intentional re-point, so it takes the obf entry
+        // (last-write-wins for this one obf) — the documented exception to the
+        // first-write-wins build policy.
         reverseClassIndex[entry.obfuscated] = discovered.realName
+        forwardObfIndex[discovered.realName] = entry.obfuscated
         invalidate(discovered.realName)
     }
 
