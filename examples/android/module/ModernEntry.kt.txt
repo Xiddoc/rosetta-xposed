@@ -1,0 +1,60 @@
+// REFERENCE SKETCH — the modern libxposed counterpart to LegacyEntry.
+//
+// Saved as `.kt.txt` so it is NOT compiled in LOOP #1 (libxposed is not on the
+// classpath by default — see module/build.gradle.kts). To use it:
+//   1. enable the jitpack repo in ../settings.gradle.kts,
+//   2. add the libxposed `compileOnly` dependency in module/build.gradle.kts,
+//   3. move this file to
+//      src/main/kotlin/com/example/rosettamodule/ModernEntry.kt and adjust the
+//      imports/version to the libxposed tag you target,
+//   4. register it the libxposed way (its manifest meta-data / module service),
+//      instead of (or alongside) assets/xposed_init.
+//
+// The POINT: the resolution call is byte-for-byte identical to LegacyEntry —
+// `rosetta.method("com.example.victim.TicketService", "formatTicket").hook { ... }`.
+// Only the Hooker glue (how the resolved Member becomes a live hook) changes.
+// That is the framework-agnostic Hooker seam doing its job.
+
+package com.example.rosettamodule
+
+import io.github.libxposed.api.XposedInterface
+import io.github.libxposed.api.XposedModule
+import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam
+import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
+import io.github.xiddoc.rosetta.core.version.MapRegistry
+import io.github.xiddoc.rosetta.xposed.RosettaXposed
+import io.github.xiddoc.rosetta.xposed.Unhook
+import java.lang.reflect.Method
+
+class ModernEntry(base: XposedInterface, param: ModuleLoadedParam) : XposedModule(base, param) {
+
+    override fun onPackageLoaded(param: PackageLoadedParam) {
+        if (param.packageName != "com.example.victim") return
+
+        val map = BundledMaps.load("100.json")
+        val pm = param.applicationInfo?.let { /* obtain a PackageManager via your context */ null }
+        val identity = AndroidAppIdentity.of(pm!!, param.packageName) // clean here: libxposed gives you context
+
+        val rosetta = RosettaXposed.fromRegistry(MapRegistry.of(map), identity, param.classLoader) ?: return
+
+        rosetta
+            .method("com.example.victim.TicketService", "formatTicket")
+            .hook { member ->
+                // libxposed hooks via the XposedInterface this module IS:
+                val unhooker = hook(member as Method, FormatTicketHooker::class.java)
+                Unhook { unhooker.unhook() }
+            }
+    }
+
+    // libxposed hookers are classes with @BeforeInvocation/@AfterInvocation
+    // callbacks (it does not use the legacy XC_MethodHook shape):
+    class FormatTicketHooker : XposedInterface.Hooker {
+        companion object {
+            @JvmStatic
+            @XposedInterface.AfterInvocation
+            fun after(callback: XposedInterface.AfterHookCallback) {
+                callback.result = "HOOKED(${callback.result})"
+            }
+        }
+    }
+}

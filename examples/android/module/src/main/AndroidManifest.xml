@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:label="Rosetta Example Module">
+
+        <!-- Marks this APK as an Xposed/LSPosed module. -->
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="rosetta-xposed dogfood: hooks TicketService.formatTicket by real name." />
+        <!-- 82 = the de.robv API level used by modern LSPosed. -->
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+        <!-- Restrict the scope to the victim app so LSPosed only loads us there. -->
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposed_scope" />
+    </application>
+
+</manifest>
