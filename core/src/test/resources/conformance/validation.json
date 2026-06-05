@@ -76,6 +76,22 @@
                 }
             },
             "expectError": "MapValidation"
+        },
+        {
+            "name": "wrong schema_version is rejected (hard gate on 2)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 1,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
         }
     ]
 }
