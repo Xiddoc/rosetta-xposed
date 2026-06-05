@@ -272,7 +272,7 @@ public object MapLoader {
         ) {
             val path = "classes[$realName]"
             nonEmpty("$path.obfuscated", entry.obfuscated)
-            short("$path.obfuscated", entry.obfuscated)
+            len("$path.obfuscated", entry.obfuscated, MAX_SHORT_NAME_LEN)
             free("$path.extends", entry.extends)
             free("$path.dex", entry.dex)
             free("$path.aidl_descriptor", entry.aidlDescriptor)
@@ -289,7 +289,7 @@ public object MapLoader {
                     cap(mpath, overloads.entries.size, MAX_OVERLOADS_PER_METHOD, "overloads")
                     overloads.entries.forEachIndexed { i, m ->
                         nonEmpty("$mpath[$i].obfuscated", m.obfuscated)
-                        short("$mpath[$i].obfuscated", m.obfuscated)
+                        len("$mpath[$i].obfuscated", m.obfuscated, MAX_SHORT_NAME_LEN)
                         nonEmpty("$mpath[$i].signature", m.signature)
                         len("$mpath[$i].signature", m.signature, MAX_SIGNATURE_LEN)
                     }
@@ -301,7 +301,7 @@ public object MapLoader {
                     reserved("$path.fields", name)
                     val fpath = "$path.fields[$name]"
                     nonEmpty("$fpath.obfuscated", f.obfuscated)
-                    short("$fpath.obfuscated", f.obfuscated)
+                    len("$fpath.obfuscated", f.obfuscated, MAX_SHORT_NAME_LEN)
                     nonEmpty("$fpath.type", f.type)
                     len("$fpath.type", f.type, MAX_SIGNATURE_LEN)
                 }
@@ -347,11 +347,6 @@ public object MapLoader {
         ) {
             if (value != null && value.length > max) issues += ValidationIssue(path, "exceeds $max characters")
         }
-
-        private fun short(
-            path: String,
-            value: String?,
-        ) = len(path, value, MAX_SHORT_NAME_LEN)
 
         private fun free(
             path: String,

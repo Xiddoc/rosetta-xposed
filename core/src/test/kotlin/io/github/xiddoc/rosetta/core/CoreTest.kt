@@ -5,6 +5,7 @@
 package io.github.xiddoc.rosetta.core
 
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.resolver.Descriptors
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
 import io.github.xiddoc.rosetta.core.version.MapRegistry
@@ -59,6 +60,16 @@ class CoreTest {
         assertEquals("Lbbbb;", toJvmDescriptor("com.example.IFoo") { "bbbb" })
         // Already-descriptor passthrough.
         assertEquals("Lcom/x;", toJvmDescriptor("Lcom/x;") { error("should not translate") })
+    }
+
+    @Test
+    fun `Descriptors exposes the shared primitive table and object rendering`() {
+        assertEquals("I", Descriptors.PRIMITIVE_DESCRIPTORS["int"])
+        assertEquals("V", Descriptors.PRIMITIVE_DESCRIPTORS["void"])
+        assertEquals(9, Descriptors.PRIMITIVE_DESCRIPTORS.size)
+        assertEquals("I", Descriptors.primitive("int"))
+        assertNull(Descriptors.primitive("com.example.Foo"))
+        assertEquals("Landroid/os/Bundle;", Descriptors.objectDescriptor("android.os.Bundle"))
     }
 
     @Test

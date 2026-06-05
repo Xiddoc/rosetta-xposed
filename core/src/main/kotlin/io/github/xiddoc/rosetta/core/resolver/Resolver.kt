@@ -21,7 +21,9 @@ package io.github.xiddoc.rosetta.core.resolver
 import io.github.xiddoc.rosetta.core.AmbiguousOverloadException
 import io.github.xiddoc.rosetta.core.ResolveException
 import io.github.xiddoc.rosetta.core.ResolveTarget
+import io.github.xiddoc.rosetta.core.UnknownArgTypeException
 import io.github.xiddoc.rosetta.core.model.ClassEntry
+import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 
 public class Resolver(
@@ -101,7 +103,10 @@ public class Resolver(
         methodName: String,
         argTypes: List<String>? = null,
     ): ResolvedMethod {
-        val key = methodCacheKey(className, methodName, argTypes)
+        // Cache key: argTypes-bearing lookups are distinct from the <auto> one
+        // so a later disambiguated call re-resolves rather than reusing it.
+        val argsKey = if (argTypes != null) "|${argTypes.joinToString(",")}" else "|<auto>"
+        val key = "$className#$methodName$argsKey"
         methodCache[key]?.let { return it }
 
         val cls = resolveClass(className)
@@ -135,15 +140,15 @@ public class Resolver(
             } else {
                 val wanted = argTypes.map { toJvmDescriptor(it) { n -> translateType(n) } }
                 overloads.firstOrNull { parseSignatureArgs(it.signature) == wanted }
-                    ?: throw ResolveException(
-                        "rosetta-xposed: no overload of '$className.$methodName' matches arg " +
-                            "types [${argTypes.joinToString(", ")}] in map for " +
-                            "${map.app}@${map.version}.",
-                        methodName,
-                        map.app,
-                        map.version,
-                        ResolveTarget.METHOD,
-                        className,
+                    // Single throw: the helper decides between the precise
+                    // unknown-arg-type error and the generic no-overload-matches
+                    // one, so resolveMethod stays within the throw-count budget.
+                    ?: throw overloadMissException(
+                        OverloadMiss(className, methodName, map.app, map.version),
+                        argTypes,
+                        wanted,
+                        overloads,
+                        ::hasClass,
                     )
             }
 
@@ -249,18 +254,78 @@ public class Resolver(
     /** Reverse-lookup an obfuscated class short name to its real FQN. */
     public fun reverseLookup(obfName: String): String? = reverseClassIndex[obfName]
 
-    private fun methodCacheKey(
-        className: String,
-        methodName: String,
-        argTypes: List<String>?,
-    ): String {
-        val args = if (argTypes != null) "|${argTypes.joinToString(",")}" else "|<auto>"
-        return "$className#$methodName$args"
-    }
-
     private fun missMessage(
         target: ResolveTarget,
         name: String,
-    ): String =
-        "rosetta-xposed: no ${target.name.lowercase()} mapping for '$name' in map for ${map.app}@${map.version}."
+    ): String = "rosetta-xposed: no ${target.name.lowercase()} mapping for '$name' in map for ${map.app}@${map.version}."
+}
+
+/** The (className, methodName, app, version) context for an overload-miss message. */
+private data class OverloadMiss(
+    val className: String,
+    val methodName: String,
+    val app: String,
+    val version: String,
+)
+
+/**
+ * Build the exception for an overload disambiguation miss: a precise
+ * [UnknownArgTypeException] when an arg type is an unmapped class the overloads
+ * don't even declare, otherwise the generic no-overload-matches
+ * [ResolveException]. File-private so [Resolver] stays small and resolveMethod
+ * keeps a single throw site.
+ */
+private fun overloadMissException(
+    ctx: OverloadMiss,
+    argTypes: List<String>,
+    wanted: List<String>,
+    overloads: List<MethodEntry>,
+    knownClass: (String) -> Boolean,
+): ResolveException {
+    unknownArgTypeOrNull(argTypes, wanted, overloads, knownClass)?.let { argType ->
+        return UnknownArgTypeException(
+            "rosetta-xposed: arg type '$argType' (for '${ctx.className}.${ctx.methodName}') is not a known " +
+                "class in the map for ${ctx.app}@${ctx.version}; no overload declares it either. " +
+                "Map the class or pass a type the map knows.",
+            ctx.methodName,
+            ctx.app,
+            ctx.version,
+            ctx.className,
+            argType,
+        )
+    }
+    return ResolveException(
+        "rosetta-xposed: no overload of '${ctx.className}.${ctx.methodName}' matches arg " +
+            "types [${argTypes.joinToString(", ")}] in map for ${ctx.app}@${ctx.version}.",
+        ctx.methodName,
+        ctx.app,
+        ctx.version,
+        ResolveTarget.METHOD,
+        ctx.className,
+    )
+}
+
+/**
+ * Return the first arg type that is an unmapped class-name form whose translated
+ * descriptor appears in NO overload, or null when every arg type is either a
+ * known class, a primitive/array/raw descriptor, or a descriptor some overload
+ * declares (a legitimate disambiguation miss, not an unmapped type).
+ */
+private fun unknownArgTypeOrNull(
+    argTypes: List<String>,
+    wanted: List<String>,
+    overloads: List<MethodEntry>,
+    knownClass: (String) -> Boolean,
+): String? {
+    val knownDescriptors: Set<String> = overloads.flatMapTo(mutableSetOf()) { parseSignatureArgs(it.signature) }
+    argTypes.forEachIndexed { i, argType ->
+        val isClassNameForm =
+            !argType.startsWith("L") &&
+                !argType.startsWith("[") &&
+                !argType.endsWith("[]") &&
+                Descriptors.primitive(argType) == null &&
+                argType.length != 1
+        if (isClassNameForm && !knownClass(argType) && wanted[i] !in knownDescriptors) return argType
+    }
+    return null
 }

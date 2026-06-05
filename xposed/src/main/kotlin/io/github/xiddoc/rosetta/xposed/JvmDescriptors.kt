@@ -23,7 +23,10 @@ internal object JvmDescriptors {
      */
     fun of(type: Class<*>): String =
         when {
-            type.isPrimitive -> Descriptors.primitive(type.name) ?: error("unknown primitive ${type.name}")
+            // Every JVM primitive name (incl. "void") is in the core table, so
+            // the lookup is total here — `!!` documents that invariant without a
+            // permanently-uncovered defensive branch.
+            type.isPrimitive -> Descriptors.primitive(type.name)!!
             type.isArray -> "[" + of(type.componentType)
             else -> Descriptors.objectDescriptor(type.name)
         }
