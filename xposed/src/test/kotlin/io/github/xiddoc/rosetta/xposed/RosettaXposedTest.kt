@@ -8,6 +8,7 @@ package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.MapLoader
 import io.github.xiddoc.rosetta.core.TargetPolicyException
+import io.github.xiddoc.rosetta.core.version.MapRegistry
 import java.lang.reflect.Member
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -164,7 +165,7 @@ class RosettaXposedTest {
 
     @Test
     fun `policy plumbs through fromRegistry`() {
-        val registry = mapOf("1.0.0" to map)
+        val registry = MapRegistry.of(map)
         val id = AppIdentity(packageName = "com.example.app", versionCode = 100, versionName = "1.0.0")
         val bound = RosettaXposed.fromRegistry(registry, id, javaClass.classLoader, policy)
         assertNotNull(bound)

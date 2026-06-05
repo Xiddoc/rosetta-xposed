@@ -15,9 +15,12 @@ import io.github.xiddoc.rosetta.core.model.FieldEntry
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.Resolver
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MapRegistry
+import io.github.xiddoc.rosetta.core.version.MatchedBy
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.properties.Properties
 import kotlin.test.Test
@@ -125,6 +128,186 @@ class CoverageTest {
     }
 
     @Test
+    fun `ResolveException carries the typed ResolveTarget discriminator`() {
+        val resolver = Resolver(map)
+        val cls = assertFailsWith<ResolveException> { resolver.resolveClass("com.example.Nope") }
+        assertEquals(ResolveTarget.CLASS, cls.target)
+        val method = assertFailsWith<ResolveException> { resolver.resolveMethod("com.example.Foo", "ghost") }
+        assertEquals(ResolveTarget.METHOD, method.target)
+        val field = assertFailsWith<ResolveException> { resolver.resolveField("com.example.Foo", "ghost") }
+        assertEquals(ResolveTarget.FIELD, field.target)
+    }
+
+    @Test
+    fun `an unmapped real-name arg type raises a distinct UnknownArgTypeException`() {
+        // A class with one overload taking an obf-mapped arg type `Lobf;` (the
+        // obf of a mapped real name "com.example.Arg"), so a KNOWN real arg type
+        // would match, but an UNKNOWN one (not in the map) should be flagged
+        // distinctly rather than misattributed to "no overload matches".
+        val m =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes =
+                    mapOf(
+                        "com.example.Arg" to ClassEntry(obfuscated = "obf"),
+                        "com.example.Holder" to
+                            ClassEntry(
+                                obfuscated = "h",
+                                methods =
+                                    mapOf(
+                                        "take" to MethodOverloads(listOf(MethodEntry("t", "(Lobf;)V"))),
+                                    ),
+                            ),
+                    ),
+            )
+        val resolver = Resolver(m)
+        // The mapped real arg type resolves fine (translateType -> "obf").
+        assertEquals("t", resolver.resolveMethod("com.example.Holder", "take", listOf("com.example.Arg")).obfName)
+
+        // An UNMAPPED app-class arg type → distinct UnknownArgTypeException,
+        // which is a ResolveException so existing handling still catches it.
+        val ex =
+            assertFailsWith<UnknownArgTypeException> {
+                resolver.resolveMethod("com.example.Holder", "take", listOf("com.example.NotMapped"))
+            }
+        assertEquals("com.example.NotMapped", ex.argType)
+        // F4: classScope is a required (non-defaulted) field on this subtype —
+        // assert it so a swap with `app` in overloadMissException would be caught.
+        assertEquals("com.example.Holder", ex.classScope)
+        assertTrue(ex is ResolveException)
+    }
+
+    @Test
+    fun `a known mapped arg type that no overload matches is a plain no-match`() {
+        // Holder.take takes (Lobf;)V. Passing a DIFFERENT but mapped class
+        // (com.example.Other -> oth) is a known class, so it is NOT flagged as
+        // an unknown arg type — it is a legitimate no-overload-match.
+        val m =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes =
+                    mapOf(
+                        "com.example.Arg" to ClassEntry(obfuscated = "obf"),
+                        "com.example.Other" to ClassEntry(obfuscated = "oth"),
+                        "com.example.Holder" to
+                            ClassEntry(
+                                obfuscated = "h",
+                                methods = mapOf("take" to MethodOverloads(listOf(MethodEntry("t", "(Lobf;)V")))),
+                            ),
+                    ),
+            )
+        val resolver = Resolver(m)
+        val ex =
+            assertFailsWith<ResolveException> {
+                resolver.resolveMethod("com.example.Holder", "take", listOf("com.example.Other"))
+            }
+        assertTrue(ex !is UnknownArgTypeException)
+    }
+
+    @Test
+    fun `a framework arg type that no overload declares is still flagged precisely`() {
+        // java.lang.String isn't in the map and the only overload takes Lobf;,
+        // so the precise unknown-arg error fires (a ResolveException subtype).
+        val m =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes =
+                    mapOf(
+                        "com.example.Holder" to
+                            ClassEntry(
+                                obfuscated = "h",
+                                methods = mapOf("take" to MethodOverloads(listOf(MethodEntry("t", "(Lobf;)V")))),
+                            ),
+                    ),
+            )
+        val resolver = Resolver(m)
+        assertFailsWith<UnknownArgTypeException> {
+            resolver.resolveMethod("com.example.Holder", "take", listOf("java.lang.String"))
+        }
+    }
+
+    @Test
+    fun `a wrong primitive overload still gives a plain no-match ResolveException`() {
+        // `over` takes (I)V/(J)V; asking for (double) is a legit no-match (the
+        // arg type is a known primitive), NOT an unknown-arg-type error.
+        val resolver = Resolver(map)
+        val ex =
+            assertFailsWith<ResolveException> {
+                resolver.resolveMethod("com.example.Foo", "over", listOf("double"))
+            }
+        assertTrue(ex !is UnknownArgTypeException)
+    }
+
+    @Test
+    fun `non-class-name arg type forms are plain no-matches, not unknown-arg errors`() {
+        // Each of these arg-type FORMS short-circuits the unknown-arg detector
+        // (raw L-descriptor, array-prefix descriptor, []-suffix, single-letter
+        // primitive descriptor), so a miss is a plain ResolveException — not a
+        // misattributed UnknownArgTypeException.
+        val resolver = Resolver(map)
+        // `single` is ()V (zero args), so any single arg is a guaranteed
+        // no-match regardless of the arg's descriptor.
+        for (argType in listOf("Lcom/example/Whatever;", "[I", "int[]", "I")) {
+            val ex =
+                assertFailsWith<ResolveException> {
+                    resolver.resolveMethod("com.example.Foo", "single", listOf(argType))
+                }
+            assertTrue(ex !is UnknownArgTypeException, "unexpected unknown-arg error for '$argType'")
+        }
+    }
+
+    @Test
+    fun `an unmapped arg type whose descriptor a sibling overload declares is a plain no-match`() {
+        // Holder.take has overloads (Lobf;)V and (Lother;)V. Asking for arg
+        // types that translate to an unknown class whose descriptor neither
+        // overload uses is the unknown-arg case; but if the descriptor IS
+        // declared by some overload the call is a normal disambiguation (here we
+        // pass two args so neither single-arg overload matches, yet the lone
+        // arg's descriptor IS declared → plain no-match, exercising the
+        // wanted[i] in knownDescriptors branch).
+        val m =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes =
+                    mapOf(
+                        "com.example.Holder" to
+                            ClassEntry(
+                                obfuscated = "h",
+                                methods =
+                                    mapOf(
+                                        "take" to
+                                            MethodOverloads(
+                                                listOf(
+                                                    MethodEntry("t", "(Lobf;Lobf;)V"),
+                                                ),
+                                            ),
+                                    ),
+                            ),
+                    ),
+            )
+        val resolver = Resolver(m)
+        // One arg of a raw descriptor that the overload declares (Lobf;), so the
+        // arg's wanted descriptor IS in knownDescriptors → plain no-match.
+        val ex =
+            assertFailsWith<ResolveException> {
+                resolver.resolveMethod("com.example.Holder", "take", listOf("Lobf;"))
+            }
+        assertTrue(ex !is UnknownArgTypeException)
+    }
+
+    @Test
     fun `resolveMethod caches, misses, and rejects an unmatched overload`() {
         val resolver = Resolver(map)
         val m = resolver.resolveMethod("com.example.Foo", "single")
@@ -157,10 +340,12 @@ class CoverageTest {
     fun `resolveMethod surfaces static flag and aidl transaction code`() {
         val resolver = Resolver(map)
         val m = resolver.resolveMethod("com.example.Foo", "single")
-        assertTrue(m.static)
+        // Tri-state: an asserted true stays true (not folded away).
+        assertEquals(true, m.static)
         assertEquals(7, m.aidlTxn)
-        // The multi-overload method is non-static (static == null → false).
-        assertTrue(!resolver.resolveMethod("com.example.Foo", "over", listOf("int")).static)
+        // The multi-overload method omits `static`, so it stays null
+        // (asserted-vs-unknown preserved — NOT folded to false).
+        assertNull(resolver.resolveMethod("com.example.Foo", "over", listOf("int")).static)
     }
 
     @Test
@@ -169,9 +354,9 @@ class CoverageTest {
         val f = resolver.resolveField("com.example.Foo", "id")
         assertSame(f, resolver.resolveField("com.example.Foo", "id"))
         assertEquals("f", f.obfName)
-        // Non-static field (static == null → false) vs an explicit static one.
-        assertTrue(!f.static)
-        assertTrue(resolver.resolveField("com.example.Foo", "COUNT").static)
+        // Unknown staticness stays null (not folded to false) vs an explicit one.
+        assertNull(f.static)
+        assertEquals(true, resolver.resolveField("com.example.Foo", "COUNT").static)
         assertFailsWith<ResolveException> { resolver.resolveField("com.example.Foo", "ghost") }
         // A class with no `fields` map at all → the null-collection arm.
         assertFailsWith<ResolveException> { resolver.resolveField("com.example.Bare", "any") }
@@ -186,7 +371,7 @@ class CoverageTest {
         assertTrue(!resolver.hasClass("com.example.Ghost"))
 
         // Register an override for an as-yet-unknown class, plus re-point Foo.
-        resolver.override("com.example.Ghost", ClassEntry(obfuscated = "g"))
+        resolver.override(DiscoveredClass(realName = "com.example.Ghost", obfName = "g"))
         assertTrue(resolver.hasClass("com.example.Ghost"))
         assertEquals("g", resolver.resolveClass("com.example.Ghost").obfName)
 
@@ -194,9 +379,9 @@ class CoverageTest {
         resolver.resolveMethod("com.example.Foo", "single")
         resolver.resolveField("com.example.Foo", "id")
         resolver.override(
-            "com.example.Foo",
-            ClassEntry(
-                obfuscated = "z",
+            DiscoveredClass(
+                realName = "com.example.Foo",
+                obfName = "z",
                 methods = mapOf("single" to MethodOverloads(listOf(MethodEntry("m2", "()V")))),
                 fields = mapOf("id" to FieldEntry("f2", "Ljava/lang/String;")),
             ),
@@ -208,6 +393,96 @@ class CoverageTest {
         // Reverse lookup resolves obf → real, and is null for an unknown obf.
         assertEquals("com.example.Ghost", resolver.reverseLookup("g"))
         assertNull(resolver.reverseLookup("nope"))
+        // The override re-pointed Foo from "a" to "z": the new obf resolves to
+        // Foo, and the STALE old obf entry is cleaned (no longer maps to Foo).
+        assertEquals("com.example.Foo", resolver.reverseLookup("z"))
+        assertNull(resolver.reverseLookup("a"))
+    }
+
+    @Test
+    fun `reverse index is first-write-wins on a build-time obf collision`() {
+        // Two real names map to the same obf short name "dup" — a degenerate
+        // map. Policy: the first real name (by sorted construction) owns the
+        // reverse entry deterministically, not last-write-wins.
+        val colliding =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                // LinkedHashMap preserves insertion order; Alpha is inserted first.
+                classes =
+                    linkedMapOf(
+                        "com.example.Alpha" to ClassEntry(obfuscated = "dup"),
+                        "com.example.Beta" to ClassEntry(obfuscated = "dup"),
+                    ),
+            )
+        val resolver = Resolver(colliding)
+        // First-write-wins: Alpha owns "dup"; Beta's colliding write is ignored.
+        assertEquals("com.example.Alpha", resolver.reverseLookup("dup"))
+        // Both forward resolutions still work (the forward map is unaffected).
+        assertEquals("dup", resolver.resolveClass("com.example.Alpha").obfName)
+        assertEquals("dup", resolver.resolveClass("com.example.Beta").obfName)
+    }
+
+    @Test
+    fun `override to the same obf keeps the reverse entry intact`() {
+        // previousObf == entry.obfuscated → the stale-clean branch is skipped.
+        val base =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes = mapOf("com.example.Alpha" to ClassEntry(obfuscated = "x")),
+            )
+        val resolver = Resolver(base)
+        resolver.override(DiscoveredClass(realName = "com.example.Alpha", obfName = "x", extends = "zzzz"))
+        assertEquals("com.example.Alpha", resolver.reverseLookup("x"))
+        assertEquals("zzzz", resolver.resolveClass("com.example.Alpha").extends)
+    }
+
+    @Test
+    fun `override does not clean a stale obf now owned by another real name`() {
+        // Alpha owns "x". Re-point Alpha to "y", but first have "x" reassigned
+        // to Beta via an override so reverseClassIndex["x"] != Alpha; the
+        // stale-clean must NOT remove Beta's entry.
+        val base =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes = mapOf("com.example.Alpha" to ClassEntry(obfuscated = "x")),
+            )
+        val resolver = Resolver(base)
+        // Beta takes over "x" (intentional re-point).
+        resolver.override(DiscoveredClass(realName = "com.example.Beta", obfName = "x"))
+        assertEquals("com.example.Beta", resolver.reverseLookup("x"))
+        // Now move Alpha to "y": its previous obf "x" is no longer owned by
+        // Alpha, so the stale-clean leaves Beta's "x" entry untouched.
+        resolver.override(DiscoveredClass(realName = "com.example.Alpha", obfName = "y"))
+        assertEquals("com.example.Alpha", resolver.reverseLookup("y"))
+        assertEquals("com.example.Beta", resolver.reverseLookup("x"))
+    }
+
+    @Test
+    fun `override re-pointing to a colliding obf takes the reverse entry`() {
+        // An override is the documented exception to first-write-wins: it is an
+        // intentional re-point, so it claims the obf even on a collision.
+        val base =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes = mapOf("com.example.Alpha" to ClassEntry(obfuscated = "x")),
+            )
+        val resolver = Resolver(base)
+        assertEquals("com.example.Alpha", resolver.reverseLookup("x"))
+        // Override Beta onto the SAME obf "x" — the intentional re-point wins.
+        resolver.override(DiscoveredClass(realName = "com.example.Beta", obfName = "x"))
+        assertEquals("com.example.Beta", resolver.reverseLookup("x"))
     }
 
     @Test
@@ -216,7 +491,7 @@ class CoverageTest {
         // From the map.
         assertEquals("a", resolver.translateType("com.example.Foo"))
         // From an override (override branch).
-        resolver.override("com.example.Bar", ClassEntry(obfuscated = "b"))
+        resolver.override(DiscoveredClass(realName = "com.example.Bar", obfName = "b"))
         assertEquals("b", resolver.translateType("com.example.Bar"))
         // Unmapped framework type passes through unchanged.
         assertEquals("android.os.Bundle", resolver.translateType("android.os.Bundle"))
@@ -275,7 +550,7 @@ class CoverageTest {
 
     @Test
     fun `version selection returns null when neither code nor label matches`() {
-        val registry = mapOf("1.0.0" to map)
+        val registry = MapRegistry.of(map)
         // Both null → falls through to the final `return null`.
         assertNull(VersionMatch.select(registry))
         // A label miss after no code given also returns null.
@@ -283,10 +558,10 @@ class CoverageTest {
         // Code given but no map carries it, then the label DOES match → the
         // code block falls through and the label branch wins.
         val byLabel = VersionMatch.select(registry, versionCode = 999, versionLabel = "1.0.0")
-        assertEquals("label", byLabel!!.matchedBy)
-        // A matching code → the firstOrNull predicate's true arm + early return.
+        assertEquals(MatchedBy.LABEL, byLabel!!.matchedBy)
+        // A matching code → the O(1) version_code index hit + early return.
         val byCode = VersionMatch.select(registry, versionCode = 100)
-        assertEquals("version_code", byCode!!.matchedBy)
+        assertEquals(MatchedBy.VERSION_CODE, byCode!!.matchedBy)
         // Code given, no match, no label → reaches the final `return null`
         // via the `versionLabel != null` false arm.
         assertNull(VersionMatch.select(registry, versionCode = 999))

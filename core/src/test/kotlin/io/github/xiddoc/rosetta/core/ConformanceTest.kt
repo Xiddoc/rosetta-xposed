@@ -35,6 +35,7 @@ import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class ConformanceTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -57,6 +58,8 @@ class ConformanceTest {
             "/conformance/signatures.json",
             "/conformance/type-translation.json",
             "/conformance/introspection.json",
+            "/conformance/errors.json",
+            "/conformance/validation.json",
         )
 
     @TestFactory
@@ -92,6 +95,15 @@ class ConformanceTest {
         val kind = case["kind"]!!.jsonPrimitive.content
         val expectError = case["expectError"]?.jsonPrimitive?.content
 
+        // `validate` is a VALIDATION case (not resolution): it carries its own
+        // inline `inputMap` and asserts the schema/bounds gate accepts or
+        // rejects it. Handled before the resolution dispatch because it never
+        // touches the shared resolver.
+        if (kind == "validate") {
+            runValidateCase(case, expectError)
+            return
+        }
+
         if (expectError != null) {
             assertExpectedError(expectError) { invoke(resolver, kind, case) }
             return
@@ -120,7 +132,7 @@ class ConformanceTest {
     ) {
         val resolved = resolver.resolveClass(case.cls())
         assertEquals(case.str("expectObf"), resolved.obfName)
-        case["expectExtends"]?.strOrNull()?.let { assertEquals(it, resolved.entry.extends) }
+        case["expectExtends"]?.strOrNull()?.let { assertEquals(it, resolved.extends) }
     }
 
     private fun assertMethod(
@@ -131,7 +143,13 @@ class ConformanceTest {
         assertEquals(case.str("expectObf"), m.obfName)
         case["expectSignature"]?.strOrNull()?.let { assertEquals(it, m.signature) }
         case["expectClassName"]?.strOrNull()?.let { assertEquals(it, m.className) }
-        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, m.static) }
+        // The shared golden fixture encodes the null->false PROJECTION of the
+        // static flag (a map that omits `static` expects `false`). The resolved
+        // type now preserves the tri-state Boolean? (null == "unknown"), so the
+        // fixture's boolean is compared against the folded value here. This
+        // keeps cross-language parity at the fixture boundary while the Kotlin
+        // resolved type stays asserted-vs-unknown.
+        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, m.static == true) }
         case["expectAidlTxn"]?.let { assertEquals((it as JsonPrimitive).int, m.aidlTxn) }
         case["expectOverloadCount"]?.let { assertEquals(it.jsonPrimitive.int, m.allOverloads.size) }
     }
@@ -142,7 +160,9 @@ class ConformanceTest {
     ) {
         val f = resolver.resolveField(case.cls(), case.str("field"))
         assertEquals(case.str("expectObf"), f.obfName)
-        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, f.static) }
+        // See assertMethod: the fixture asserts the null->false projection; the
+        // resolved field static flag is the tri-state Boolean?, folded here.
+        case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, f.static == true) }
         case["expectType"]?.strOrNull()?.let { assertEquals(it, f.type) }
         case["expectClassName"]?.strOrNull()?.let { assertEquals(it, f.className) }
     }
@@ -157,13 +177,59 @@ class ConformanceTest {
         assertEquals(case.str("expectResult"), result)
     }
 
+    /**
+     * Run a `validate`-kind case: decode the inline `inputMap` and run it
+     * through [MapLoader.validate]. Either `expectError: "MapValidation"` (the
+     * map must be rejected) or `expectValid: true` (the map must pass). This is
+     * how the oracle covers VALIDATION semantics (e.g. the `minLength: 1`
+     * non-empty `obfuscated` rule) on top of resolution semantics.
+     */
+    private fun runValidateCase(
+        case: JsonObject,
+        expectError: String?,
+    ) {
+        val input = case["inputMap"]!!.jsonObject
+        val validate = {
+            val map = json.decodeFromJsonElement(RosettaMap.serializer(), input)
+            MapLoader.validate(map)
+        }
+        if (expectError != null) {
+            assertEquals("MapValidation", expectError, "validate cases only support expectError 'MapValidation'")
+            assertFailsWith<MapValidationException> { validate() }
+        } else {
+            assertEquals(
+                true,
+                case["expectValid"]?.jsonPrimitive?.boolean,
+                "validate success case must set expectValid: true",
+            )
+            // Throws on failure → the case fails, which is the assertion.
+            validate()
+        }
+    }
+
     private fun assertExpectedError(
         expectError: String,
         block: () -> Unit,
     ) {
         when (expectError) {
             "AmbiguousOverload" -> assertFailsWith<AmbiguousOverloadException> { block() }
-            "Resolve" -> assertFailsWith<ResolveException> { block() }
+            // UnknownArgType is the DISTINCT precise subtype; assert it before
+            // the generic Resolve so a generic ResolveException can't satisfy
+            // an UnknownArgType case (it is a ResolveException subtype).
+            "UnknownArgType" -> assertFailsWith<UnknownArgTypeException> { block() }
+            // A generic Resolve case must NOT be the precise UnknownArgType
+            // subtype: because UnknownArgTypeException IS-A ResolveException,
+            // a bare assertFailsWith<ResolveException> would also accept the
+            // subtype and mask a resolver that wrongly fired UnknownArgType
+            // here. Assert the negative explicitly, mirroring the Frida
+            // runner's `expect(thrown).not.toBeInstanceOf(UnknownArgTypeError)`.
+            "Resolve" -> {
+                val ex = assertFailsWith<ResolveException> { block() }
+                assertFalse(
+                    ex is UnknownArgTypeException,
+                    "Resolve case must not fire the distinct UnknownArgType subtype",
+                )
+            }
             "IllegalArgument" -> assertFailsWith<IllegalArgumentException> { block() }
             else -> error("unknown expectError '$expectError'")
         }

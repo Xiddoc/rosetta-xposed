@@ -36,6 +36,7 @@ import io.github.xiddoc.rosetta.core.model.MapSource
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
@@ -260,16 +261,15 @@ class DataClassSemanticsTest {
 
     @Test
     fun `Resolved types have value semantics`() {
-        val entry = ClassEntry("a")
-        val rc = ResolvedClass("com.example.Foo", "a", entry)
+        val rc = ResolvedClass("com.example.Foo", "a", extends = "zzzz")
         assertValueSemantics(
             base = rc,
-            identical = ResolvedClass("com.example.Foo", "a", entry),
+            identical = ResolvedClass("com.example.Foo", "a", extends = "zzzz"),
             variants =
                 listOf(
                     rc.copy(realName = "com.example.Bar"),
                     rc.copy(obfName = "b"),
-                    rc.copy(entry = ClassEntry("b")),
+                    rc.copy(extends = "yyyy"),
                 ),
         )
         assertEquals("b", rc.copy(obfName = "b").obfName)
@@ -282,11 +282,24 @@ class DataClassSemanticsTest {
                 signature = "()V",
                 aidlTxn = 7,
                 static = true,
+                synthetic = false,
+                isConstructor = false,
                 allOverloads = listOf(MethodEntry("c", "()V")),
             )
         assertValueSemantics(
             base = rm,
-            identical = ResolvedMethod("single", "c", "a", "()V", 7, true, listOf(MethodEntry("c", "()V"))),
+            identical =
+                ResolvedMethod(
+                    realName = "single",
+                    obfName = "c",
+                    className = "a",
+                    signature = "()V",
+                    aidlTxn = 7,
+                    static = true,
+                    synthetic = false,
+                    isConstructor = false,
+                    allOverloads = listOf(MethodEntry("c", "()V")),
+                ),
             variants =
                 listOf(
                     rm.copy(realName = "other"),
@@ -295,6 +308,12 @@ class DataClassSemanticsTest {
                     rm.copy(signature = "(I)V"),
                     rm.copy(aidlTxn = 8),
                     rm.copy(static = false),
+                    // Tri-state flags are distinct values: null != false != true.
+                    rm.copy(static = null),
+                    rm.copy(synthetic = true),
+                    rm.copy(synthetic = null),
+                    rm.copy(isConstructor = true),
+                    rm.copy(isConstructor = null),
                     rm.copy(allOverloads = listOf(MethodEntry("d", "()V"))),
                 ),
         )
@@ -314,6 +333,33 @@ class DataClassSemanticsTest {
                 ),
         )
         assertEquals("I", rf.copy(type = "I").type)
+    }
+
+    @Test
+    fun `DiscoveredClass has value semantics and carries only resolver-relevant fields`() {
+        val methods = mapOf("single" to MethodOverloads(listOf(MethodEntry("c", "()V"))))
+        val fields = mapOf("id" to FieldEntry("f", "Ljava/lang/String;"))
+        val dc =
+            DiscoveredClass(
+                realName = "com.example.Foo",
+                obfName = "a",
+                extends = "zzzz",
+                methods = methods,
+                fields = fields,
+            )
+        assertValueSemantics(
+            base = dc,
+            identical = DiscoveredClass("com.example.Foo", "a", "zzzz", methods, fields),
+            variants =
+                listOf(
+                    dc.copy(realName = "com.example.Bar"),
+                    dc.copy(obfName = "b"),
+                    dc.copy(extends = "yyyy"),
+                    dc.copy(methods = null),
+                    dc.copy(fields = null),
+                ),
+        )
+        assertEquals("a", dc.obfName)
     }
 
     // ---- write$Self optional-field branch coverage --------------------------

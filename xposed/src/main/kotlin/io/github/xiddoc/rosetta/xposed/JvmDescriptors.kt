@@ -9,21 +9,26 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.resolver.Descriptors
+
 internal object JvmDescriptors {
-    /** JVM descriptor for a (possibly primitive / array) reflected type. */
+    /**
+     * JVM descriptor for a (possibly primitive / array) reflected type.
+     *
+     * The primitive table and the object-element rendering are NOT re-declared
+     * here: they delegate to the shared `:core` [Descriptors] vocabulary so the
+     * reflection bridge and the neutral resolver cannot fork. For a primitive
+     * `Class<*>`, `type.name` is the bare primitive name (`int`, `boolean`, …),
+     * which is exactly the [Descriptors.primitive] key.
+     */
     fun of(type: Class<*>): String =
         when {
-            type == Void.TYPE -> "V"
-            type == Boolean::class.javaPrimitiveType -> "Z"
-            type == Byte::class.javaPrimitiveType -> "B"
-            type == Char::class.javaPrimitiveType -> "C"
-            type == Short::class.javaPrimitiveType -> "S"
-            type == Int::class.javaPrimitiveType -> "I"
-            type == Long::class.javaPrimitiveType -> "J"
-            type == Float::class.javaPrimitiveType -> "F"
-            type == Double::class.javaPrimitiveType -> "D"
+            // Every JVM primitive name (incl. "void") is in the core table, so
+            // the lookup is total here — `!!` documents that invariant without a
+            // permanently-uncovered defensive branch.
+            type.isPrimitive -> Descriptors.primitive(type.name)!!
             type.isArray -> "[" + of(type.componentType)
-            else -> "L" + type.name.replace('.', '/') + ";"
+            else -> Descriptors.objectDescriptor(type.name)
         }
 
     /** Parameter descriptors of a reflected executable, in declaration order. */

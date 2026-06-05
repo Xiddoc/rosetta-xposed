@@ -60,19 +60,25 @@ public interface DiscoverySink {
 /**
  * An in-memory [DiscoverySink] that retains every discovered entry and can
  * render the `rosetta-runtime-discovered` provenance for them.
+ *
+ * THREAD SAFETY. A self-healing module may discover from several hooked
+ * threads concurrently (the dynamic backend runs inside the target app), so
+ * the backing list is synchronized: [record] appends under the lock and
+ * [entries] / [provenance] read a consistent snapshot under the same lock.
  */
 public class MapDiscoverySink : DiscoverySink {
+    private val lock = Any()
     private val recorded = mutableListOf<DiscoveredEntry>()
 
     override fun record(
         realName: String,
         entry: ClassEntry,
     ) {
-        recorded += DiscoveredEntry(realName, entry)
+        synchronized(lock) { recorded += DiscoveredEntry(realName, entry) }
     }
 
     /** A snapshot of everything discovered so far, in discovery order. */
-    public fun entries(): List<DiscoveredEntry> = recorded.toList()
+    public fun entries(): List<DiscoveredEntry> = synchronized(lock) { recorded.toList() }
 
     /**
      * The provenance source describing this sink's discoveries — tagged
@@ -83,7 +89,7 @@ public class MapDiscoverySink : DiscoverySink {
     public fun provenance(): MapSource =
         MapSource(
             tool = RUNTIME_DISCOVERED_TOOL,
-            classes = recorded.size,
+            classes = synchronized(lock) { recorded.size },
             confidence = Confidence.LOW,
             notes = "discovered at runtime by the dynamic (DexKit) backend; unverified — LOW confidence.",
         )

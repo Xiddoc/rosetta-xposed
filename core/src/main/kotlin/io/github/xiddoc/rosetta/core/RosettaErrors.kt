@@ -41,14 +41,20 @@ public class MapInputTooLargeException(
     message: String,
 ) : RosettaException(message)
 
+/** Which kind of symbol a [ResolveException] failed to resolve. */
+public enum class ResolveTarget {
+    CLASS,
+    METHOD,
+    FIELD,
+}
+
 /** A real name could not be resolved to an obfuscated one. */
-public class ResolveException(
+public open class ResolveException(
     message: String,
     public val name: String,
     public val app: String,
     public val version: String,
-    /** "class" | "method" | "field". */
-    public val target: String,
+    public val target: ResolveTarget,
     public val classScope: String? = null,
 ) : RosettaException(message)
 
@@ -78,6 +84,25 @@ public class TargetPolicyException(
 ) : RosettaException(
         "rosetta: target '$target' for real name '$name' is forbidden by the namespace guard: $reason",
     )
+
+/**
+ * A real-name argument type passed to overload disambiguation is not a known
+ * class in the map (and no overload uses its literal descriptor either), so the
+ * resolver cannot translate it. This is raised IN PLACE OF the generic
+ * no-overload-matches [ResolveException] so the failure points at the real
+ * cause (an unmapped arg type) instead of misattributing it to the overload
+ * set. It IS a [ResolveException] subtype so existing `Resolve`-error handling
+ * still catches it.
+ */
+public class UnknownArgTypeException(
+    message: String,
+    name: String,
+    app: String,
+    version: String,
+    classScope: String,
+    /** The offending argument type name that is not a known map class. */
+    public val argType: String,
+) : ResolveException(message, name, app, version, ResolveTarget.METHOD, classScope)
 
 /** A method name had several overloads and no arg types were supplied. */
 public class AmbiguousOverloadException(

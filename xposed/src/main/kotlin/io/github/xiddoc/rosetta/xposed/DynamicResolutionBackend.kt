@@ -36,9 +36,12 @@ import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
+import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
+import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
+import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
 
 /**
  * Per-method discovery facets — how to find ONE method's obfuscated name by
@@ -106,12 +109,21 @@ public data class DiscoveryConfig(
  * @property index the device-side index seam (faked in tests).
  * @property hints the per-real-class discovery recipes (contributor input).
  * @property sink where discovered entries are recorded (default: NOOP).
+ * @property translateType translates a caller-supplied `argTypes` entry from a
+ *   real name to its obfuscated short name (a primitive / unmapped framework
+ *   type passes through). It MUST be the SAME translation the static
+ *   [Resolver][io.github.xiddoc.rosetta.core.resolver.Resolver] applies, so a
+ *   mapped app-class arg type matches a discovered overload whose descriptor
+ *   already carries the obfuscated ref. Defaults to identity (no map context),
+ *   which is correct only when callers pass framework types / raw descriptors;
+ *   [RosettaXposed.fromMapWithDiscovery] wires the static map's translator in.
  */
 public class DynamicResolutionBackend(
     private val index: DexKitIndex,
     private val hints: Map<String, DiscoveryHints>,
     private val sink: DiscoverySink = DiscoverySink.NOOP,
-) : ResolutionBackend {
+    private val translateType: (String) -> String = { it },
+) : DiscoveringBackend {
     /** Memoized discovered class entries, so we scan a real name at most once. */
     private val discovered = mutableMapOf<String, ClassEntry>()
 
@@ -123,8 +135,25 @@ public class DynamicResolutionBackend(
     override fun canResolve(realClass: String): Boolean = hints[realClass]?.canLocateClass == true
 
     override fun resolveClass(realClass: String): ResolvedClass {
-        val entry = discoverClass(realClass)
-        return ResolvedClass(realName = realClass, obfName = entry.obfuscated, entry = entry)
+        val entry = discoverClassEntry(realClass)
+        return ResolvedClass(realName = realClass, obfName = entry.obfuscated, extends = entry.extends)
+    }
+
+    /**
+     * Discover [realClass] and surface the typed [DiscoveredClass] write-back
+     * payload the composite heals into the static backend. Carries only the
+     * resolver-relevant fields (obf name, extends, methods, fields); the full
+     * provenance entry is recorded separately through the [DiscoverySink].
+     */
+    override fun discoverClass(realClass: String): DiscoveredClass {
+        val entry = discoverClassEntry(realClass)
+        return DiscoveredClass(
+            realName = realClass,
+            obfName = entry.obfuscated,
+            extends = entry.extends,
+            methods = entry.methods,
+            fields = entry.fields,
+        )
     }
 
     override fun resolveMethod(
@@ -132,7 +161,7 @@ public class DynamicResolutionBackend(
         realMethod: String,
         argTypes: List<String>?,
     ): ResolvedMethod {
-        val classEntry = discoverClass(realClass)
+        val classEntry = discoverClassEntry(realClass)
         // Discovery records exactly one overload per real method name, so the
         // first entry IS the resolved overload. A missing methods map or an
         // unhinted method name is the only miss case.
@@ -144,13 +173,36 @@ public class DynamicResolutionBackend(
                         "(partial discovery fails closed; the cache is not poisoned).",
                 )
         val methodEntry = overloads.entries.first()
+        // Honour argTypes when supplied (parity with the static Resolver /
+        // StaticResolutionBackend): the caller pinned a specific overload, so
+        // the discovered overload's descriptor MUST match it. The caller passes
+        // REAL names (+ framework types); discovered descriptors carry the
+        // OBFUSCATED class refs, so each arg type is translated real → obf
+        // through [translateType] — exactly what the static resolver does — so a
+        // mapped app-class arg type matches. A mismatch fails closed rather than
+        // silently returning the wrong overload.
+        if (argTypes != null) {
+            val wanted = argTypes.map { toJvmDescriptor(it) { name -> translateType(name) } }
+            val actual = parseSignatureArgs(methodEntry.signature)
+            if (actual != wanted) {
+                throw DiscoveryException(
+                    "rosetta-xposed: dynamic discovery resolved '$realClass.$realMethod' to a " +
+                        "single overload '${methodEntry.signature}', but it does not match the " +
+                        "requested arg types [${argTypes.joinToString(", ")}] " +
+                        "(discovery records one overload per name; pass the matching arg types " +
+                        "or omit them).",
+                )
+            }
+        }
         return ResolvedMethod(
             realName = realMethod,
             obfName = methodEntry.obfuscated,
             className = classEntry.obfuscated,
             signature = methodEntry.signature,
             aidlTxn = methodEntry.aidlTxn,
-            static = methodEntry.static == true,
+            static = methodEntry.static,
+            synthetic = methodEntry.synthetic,
+            isConstructor = methodEntry.isConstructor,
             allOverloads = listOf(methodEntry),
         )
     }
@@ -163,11 +215,11 @@ public class DynamicResolutionBackend(
         // (DexKit field queries land with the device adapter). Fail closed
         // rather than fabricate a field mapping.
         //
-        // The discoverClass call below is INTENTIONAL: even though we will
+        // The discoverClassEntry call below is INTENTIONAL: even though we will
         // throw, it ensures the class is discovered and written back through
         // the composite's uniform sink path (memoisation + provenance emit)
         // before we surface the field miss. Do NOT remove it as a dead call.
-        discoverClass(realClass)
+        discoverClassEntry(realClass)
         throw DiscoveryException(
             "rosetta-xposed: dynamic discovery does not resolve fields (real '$realClass.$realField'); " +
                 "ship a static map entry or a future field-discovery hint.",
@@ -180,7 +232,7 @@ public class DynamicResolutionBackend(
      * class. Records the complete entry via [sink] exactly once. Fails closed
      * on any miss or partial result.
      */
-    private fun discoverClass(realClass: String): ClassEntry {
+    private fun discoverClassEntry(realClass: String): ClassEntry {
         discovered[realClass]?.let { return it }
 
         val hint =

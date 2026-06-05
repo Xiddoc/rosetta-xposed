@@ -117,7 +117,7 @@ class SignerGuardTest {
 
     @Test
     fun `mismatch through fromRegistry fails closed`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map(hashA))
+        val registry: MapRegistry = MapRegistry.of(map(hashA))
         assertFailsWith<SignerMismatchException> {
             RosettaXposed.fromRegistry(registry, identity(hashB), loader)
         }
@@ -137,7 +137,7 @@ class SignerGuardTest {
 
     @Test
     fun `map demands signer but app set is empty through fromRegistry fails closed`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map(hashA))
+        val registry: MapRegistry = MapRegistry.of(map(hashA))
         assertFailsWith<MissingSignerException> {
             RosettaXposed.fromRegistry(registry, identity(), loader)
         }

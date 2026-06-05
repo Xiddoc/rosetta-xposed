@@ -25,19 +25,33 @@ import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
 
-public class CompositeResolutionBackend(
-    private val static: StaticResolutionBackend,
-    private val dynamic: DynamicResolutionBackend,
+public class CompositeResolutionBackend internal constructor(
+    private val static: OverridableBackend,
+    private val dynamic: DiscoveringBackend,
 ) : ResolutionBackend {
+    /**
+     * Build a composite from the two built-in backends. This is the public
+     * construction path for advanced wiring (e.g. a real DexKit-backed
+     * [DynamicResolutionBackend] supplying the self-healing dynamic side); the
+     * internal primary constructor keeps the decoupled [OverridableBackend] /
+     * [DiscoveringBackend] write-back seam for in-module collaborators.
+     */
+    public constructor(
+        static: StaticResolutionBackend,
+        dynamic: DynamicResolutionBackend,
+    ) : this(static as OverridableBackend, dynamic as DiscoveringBackend)
+
     /** Resolvable if EITHER backend can answer for [realClass]. */
     override fun canResolve(realClass: String): Boolean = static.canResolve(realClass) || dynamic.canResolve(realClass)
 
     override fun resolveClass(realClass: String): ResolvedClass {
         if (static.canResolve(realClass)) return static.resolveClass(realClass)
-        val resolved = dynamic.resolveClass(realClass)
-        // Write the discovered entry back so the next lookup is a static hit.
-        static.override(realClass, resolved.entry)
-        return resolved
+        // Discover + surface the typed write-back payload, heal it into the
+        // static backend, then serve the resolved class from the now-static
+        // entry so every consumer reads one code path.
+        val discovered = dynamic.discoverClass(realClass)
+        static.override(discovered)
+        return static.resolveClass(realClass)
     }
 
     override fun resolveMethod(

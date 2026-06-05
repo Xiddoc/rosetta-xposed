@@ -251,6 +251,7 @@ public object MapLoader {
             val sources = map.sources ?: return
             cap("sources", sources.size, MAX_SOURCES, "entries")
             sources.forEachIndexed { i, src ->
+                nonEmpty("sources[$i].tool", src.tool)
                 free("sources[$i].tool", src.tool)
                 free("sources[$i].config", src.config)
                 free("sources[$i].notes", src.notes)
@@ -270,7 +271,8 @@ public object MapLoader {
             entry: ClassEntry,
         ) {
             val path = "classes[$realName]"
-            short("$path.obfuscated", entry.obfuscated)
+            nonEmpty("$path.obfuscated", entry.obfuscated)
+            len("$path.obfuscated", entry.obfuscated, MAX_SHORT_NAME_LEN)
             free("$path.extends", entry.extends)
             free("$path.dex", entry.dex)
             free("$path.aidl_descriptor", entry.aidlDescriptor)
@@ -286,7 +288,9 @@ public object MapLoader {
                     val mpath = "$path.methods[$name]"
                     cap(mpath, overloads.entries.size, MAX_OVERLOADS_PER_METHOD, "overloads")
                     overloads.entries.forEachIndexed { i, m ->
-                        short("$mpath[$i].obfuscated", m.obfuscated)
+                        nonEmpty("$mpath[$i].obfuscated", m.obfuscated)
+                        len("$mpath[$i].obfuscated", m.obfuscated, MAX_SHORT_NAME_LEN)
+                        nonEmpty("$mpath[$i].signature", m.signature)
                         len("$mpath[$i].signature", m.signature, MAX_SIGNATURE_LEN)
                     }
                 }
@@ -296,7 +300,9 @@ public object MapLoader {
                 for ((name, f) in fields) {
                     reserved("$path.fields", name)
                     val fpath = "$path.fields[$name]"
-                    short("$fpath.obfuscated", f.obfuscated)
+                    nonEmpty("$fpath.obfuscated", f.obfuscated)
+                    len("$fpath.obfuscated", f.obfuscated, MAX_SHORT_NAME_LEN)
+                    nonEmpty("$fpath.type", f.type)
                     len("$fpath.type", f.type, MAX_SIGNATURE_LEN)
                 }
             }
@@ -320,6 +326,19 @@ public object MapLoader {
             if (key in RESERVED_KEYS) issues += ValidationIssue(container, "reserved key \"$key\" is not allowed")
         }
 
+        /**
+         * Non-empty leaf check for a required string. The canonical schema +
+         * Frida Zod pin `minLength: 1` on `obfuscated` / `signature` / field
+         * `type` / `source.tool`; an empty value is rejected fail-closed
+         * (these are non-null in the model, so only the empty case is possible).
+         */
+        private fun nonEmpty(
+            path: String,
+            value: String,
+        ) {
+            if (value.isEmpty()) issues += ValidationIssue(path, "must not be empty")
+        }
+
         /** Length cap for a (possibly null) string; null is a no-op. */
         private fun len(
             path: String,
@@ -328,11 +347,6 @@ public object MapLoader {
         ) {
             if (value != null && value.length > max) issues += ValidationIssue(path, "exceeds $max characters")
         }
-
-        private fun short(
-            path: String,
-            value: String?,
-        ) = len(path, value, MAX_SHORT_NAME_LEN)
 
         private fun free(
             path: String,

@@ -26,4 +26,5 @@ package io.github.xiddoc.rosetta.xposed
 public class DiscoveryException(
     message: String,
     cause: Throwable? = null,
-) : RuntimeException(message, cause)
+) : RuntimeException(message, cause),
+    XposedBindingFailure

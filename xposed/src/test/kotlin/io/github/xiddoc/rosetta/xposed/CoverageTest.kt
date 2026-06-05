@@ -108,7 +108,7 @@ class CoverageTest {
 
     @Test
     fun `fromRegistry selects by version_code and binds`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map)
+        val registry: MapRegistry = MapRegistry.of(map)
         val identity = AppIdentity(packageName = "com.example.app", versionCode = 100, versionName = "1.0.0")
         val bound = RosettaXposed.fromRegistry(registry, identity, javaClass.classLoader)
         assertNotNull(bound)
@@ -117,7 +117,7 @@ class CoverageTest {
 
     @Test
     fun `fromRegistry returns null when no map matches`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map)
+        val registry: MapRegistry = MapRegistry.of(map)
         val identity = AppIdentity(packageName = "com.example.app", versionCode = 999)
         assertNull(RosettaXposed.fromRegistry(registry, identity, javaClass.classLoader))
     }
@@ -157,13 +157,14 @@ class CoverageTest {
     // DynamicResolutionBackendTest. See that file for the strategy + miss +
     // feedback + provenance + ReDoS-bounds cases.
 
-    // ---- Public RosettaXposed constructor with the default policy.
+    // ---- Internal RosettaXposed constructor with the default policy.
 
     @Test
-    fun `public constructor uses the default policy`() {
-        // Exercise the public (backend, classLoader, appName) constructor with
+    fun `internal constructor uses the default policy`() {
+        // Exercise the internal (backend, classLoader, appName) constructor with
         // the default-valued policy argument; an app-prefixed but unknown class
         // passes the guard and surfaces as a BindException, not a policy denial.
+        // (Public unverified construction is only via fromMapUnverified.)
         val r = RosettaXposed(StaticResolutionBackend(map), javaClass.classLoader, "com.example.app")
         assertTrue(r.knows("com.example.RealClient"))
     }
@@ -177,5 +178,15 @@ class CoverageTest {
         val backend: ResolutionBackend = StaticResolutionBackend(map)
         val resolved = backend.resolveMethod("com.example.RealClient", "single")
         assertEquals("c", resolved.obfName)
+    }
+
+    @Test
+    fun `translateType maps a known real class to obf and passes others through`() {
+        // The translator the dynamic discovery backend borrows for real-name
+        // argTypes (see RosettaXposed.fromMapWithDiscovery): a mapped real name
+        // → its obf short name; an unmapped framework type passes through.
+        val backend = StaticResolutionBackend(map)
+        assertEquals(obf, backend.translateType("com.example.RealClient"))
+        assertEquals("java.lang.String", backend.translateType("java.lang.String"))
     }
 }

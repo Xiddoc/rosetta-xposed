@@ -103,6 +103,16 @@ jobs:
                   sudo apt-get install -y cmake ninja-build g++ git zlib1g-dev
                   bash tools/dexkit-native/build-libdexkit.sh
 
+            # Cross-repo parity guard: the conformance fixtures are vendored
+            # byte-identical into both rosetta-xposed (the AUTHORITATIVE copy)
+            # and rosetta-frida. This fails if this repo's copy drifts from the
+            # shared SHA-256 manifest (the same manifest both repos carry), so a
+            # one-sided fixture edit can't silently fork the parity oracle. No
+            # JVM needed, so it runs before (and independently of) the Gradle
+            # build. See core/src/test/resources/conformance/README.md.
+            - name: Conformance fixtures match the shared manifest
+              run: sh scripts/check-conformance-fixtures.sh
+
             # The full quality suite — the Kotlin equivalents of rosetta-frida's
             # format + lint + 100%-coverage + test gate:
             #   spotlessCheck → formatting (ktlint)

@@ -20,6 +20,7 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.Confidence
 import kotlin.test.Test
@@ -127,6 +128,121 @@ class DynamicResolutionBackendTest {
         assertEquals("c", m.obfName)
         assertEquals(obf, m.className)
         assertEquals(2, m.aidlTxn)
+    }
+
+    @Test
+    fun `resolveMethod honours matching argTypes on a discovered overload`() {
+        // Liskov parity with the static backend: when the caller pins arg
+        // types that match the single discovered overload, it resolves.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(Ljava/lang/String;)Ljava/lang/String;"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(
+                    real to
+                        DiscoveryHints(
+                            aidlDescriptor = "Lcom/example/IFoo;",
+                            methods =
+                                listOf(
+                                    MethodDiscoveryHint(
+                                        realName = "single",
+                                        descriptor = "(Ljava/lang/String;)Ljava/lang/String;",
+                                    ),
+                                ),
+                        ),
+                ),
+            )
+        val m = backend.resolveMethod(real, "single", listOf("java.lang.String"))
+        assertEquals("c", m.obfName)
+    }
+
+    @Test
+    fun `resolveMethod translates real-name argTypes through the map to match a discovered overload`() {
+        // F1: a caller passes a REAL app-class arg type ("com.example.RealArg")
+        // and the map maps it to "obfArg"; the discovered overload's descriptor
+        // carries the OBFUSCATED ref ("(LobfArg;)V"). With the real → obf
+        // translator wired in, the translated descriptor matches and it
+        // resolves — an identity translate would have spuriously thrown.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(LobfArg;)V"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index = index,
+                hints =
+                    mapOf(
+                        real to
+                            DiscoveryHints(
+                                aidlDescriptor = "Lcom/example/IFoo;",
+                                methods = listOf(MethodDiscoveryHint(realName = "single", descriptor = "(LobfArg;)V")),
+                            ),
+                    ),
+                translateType = { name -> if (name == "com.example.RealArg") "obfArg" else name },
+            )
+        val m = backend.resolveMethod(real, "single", listOf("com.example.RealArg"))
+        assertEquals("c", m.obfName)
+    }
+
+    @Test
+    fun `resolveMethod with a translator still fails closed on a genuine arg-type mismatch`() {
+        // Same translator wiring, but the caller asks for an arg type the
+        // discovered overload does not declare — the real → obf translation
+        // must NOT mask a genuine mismatch.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(LobfArg;)V"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index = index,
+                hints =
+                    mapOf(
+                        real to
+                            DiscoveryHints(
+                                aidlDescriptor = "Lcom/example/IFoo;",
+                                methods = listOf(MethodDiscoveryHint(realName = "single", descriptor = "(LobfArg;)V")),
+                            ),
+                    ),
+                translateType = { name -> if (name == "com.example.RealArg") "obfArg" else name },
+            )
+        assertFailsWith<DiscoveryException> { backend.resolveMethod(real, "single", listOf("com.example.OtherArg")) }
+    }
+
+    @Test
+    fun `resolveMethod fails closed when argTypes do not match the discovered overload`() {
+        // The single discovered overload takes (String); the caller asks for
+        // (int) — a wrong-overload request must NOT silently return the String
+        // one (the Liskov bug). Fail closed.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(Ljava/lang/String;)Ljava/lang/String;"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(
+                    real to
+                        DiscoveryHints(
+                            aidlDescriptor = "Lcom/example/IFoo;",
+                            methods =
+                                listOf(
+                                    MethodDiscoveryHint(
+                                        realName = "single",
+                                        descriptor = "(Ljava/lang/String;)Ljava/lang/String;",
+                                    ),
+                                ),
+                        ),
+                ),
+            )
+        assertFailsWith<DiscoveryException> { backend.resolveMethod(real, "single", listOf("int")) }
     }
 
     // ---- Misses + partial discovery → DiscoveryException --------------------
@@ -283,7 +399,7 @@ class DynamicResolutionBackendTest {
             DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;")))
         // No throw, and nothing observable to record.
         assertEquals(obf, backend.resolveClass(real).obfName)
-        DiscoverySink.NOOP.record(real, backend.resolveClass(real).entry)
+        DiscoverySink.NOOP.record(real, ClassEntry(obfuscated = obf))
     }
 
     @Test
@@ -377,6 +493,14 @@ class DynamicResolutionBackendTest {
     }
 
     @Test
+    fun `SafePattern bounds are sourced from the core map caps (no drift)`() {
+        // The discovery caps must equal the canonical map-loader caps so the
+        // runtime-discovered path and the static map share one budget.
+        assertEquals(io.github.xiddoc.rosetta.core.MapLoader.MAX_SIGNATURE_LEN, SafePattern.MAX_SIGNATURE_LEN)
+        assertEquals(io.github.xiddoc.rosetta.core.MapLoader.MAX_ANCHORS_PER_CLASS, SafePattern.MAX_ANCHORS)
+    }
+
+    @Test
     fun `SafePattern rejects a malformed RE2 expression`() {
         assertFailsWith<DiscoveryException> { SafePattern.compile("(unclosed") }
     }
@@ -453,6 +577,35 @@ class DynamicResolutionBackendTest {
         assertNull(DiscoveryException("just a message").cause)
     }
 
+    @Test
+    fun `DiscoveryException and BindException are XposedBindingFailure`() {
+        // The marker lets a module catch any layer-4 binding failure in one
+        // clause without enumerating the concrete types.
+        assertTrue(DiscoveryException("x") is XposedBindingFailure)
+        assertTrue(BindException("y") is XposedBindingFailure)
+    }
+
+    @Test
+    fun `MapDiscoverySink records concurrently without losing entries`() {
+        // Append from many threads; the synchronized backing list must retain
+        // every record (a plain ArrayList would drop or corrupt under races).
+        val sink = MapDiscoverySink()
+        val threads = 8
+        val perThread = 250
+        val workers =
+            (0 until threads).map { t ->
+                Thread {
+                    repeat(perThread) { i ->
+                        sink.record("com.example.C$t-$i", ClassEntry(obfuscated = "o$t$i"))
+                    }
+                }
+            }
+        workers.forEach { it.start() }
+        workers.forEach { it.join() }
+        assertEquals(threads * perThread, sink.entries().size)
+        assertEquals(threads * perThread, sink.provenance().classes)
+    }
+
     // ---- Value types --------------------------------------------------------
 
     @Test
@@ -515,7 +668,7 @@ class DynamicResolutionBackendTest {
 
     @Test
     fun `findMethod by descriptor selects the matching overload in the fake`() {
-        // Exercises the FakeDexKitIndex descriptor-matching + membersOf paths.
+        // Exercises the FakeDexKitIndex descriptor-matching path.
         val index =
             FakeDexKitIndex(
                 methods =
@@ -529,7 +682,7 @@ class DynamicResolutionBackendTest {
             )
         val match = index.findMethod(MethodQuery(declaringClass = obf, descriptor = "(Ljava/lang/String;J)V"))
         assertEquals("(Ljava/lang/String;J)V", match?.descriptor)
-        assertEquals(2, index.membersOf(obf).size)
+        assertEquals(2, index.seededMethods(obf).size)
         assertNull(index.findMethod(MethodQuery(declaringClass = "unknown")))
     }
 }

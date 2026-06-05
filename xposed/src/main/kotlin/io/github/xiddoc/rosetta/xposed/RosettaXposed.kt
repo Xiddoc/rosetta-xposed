@@ -34,8 +34,13 @@ public class RosettaXposed internal constructor(
      * Build over a [backend] + [classLoader], confining every resolution
      * target to the namespace allowed by [policy] for the app named by
      * [appName] (RFC 0001 C1).
+     *
+     * INTERNAL: this is an unverified construction path (it does NOT run the
+     * signer guard). The only PUBLIC unverified entry point is the explicitly
+     * named [Companion.fromMapUnverified]; production modules should use the
+     * identity-bearing [Companion.fromMap] / [Companion.fromRegistry].
      */
-    public constructor(
+    internal constructor(
         backend: ResolutionBackend,
         classLoader: ClassLoader,
         appName: String,
@@ -213,10 +218,15 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed {
             if (identity != null) SignerGuard.verify(map, identity)
+            val static = StaticResolutionBackend(map)
             val composite =
                 CompositeResolutionBackend(
-                    static = StaticResolutionBackend(map),
-                    dynamic = DynamicResolutionBackend(index, discovery.hints, discovery.sink),
+                    static = static,
+                    // Translate the dynamic backend's `argTypes` through the SAME
+                    // map the static resolver uses (real → obf), so a mapped
+                    // app-class arg type matches a discovered overload's obf
+                    // descriptor instead of spuriously failing on identity.
+                    dynamic = DynamicResolutionBackend(index, discovery.hints, discovery.sink, static::translateType),
                 )
             return RosettaXposed(composite, classLoader, map.app, policy)
         }

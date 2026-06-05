@@ -5,14 +5,18 @@
 package io.github.xiddoc.rosetta.core
 
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.resolver.Descriptors
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MapRegistry
+import io.github.xiddoc.rosetta.core.version.MatchedBy
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class CoreTest {
@@ -60,6 +64,16 @@ class CoreTest {
     }
 
     @Test
+    fun `Descriptors exposes the shared primitive table and object rendering`() {
+        assertEquals("I", Descriptors.PRIMITIVE_DESCRIPTORS["int"])
+        assertEquals("V", Descriptors.PRIMITIVE_DESCRIPTORS["void"])
+        assertEquals(9, Descriptors.PRIMITIVE_DESCRIPTORS.size)
+        assertEquals("I", Descriptors.primitive("int"))
+        assertNull(Descriptors.primitive("com.example.Foo"))
+        assertEquals("Landroid/os/Bundle;", Descriptors.objectDescriptor("android.os.Bundle"))
+    }
+
+    @Test
     fun `parseSignatureArgs splits objects, primitives and arrays`() {
         assertEquals(
             listOf("Landroid/os/Bundle;", "Lbbbb;", "I"),
@@ -72,6 +86,26 @@ class CoreTest {
     @Test
     fun `parseSignatureArgs rejects a malformed signature`() {
         assertFailsWith<IllegalArgumentException> { parseSignatureArgs("no parens") }
+    }
+
+    @Test
+    fun `parseSignatureArgs rejects an unknown primitive descriptor char`() {
+        // The Frida twin validates [VZBCSIJFD] and throws; the Kotlin side
+        // must not emit a bare `Q` (or any non-primitive char) verbatim.
+        assertFailsWith<IllegalArgumentException> { parseSignatureArgs("(Q)V") }
+        assertFailsWith<IllegalArgumentException> { parseSignatureArgs("(X)V") }
+        // An unknown char inside an array element is rejected too.
+        assertFailsWith<IllegalArgumentException> { parseSignatureArgs("([Q)V") }
+    }
+
+    @Test
+    fun `parseSignatureArgs accepts every valid primitive descriptor letter`() {
+        // V is a return type only, but parsing an arg list of each primitive
+        // must succeed for the full closed set.
+        assertEquals(
+            listOf("Z", "B", "C", "S", "I", "J", "F", "D"),
+            parseSignatureArgs("(ZBCSIJFD)V"),
+        )
     }
 
     @Test
@@ -111,16 +145,67 @@ class CoreTest {
     @Test
     fun `version selection prefers version_code over label`() {
         val a = MapLoader.fromJson(minimalMap)
-        val b = MapLoader.fromJson(minimalMap.replace("\"version_code\": 100", "\"version_code\": 200"))
-        val registry = mapOf("1.0.0" to a, "1.0.0-b" to b)
+        val b =
+            MapLoader.fromJson(
+                minimalMap
+                    .replace("\"version_code\": 100", "\"version_code\": 200")
+                    .replace("\"version\": \"1.0.0\"", "\"version\": \"1.0.0-b\""),
+            )
+        val registry = MapRegistry.of(a, b)
 
         val byCode = VersionMatch.select(registry, versionCode = 200)
         assertEquals(200, byCode!!.map.versionCode)
-        assertEquals("version_code", byCode.matchedBy)
+        assertEquals(MatchedBy.VERSION_CODE, byCode.matchedBy)
 
         val byLabel = VersionMatch.select(registry, versionLabel = "1.0.0-b")
-        assertEquals("label", byLabel!!.matchedBy)
+        assertEquals(MatchedBy.LABEL, byLabel!!.matchedBy)
+        assertEquals(200, byLabel.map.versionCode)
 
         assertNull(VersionMatch.select(registry, versionCode = 999))
+    }
+
+    @Test
+    fun `MapRegistry indexes by version_code (primary) and label (fallback)`() {
+        val a = MapLoader.fromJson(minimalMap)
+        val b =
+            MapLoader.fromJson(
+                minimalMap
+                    .replace("\"version_code\": 100", "\"version_code\": 200")
+                    .replace("\"version\": \"1.0.0\"", "\"version\": \"2.0.0\""),
+            )
+        val registry = MapRegistry.fromCollection(listOf(a, b))
+        assertEquals(2, registry.size)
+        // O(1) by version_code (the authoritative key).
+        assertEquals(100, registry.byVersionCode(100)!!.versionCode)
+        assertEquals(200, registry.byVersionCode(200)!!.versionCode)
+        assertNull(registry.byVersionCode(999))
+        // Label fallback index.
+        assertEquals(100, registry.byLabel("1.0.0")!!.versionCode)
+        assertEquals(200, registry.byLabel("2.0.0")!!.versionCode)
+        assertNull(registry.byLabel("nope"))
+        // No collision here: every input has a distinct version_code.
+        assertEquals(2, registry.inputCount)
+        assertEquals(false, registry.hasVersionCodeCollision)
+    }
+
+    @Test
+    fun `MapRegistry fromCollection is last-write-wins on a duplicate version_code`() {
+        // F3 + S4: two maps share version_code 100. The LAST one fed in wins the
+        // index slot, the registry collapses to one entry, and the collapse is
+        // observable via inputCount > size (hasVersionCodeCollision).
+        val first = MapLoader.fromJson(minimalMap)
+        val second =
+            MapLoader.fromJson(
+                // Same version_code (100), different label, so we can tell which won.
+                minimalMap.replace("\"version\": \"1.0.0\"", "\"version\": \"1.0.0-second\""),
+            )
+        val registry = MapRegistry.fromCollection(listOf(first, second))
+
+        // Collapsed to one version_code slot, last-write-wins.
+        assertEquals(1, registry.size)
+        assertSame(second, registry.byVersionCode(100))
+        // The collision is surfaced (the documented inputCount-vs-size signal).
+        assertEquals(2, registry.inputCount)
+        assertEquals(true, registry.hasVersionCodeCollision)
     }
 }

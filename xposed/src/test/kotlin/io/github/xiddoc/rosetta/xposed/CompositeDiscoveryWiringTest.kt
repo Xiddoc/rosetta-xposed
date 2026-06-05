@@ -171,6 +171,23 @@ class CompositeDiscoveryWiringTest {
     }
 
     @Test
+    fun `composite write-back carries extends through the typed DiscoveredClass`() {
+        // The typed DiscoveredClass contract must preserve `extends` from the
+        // dynamic discovery into the static resolver, so a resolveClass after
+        // write-back surfaces the discovered parent.
+        val index = FakeDexKitIndex(bySuper = mapOf("zzzz" to obf))
+        val static = StaticResolutionBackend(emptyStaticMap())
+        val composite =
+            CompositeResolutionBackend(
+                static,
+                DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(superclass = "zzzz"))),
+            )
+        // First lookup discovers + writes back; second is the static hit.
+        assertEquals("zzzz", composite.resolveClass(real).extends)
+        assertEquals("zzzz", static.resolveClass(real).extends)
+    }
+
+    @Test
     fun `composite canResolve is false when neither backend knows the name`() {
         val composite =
             CompositeResolutionBackend(
@@ -239,6 +256,55 @@ class CompositeDiscoveryWiringTest {
         assertTrue(rosetta.knows(real))
         assertEquals(obf, rosetta.useClass(real).load().name)
         assertEquals(1, sink.entries().size)
+    }
+
+    @Test
+    fun `fromMapWithDiscovery wires the static map translator into dynamic argTypes`() {
+        // F1 end-to-end: the static map maps an arg class real → obf, but the
+        // class being hooked is discovered dynamically. The discovered overload
+        // carries the OBFUSCATED arg ref; the caller hooks with the REAL arg
+        // name. fromMapWithDiscovery must feed the static map's translator into
+        // the dynamic backend so the real → obf translation matches the
+        // discovered descriptor (identity translate would have thrown).
+        val mapWithArg =
+            MapLoader.fromJson(
+                """
+                {
+                  "schema_version": 2,
+                  "app": "com.example.app",
+                  "version": "1.0.0",
+                  "version_code": 100,
+                  "classes": { "com.example.RealArg": { "obfuscated": "obfArg" } }
+                }
+                """.trimIndent(),
+            )
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(LobfArg;)V"))),
+            )
+        val rosetta =
+            RosettaXposed.fromMapWithDiscovery(
+                map = mapWithArg,
+                index = index,
+                classLoader = javaClass.classLoader,
+                discovery =
+                    DiscoveryConfig(
+                        hints =
+                            mapOf(
+                                real to
+                                    DiscoveryHints(
+                                        aidlDescriptor = "Lcom/example/IFoo;",
+                                        methods = listOf(MethodDiscoveryHint(realName = "single", descriptor = "(LobfArg;)V")),
+                                    ),
+                            ),
+                    ),
+                policy = TargetPolicy(allow = listOf(obf)),
+            )
+        // Hook the discovered method by its REAL arg type; the static map's
+        // translator turns "com.example.RealArg" → "obfArg" so it matches.
+        val m = rosetta.method(real, "single", listOf("com.example.RealArg"))
+        assertEquals("c", m.resolved.obfName)
     }
 
     @Test

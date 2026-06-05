@@ -117,12 +117,12 @@
             "expectError": "Resolve"
         },
         {
-            "name": "no overload matches arg type (right arity, wrong type)",
+            "name": "no overload matches arg type (right arity, unmapped arg type -> UnknownArgType)",
             "kind": "method",
             "class": "com.example.app.Overloaded",
             "method": "g",
             "argTypes": ["java.lang.Integer"],
-            "expectError": "Resolve"
+            "expectError": "UnknownArgType"
         },
         {
             "name": "exact-type match is not widened (String vs CharSequence)",
