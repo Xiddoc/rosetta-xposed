@@ -13,21 +13,42 @@
  */
 package io.github.xiddoc.rosetta.core.resolver
 
-/** Well-known Java primitive names → their single-letter JVM descriptors. */
-private val PRIMITIVE_DESCRIPTORS: Map<String, String> =
-    mapOf(
-        "void" to "V",
-        "boolean" to "Z",
-        "byte" to "B",
-        "char" to "C",
-        "short" to "S",
-        "int" to "I",
-        "long" to "J",
-        "float" to "F",
-        "double" to "D",
-    )
-
 private val PRIMITIVE_LETTERS = Regex("^[VZBCSIJFD]$")
+
+/**
+ * The single source of truth for JVM descriptor VOCABULARY, shared across the
+ * neutral core ([toJvmDescriptor]) and the layer-4 reflection bridge
+ * (`xposed/JvmDescriptors`, which delegates here). Centralising it means the
+ * two sides cannot fork their primitive table or object-element rendering.
+ *
+ * It is reflection-free (no `Class<*>`), so it stays in `:core`: callers that
+ * have a reflected type map it to a bare primitive name / binary class name
+ * first and look it up here.
+ */
+public object Descriptors {
+    /** Well-known Java primitive names → their single-letter JVM descriptors. */
+    public val PRIMITIVE_DESCRIPTORS: Map<String, String> =
+        mapOf(
+            "void" to "V",
+            "boolean" to "Z",
+            "byte" to "B",
+            "char" to "C",
+            "short" to "S",
+            "int" to "I",
+            "long" to "J",
+            "float" to "F",
+            "double" to "D",
+        )
+
+    /** The single-letter descriptor for a primitive by [name], or null if not a primitive. */
+    public fun primitive(name: String): String? = PRIMITIVE_DESCRIPTORS[name]
+
+    /**
+     * Render an object-type descriptor from a [binaryName] (dotted or already
+     * slashed): `android.os.Bundle` → `Landroid/os/Bundle;`.
+     */
+    public fun objectDescriptor(binaryName: String): String = "L" + binaryName.replace('.', '/') + ";"
+}
 
 /**
  * Convert a user-facing type name to its JVM descriptor.
@@ -62,11 +83,10 @@ public fun toJvmDescriptor(
     }
 
     // Primitive by name.
-    PRIMITIVE_DESCRIPTORS[typeName]?.let { return it }
+    Descriptors.primitive(typeName)?.let { return it }
 
-    // Class name → translate, then wrap.
-    val translated = translate(typeName)
-    return "L" + translated.replace('.', '/') + ";"
+    // Class name → translate, then wrap (shared object-element rendering).
+    return Descriptors.objectDescriptor(translate(typeName))
 }
 
 /**
