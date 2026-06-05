@@ -12,10 +12,11 @@
  * any runner without the Android SDK, an emulator, or the Xposed API on the
  * classpath. The README shows how to wire libxposed / XposedHelpers in.
  *
- * The DexKit-backed dynamic (self-healing) backend is the one optional
- * Android-only piece; it is architected here (see DynamicResolutionBackend)
- * and built in a later phase, so its `org.luckypray:dexkit` dependency stays
- * commented out until then.
+ * The dynamic (self-healing) backend's discovery LOGIC ships now
+ * (DynamicResolutionBackend, B.1) behind a pure-JVM `DexKitIndex` seam with a
+ * fake for tests; the one Android-only piece — the real DexKit adapter that
+ * implements that seam on a device — is a thin follow-up, so its
+ * `org.luckypray:dexkit` dependency stays commented out until then.
  */
 plugins {
     kotlin("jvm")
@@ -29,7 +30,16 @@ plugins {
 dependencies {
     api(project(":core"))
 
-    // Phase 2 — on-device self-healing backend (RFC 0001 Decision 2):
+    // Dynamic backend (B.1) — contributor-supplied discovery patterns are
+    // compiled ONLY through RE2 (linear-time; no catastrophic backtracking),
+    // never java.util.regex / kotlin.text.Regex. This is the ReDoS chokepoint
+    // (audit H4); see SafePattern. RE2 is a small, pure-JVM library, so adding
+    // it keeps the module device-free and unit-testable.
+    implementation("com.google.re2j:re2j:1.7")
+
+    // The real DexKit-backed adapter that implements the `DexKitIndex` seam on
+    // a device is a thin, on-device follow-up (RFC 0001 Decision 5 — DexKit is
+    // an OPTIONAL later-phase dependency); it stays commented out here:
     //   compileOnly("de.robv.android.xposed:api:82")
     //   compileOnly("org.luckypray:dexkit:2.0.3")
 
