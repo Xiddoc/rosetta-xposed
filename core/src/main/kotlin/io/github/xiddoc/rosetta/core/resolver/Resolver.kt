@@ -69,8 +69,21 @@ public class Resolver(
     /** Resolve a class by real name. */
     public fun resolveClass(realName: String): ResolvedClass {
         classCache[realName]?.let { return it }
+        return resolvedClassFrom(realName, entryFor(realName))
+    }
 
-        val entry = entryFor(realName)
+    /**
+     * Build (and cache) the [ResolvedClass] for [realName] from an already-
+     * fetched [entry]. The single place the class result is materialized, so
+     * [resolveMethod] / [resolveField] — which already hold the [ClassEntry]
+     * from one [entryFor] call — warm the class cache without a SECOND
+     * map/override lookup.
+     */
+    private fun resolvedClassFrom(
+        realName: String,
+        entry: ClassEntry,
+    ): ResolvedClass {
+        classCache[realName]?.let { return it }
         val value = ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
         classCache[realName] = value
         return value
@@ -109,8 +122,10 @@ public class Resolver(
         val key = "$className#$methodName$argsKey"
         methodCache[key]?.let { return it }
 
-        val cls = resolveClass(className)
+        // One entry lookup (override-first); warm the class cache from it rather
+        // than re-running the lookup inside resolveClass.
         val entry = entryFor(className)
+        val cls = resolvedClassFrom(className, entry)
         // Resolve the nullable `MethodOverloads` first (absent methods map, or
         // no such method name), then read its non-null `entries`. Chaining
         // `?.entries` onto the safe-call would emit an unreachable null-branch,
@@ -178,8 +193,9 @@ public class Resolver(
         val key = "$className.$fieldName"
         fieldCache[key]?.let { return it }
 
-        val cls = resolveClass(className)
+        // One entry lookup (override-first); warm the class cache from it.
         val classEntry = entryFor(className)
+        val cls = resolvedClassFrom(className, classEntry)
         val entry =
             classEntry.fields?.get(fieldName)
                 ?: throw ResolveException(
@@ -310,6 +326,27 @@ private fun overloadMissException(
  * descriptor appears in NO overload, or null when every arg type is either a
  * known class, a primitive/array/raw descriptor, or a descriptor some overload
  * declares (a legitimate disambiguation miss, not an unmapped type).
+ *
+ * HEURISTIC — [isClassNameForm] decides "this arg type is a dotted class name
+ * the caller expected the map to know," as opposed to a raw descriptor /
+ * primitive / array the caller passed verbatim. It does so by EXCLUSION (an arg
+ * type is a class-name form only if it is none of the descriptor/primitive
+ * forms), because a class name has no positive marker — `com.example.Foo`,
+ * `IFoo`, and a bare `Foo` are all valid. The excluded forms are:
+ *   - `L…` raw object descriptor and `[…` raw array descriptor (already-encoded
+ *     forms the caller chose to pass directly);
+ *   - `…[]` source-style array (handled by [toJvmDescriptor], not a class name);
+ *   - a named primitive (`int`, `boolean`, …) per [Descriptors.primitive];
+ *   - a single character — this excludes a bare descriptor LETTER (`I`, `Z`,
+ *     `L`, …). It is safe because no real Java type name is one character long,
+ *     so it never excludes a legitimate class name; the length check is purely
+ *     "is this a lone descriptor letter," not an arbitrary length cap.
+ *
+ * PARITY: this drives WHICH exception fires (precise [UnknownArgTypeException]
+ * vs generic no-overload [ResolveException]) and is real resolution semantics,
+ * so the Frida twin must make the equivalent distinction. (Flagged for the
+ * cross-repo parity agent — see the report's Parity hand-off; the shared
+ * conformance fixtures are owned there, not edited from this branch.)
  */
 private fun unknownArgTypeOrNull(
     argTypes: List<String>,
@@ -324,6 +361,8 @@ private fun unknownArgTypeOrNull(
                 !argType.startsWith("[") &&
                 !argType.endsWith("[]") &&
                 Descriptors.primitive(argType) == null &&
+                // Exclude a lone descriptor letter (I/Z/L/…); no real type name
+                // is one character, so this never drops a legitimate class name.
                 argType.length != 1
         if (isClassNameForm && !knownClass(argType) && wanted[i] !in knownDescriptors) return argType
     }
