@@ -4,9 +4,9 @@
  * These exercise the entry-count caps, string-length caps, the `app`
  * package-name shape, JS reserved-key rejection, and the pre-parse
  * denial-of-service guard (max input size + max nesting depth) added to
- * [MapLoader]. The caps are mirrored byte for byte across all three
- * Rosetta clients (canonical rosetta-maps JSON Schema, rosetta-frida Zod,
- * this Kotlin loader), so each assertion here pins the shared contract.
+ * [MapLoader]. The caps mirror the canonical rosetta-maps JSON Schema
+ * (the authoritative reference; the frida Zod and this Kotlin client
+ * track it), so each assertion here pins that shared contract.
  */
 package io.github.xiddoc.rosetta.core
 
@@ -140,11 +140,18 @@ class SchemaBoundsTest {
     }
 
     @Test
-    fun `rejects an over-length extends short name`() {
-        val long = "z".repeat(MapLoader.MAX_SHORT_NAME_LEN + 1)
+    fun `rejects an over-length extends name`() {
+        val long = "z".repeat(MapLoader.MAX_FREE_STRING_LEN + 1)
         val map = base.copy(classes = mapOf("com.example.Foo" to ClassEntry(obfuscated = "a", extends = long)))
         val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
         assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].extends" })
+    }
+
+    @Test
+    fun `accepts an extends name at exactly MAX_FREE_STRING_LEN characters`() {
+        val atMax = "z".repeat(MapLoader.MAX_FREE_STRING_LEN)
+        val map = base.copy(classes = mapOf("com.example.Foo" to ClassEntry(obfuscated = "a", extends = atMax)))
+        assertSame(map, MapLoader.validate(map))
     }
 
     @Test
@@ -213,6 +220,21 @@ class SchemaBoundsTest {
         val long = "1".repeat(MapLoader.MAX_VERSION_LEN + 1)
         val ex = assertFailsWith<MapValidationException> { MapLoader.validate(base.copy(version = long)) }
         assertTrue(ex.issues.any { it.path == "version" && it.message.contains("exceeds") })
+    }
+
+    @Test
+    fun `rejects a version_code above MAX_VERSION_CODE`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.validate(base.copy(versionCode = MapLoader.MAX_VERSION_CODE + 1))
+            }
+        assertTrue(ex.issues.any { it.path == "version_code" })
+    }
+
+    @Test
+    fun `accepts a version_code at exactly MAX_VERSION_CODE`() {
+        val map = base.copy(versionCode = MapLoader.MAX_VERSION_CODE)
+        assertSame(map, MapLoader.validate(map))
     }
 
     @Test

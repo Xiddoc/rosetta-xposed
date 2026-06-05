@@ -13,12 +13,11 @@
  *
  * Beyond the schema gate, [validate] enforces a set of hardening BOUNDS
  * (entry counts, string lengths, the `app` package-name shape) and rejects
- * JS prototype-pollution-style reserved keys. These caps are mirrored byte
- * for byte across all three clients — the canonical rosetta-maps JSON
- * Schema, the rosetta-frida Zod validator, and this Kotlin loader — so a
- * map that loads on one loads on all. [fromJson] additionally applies a
- * cheap pre-parse denial-of-service guard (max input size, max nesting
- * depth) before kotlinx-serialization's recursive decoder ever runs.
+ * JS prototype-pollution-style reserved keys. These bounds mirror the
+ * canonical rosetta-maps JSON Schema (the authoritative reference; the
+ * frida Zod and this Kotlin client track it). [fromJson] additionally
+ * applies a cheap pre-parse denial-of-service guard (max input size, max
+ * nesting depth) before kotlinx-serialization's recursive decoder ever runs.
  */
 package io.github.xiddoc.rosetta.core
 
@@ -67,6 +66,12 @@ public object MapLoader {
 
     /** Maximum length of the `version` label. */
     public const val MAX_VERSION_LEN: Int = 256
+
+    /**
+     * Maximum value of `version_code` (Android Int32 max, matching
+     * `maximum: 2147483647` in the canonical rosetta-maps JSON Schema).
+     */
+    public const val MAX_VERSION_CODE: Long = 2_147_483_647L
 
     /** Maximum length of any other free-form string. */
     public const val MAX_FREE_STRING_LEN: Int = 4_096
@@ -220,6 +225,8 @@ public object MapLoader {
             }
             if (map.versionCode < 0) {
                 issues += ValidationIssue("version_code", "must be a non-negative integer")
+            } else if (map.versionCode > MAX_VERSION_CODE) {
+                issues += ValidationIssue("version_code", "must be at most $MAX_VERSION_CODE (Int32 max)")
             }
             free("captured_at", map.capturedAt)
             free("frida_min_version", map.fridaMinVersion)
@@ -264,7 +271,7 @@ public object MapLoader {
         ) {
             val path = "classes[$realName]"
             short("$path.obfuscated", entry.obfuscated)
-            short("$path.extends", entry.extends)
+            free("$path.extends", entry.extends)
             free("$path.dex", entry.dex)
             free("$path.aidl_descriptor", entry.aidlDescriptor)
             free("$path.source", entry.source)

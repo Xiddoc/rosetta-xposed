@@ -33,8 +33,9 @@ public class MapValidationException(
  * [MapLoader.MAX_INPUT_BYTES] (a memory-pressure / pathological-parse
  * vector), and JSON nested deeper than [MapLoader.MAX_NESTING_DEPTH] (a
  * stack-overflow vector against kotlinx-serialization's recursive
- * descent). Both clients (Frida/TS, this Kotlin one) enforce the same
- * caps so a map that loads on one loads on the other.
+ * descent). These caps mirror the canonical rosetta-maps JSON Schema
+ * (the authoritative reference; the frida Zod and this Kotlin client
+ * track it).
  */
 public class MapInputTooLargeException(
     message: String,
