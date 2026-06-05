@@ -29,7 +29,8 @@ import java.lang.reflect.Member
 public class BindException(
     message: String,
     cause: Throwable? = null,
-) : RuntimeException(message, cause)
+) : RuntimeException(message, cause),
+    XposedBindingFailure
 
 /**
  * The single chokepoint through which every target FQN is realised. Runs the

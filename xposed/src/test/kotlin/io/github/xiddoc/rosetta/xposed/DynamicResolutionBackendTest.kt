@@ -522,6 +522,35 @@ class DynamicResolutionBackendTest {
         assertNull(DiscoveryException("just a message").cause)
     }
 
+    @Test
+    fun `DiscoveryException and BindException are XposedBindingFailure`() {
+        // The marker lets a module catch any layer-4 binding failure in one
+        // clause without enumerating the concrete types.
+        assertTrue(DiscoveryException("x") is XposedBindingFailure)
+        assertTrue(BindException("y") is XposedBindingFailure)
+    }
+
+    @Test
+    fun `MapDiscoverySink records concurrently without losing entries`() {
+        // Append from many threads; the synchronized backing list must retain
+        // every record (a plain ArrayList would drop or corrupt under races).
+        val sink = MapDiscoverySink()
+        val threads = 8
+        val perThread = 250
+        val workers =
+            (0 until threads).map { t ->
+                Thread {
+                    repeat(perThread) { i ->
+                        sink.record("com.example.C$t-$i", ClassEntry(obfuscated = "o$t$i"))
+                    }
+                }
+            }
+        workers.forEach { it.start() }
+        workers.forEach { it.join() }
+        assertEquals(threads * perThread, sink.entries().size)
+        assertEquals(threads * perThread, sink.provenance().classes)
+    }
+
     // ---- Value types --------------------------------------------------------
 
     @Test
