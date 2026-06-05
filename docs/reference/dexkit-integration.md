@@ -57,27 +57,49 @@ gap:
   `testImplementation` for the integration test, which needs the real bridge at
   runtime.
 
-## The native library + supported-platform / skip semantics
+## The native library — built in CI (cached), not committed
 
 `DexKitBridge` is JNI over a native `libdexkit.so`. The published Maven artifact
 ships **only Android/bionic** `.so`s, which do not load on a desktop glibc JVM.
-So a **host-built** `libdexkit.so` (Linux x86_64, glibc) is committed under
-`dexkit/src/test/resources/native/linux-x86_64/` for the integration test.
+A **host-built** `libdexkit.so` (Linux x86_64, glibc) is therefore needed under
+`dexkit/src/test/resources/native/linux-x86_64/` for the integration test — but
+it is **NOT committed** (it would be binary bloat). Instead it is **built in CI,
+cached**, and built on demand locally:
 
-- The build **prepends** that directory to the test JVM's
-  `-Djava.library.path`, and the test calls `System.loadLibrary("dexkit")`
-  (which resolves the platform name `dexkit` → `libdexkit.so`).
-- **GLIBC_2.38 floor.** The committed `.so` requires GLIBC_2.38 or newer at load
-  time (CI's `ubuntu-latest` ships glibc 2.39).
-- **Supported platform = Linux + `amd64`/`x86_64`.** There, the native is
-  expected to load, so an `UnsatisfiedLinkError` is **fatal** — the suite fails
-  with a pointer back to the refresh script. CI thus runs every test for real
-  and goes red if the native drifts.
-- **Other platforms** (mac / arm / non-glibc) **skip cleanly** via JUnit
-  `assumeTrue`, so a missing/incompatible `.so` does not break the build there.
+- **CI builds it (cached).** `.github/workflows/ci.yml` runs
+  `tools/dexkit-native/build-libdexkit.sh` from pinned DexKit `2.2.0` source
+  before the quality gate, and caches the resulting `.so` via `actions/cache`.
+  The cache **key** is `dexkit-native-<os>-x86_64-2.2.0-<hash(build script)>`,
+  so the slow source-build only reruns when the DexKit version or the build
+  script changes; otherwise the prebuilt `.so` is restored in seconds. The JDK
+  17/21 matrix legs share the key, so at most one cold build happens.
+- **Git-ignored.** `dexkit/src/test/resources/native/` is in `.gitignore`, so a
+  local build never gets committed by accident.
+- **Local runs skip the real-DexKit test** unless you build the native first:
+  run `bash tools/dexkit-native/build-libdexkit.sh` (after
+  `apt-get install -y cmake ninja-build`), and the test then runs for real.
+
+### Present ⇒ run, absent ⇒ skip
+
+The build hands the test the native directory as the `rosetta.dexkit.nativeDir`
+system property (alongside `-Djava.library.path`), so `@BeforeAll` probes for
+`File(nativeDir, System.mapLibraryName("dexkit"))` **before** loading it:
+
+- **Native ABSENT** → nothing to load → the suite **skips** cleanly via JUnit
+  `assumeTrue` on **all** platforms, linux-x86_64 included. This is the normal
+  local-dev / unsupported-arch path; CI never hits it because CI builds the lib.
+- **Native PRESENT but unloadable** on a **supported platform** (Linux +
+  `amd64`/`x86_64`, i.e. CI on `ubuntu-latest`) → a real binary is here but
+  broken, so an `UnsatisfiedLinkError` is **fatal**: the suite fails with a
+  pointer back to `build-libdexkit.sh`. CI thus runs every test for real and
+  goes red if the native drifts.
+- **Native PRESENT but unloadable** on other platforms (mac / arm / non-glibc)
+  → benign; the suite skips, so an incompatible `.so` does not break the build.
+- **GLIBC_2.38 floor.** The `.so` requires GLIBC_2.38 or newer at load time
+  (CI's `ubuntu-latest` ships glibc 2.39).
 - Bridge creation is treated separately from native loading: any failure *other
-  than* a load failure (e.g. `DexKitBridge.create` choking on a broken dex) is a
-  real regression and is left to propagate, never skipped.
+  than* a present-native load failure (e.g. `DexKitBridge.create` choking on a
+  broken dex) is a real regression and is left to propagate, never skipped.
 
 ## Why `:dexkit` is excluded from the root Kover gate
 
@@ -91,15 +113,17 @@ therefore enforced by *deliberate* tests (the
 
 ## Refreshing the fixtures
 
-Two committed binaries back the integration test; both have a reproducible build
-script:
+Two binaries back the integration test; both have a reproducible build script.
+The DEX fixture is **committed**; the native is **built (CI-cached / on-demand),
+not committed**:
 
-- **The native `libdexkit.so`** — rebuild with
-  `tools/dexkit-native/build-libdexkit.sh [version]`. Keep the built version
-  aligned with the `org.luckypray:dexkit` Maven version on the test classpath so
-  the JNI symbol names match. The script strips the result
-  (`--strip-unneeded`, which keeps the `.dynsym` JNI exports) and prints the
-  `sha256`; record it in `tools/dexkit-native/README.md`.
+- **The native `libdexkit.so`** — build with
+  `tools/dexkit-native/build-libdexkit.sh [version]`. It is **not** committed
+  (CI builds + caches it; build it locally to run the real test). Keep the built
+  version aligned with the `org.luckypray:dexkit` Maven version on the test
+  classpath so the JNI symbol names match. The script strips the result
+  (`--strip-unneeded`, which keeps the `.dynsym` JNI exports) and **prints** the
+  `sha256` for verification (it is not recorded as a committed fixture digest).
 - **The DEX fixture `fixture.dex`** + its `fixture-mapping.json` — rebuild with
   `tools/dex-fixture/build.sh`. It compiles the small Java fixture, runs it
   through R8 to produce an obfuscated `classes.dex`, and emits the real→obf

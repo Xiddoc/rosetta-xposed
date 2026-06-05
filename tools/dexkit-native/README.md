@@ -4,6 +4,17 @@ This directory builds a **desktop/host** build of DexKit's JNI native library so
 a plain headless JVM can `System.load(...)` it and use
 `org.luckypray.dexkit.DexKitBridge` off-device.
 
+> **Not committed — built in CI (cached).** The `.so` this script produces is
+> **not** checked into the repo (it would be binary bloat). CI builds it from
+> pinned DexKit `2.2.0` source on each run and **caches** the result, keyed on
+> `runner.os` + `x86_64` + the DexKit version (`2.2.0`) + a hash of this build
+> script — so the slow source-build only reruns when the version or the script
+> changes, and the JDK 17/21 matrix legs share one cold build. Locally, the
+> integration test **skips** unless you run `build-libdexkit.sh` first to place
+> the native (see "present ⇒ run / absent ⇒ skip" below). The built `.so` is
+> git-ignored (`dexkit/src/test/resources/native/`), so a local build never
+> accidentally gets committed.
+
 ## Why this exists
 
 The published Maven artifact `org.luckypray:dexkit:2.2.0` ships **only**
@@ -104,16 +115,24 @@ name `dexkit` → `libdexkit.so` from that path. The file MUST therefore be name
 exactly `libdexkit.so` (the `lib` prefix + `.so` suffix is the Linux mapping
 `System.mapLibraryName("dexkit")` applies); renaming it breaks `loadLibrary`.
 
-Skip vs. fail semantics (see `DexKitBackedIndexIntegrationTest`):
+Present ⇒ run, absent ⇒ skip (see `DexKitBackedIndexIntegrationTest`). The build
+hands the test the native directory as the `rosetta.dexkit.nativeDir` system
+property (in addition to `-Djava.library.path`), so the test can probe for the
+file before trying to load it:
 
-- On a **supported platform** — Linux on an `amd64`/`x86_64` JVM (e.g. CI on
-  `ubuntu-latest`) — the committed native is expected to load, so an
-  `UnsatisfiedLinkError` is **fatal**: the test fails with a pointer back to
-  this script. CI thus runs the full suite for real and goes red if the native
-  drifts or breaks.
-- On any **other platform** (mac / arm / non-glibc), a load failure is benign
-  and the test `assumeTrue`-skips, so a missing/incompatible `.so` does not
-  break the build there.
+- **Native ABSENT** (the normal local-dev path, or an arch CI never builds for):
+  there is nothing to load, so the test `assumeTrue`-**skips** cleanly on **all**
+  platforms, linux-x86_64 included. Build it with `build-libdexkit.sh` to run the
+  real tests.
+- **Native PRESENT but unloadable** on a **supported platform** — Linux on an
+  `amd64`/`x86_64` JVM (e.g. CI on `ubuntu-latest`, which builds it) — an
+  `UnsatisfiedLinkError` is **fatal**: a real binary is here but broken (e.g.
+  glibc below the GLIBC_2.38 floor, or a drifted build), so the test fails with
+  a pointer back to this script. CI thus runs the full suite for real and goes
+  red if the native drifts or breaks.
+- **Native PRESENT but unloadable** on any **other platform** (mac / arm /
+  non-glibc): a load failure is benign and the test `assumeTrue`-skips, so an
+  incompatible `.so` does not break the build there.
 
 ### GLIBC floor
 
@@ -123,15 +142,18 @@ will surface as an `UnsatisfiedLinkError` (version-symbol mismatch) — rebuild 
 a host with the required glibc via `build-libdexkit.sh` if you need a lower
 floor.
 
-## Verification (this build)
+## Verification (reference build)
 
-The committed `.so` is **stripped** (`strip --strip-unneeded`, the final step of
+The built `.so` is **stripped** (`strip --strip-unneeded`, the final step of
 `build-libdexkit.sh`) to shrink it; this preserves the `.dynsym` table so all 39
-`Java_org_luckypray_dexkit_*` JNI exports remain (verified below).
+`Java_org_luckypray_dexkit_*` JNI exports remain (verified below). The script
+**prints** the `sha256` of the result for ad-hoc verification — the `.so` is not
+committed, so the hash below is a reference value from one reproducible build,
+not a recorded fixture digest.
 
 | Item | Value |
 |------|-------|
-| sha256 (stripped) | `4f182433f23ffcea9e6e9320bd46755dba5300642f38721263c84a1bfa946fef` |
+| sha256 (stripped, reference build) | `4f182433f23ffcea9e6e9320bd46755dba5300642f38721263c84a1bfa946fef` |
 | GLIBC floor | **GLIBC_2.38** (built on Ubuntu 24.04 / glibc 2.39) |
 
 `file`:
