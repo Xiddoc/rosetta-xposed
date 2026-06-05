@@ -157,13 +157,14 @@ class CoverageTest {
     // DynamicResolutionBackendTest. See that file for the strategy + miss +
     // feedback + provenance + ReDoS-bounds cases.
 
-    // ---- Public RosettaXposed constructor with the default policy.
+    // ---- Internal RosettaXposed constructor with the default policy.
 
     @Test
-    fun `public constructor uses the default policy`() {
-        // Exercise the public (backend, classLoader, appName) constructor with
+    fun `internal constructor uses the default policy`() {
+        // Exercise the internal (backend, classLoader, appName) constructor with
         // the default-valued policy argument; an app-prefixed but unknown class
         // passes the guard and surfaces as a BindException, not a policy denial.
+        // (Public unverified construction is only via fromMapUnverified.)
         val r = RosettaXposed(StaticResolutionBackend(map), javaClass.classLoader, "com.example.app")
         assertTrue(r.knows("com.example.RealClient"))
     }
