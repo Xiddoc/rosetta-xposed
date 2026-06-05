@@ -1,0 +1,166 @@
+{
+    "description": "Signature-utility semantics: JVM-descriptor argument splitting (parseSignatureArgs) and type-name -> descriptor conversion (toJvmDescriptor). Covers primitives, all single-letter descriptors, object types, single/multi-dim arrays, arrays of objects, empty arg lists, malformed-signature errors, and the raw-descriptor / lone-primitive-letter passthroughs. A 'map' is present only so toJvmDescriptor's real->obf translator has something to consult. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Foo": {
+                "obfuscated": "xyz"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "parse: empty arg list",
+            "kind": "parseSignatureArgs",
+            "signature": "()V",
+            "expectList": []
+        },
+        {
+            "name": "parse: single object arg",
+            "kind": "parseSignatureArgs",
+            "signature": "(Landroid/os/Bundle;)V",
+            "expectList": ["Landroid/os/Bundle;"]
+        },
+        {
+            "name": "parse: mixed object and primitive args",
+            "kind": "parseSignatureArgs",
+            "signature": "(Landroid/os/Bundle;Lbbbb;I)V",
+            "expectList": ["Landroid/os/Bundle;", "Lbbbb;", "I"]
+        },
+        {
+            "name": "parse: every primitive descriptor",
+            "kind": "parseSignatureArgs",
+            "signature": "(ZBCSIJFD)V",
+            "expectList": ["Z", "B", "C", "S", "I", "J", "F", "D"]
+        },
+        {
+            "name": "parse: primitive array",
+            "kind": "parseSignatureArgs",
+            "signature": "([I)V",
+            "expectList": ["[I"]
+        },
+        {
+            "name": "parse: multi-dimensional primitive array",
+            "kind": "parseSignatureArgs",
+            "signature": "([[[J)V",
+            "expectList": ["[[[J"]
+        },
+        {
+            "name": "parse: object array",
+            "kind": "parseSignatureArgs",
+            "signature": "([Ljava/lang/String;)V",
+            "expectList": ["[Ljava/lang/String;"]
+        },
+        {
+            "name": "parse: array of object then primitive",
+            "kind": "parseSignatureArgs",
+            "signature": "([Ljava/lang/String;I)V",
+            "expectList": ["[Ljava/lang/String;", "I"]
+        },
+        {
+            "name": "parse: multi-dim object array",
+            "kind": "parseSignatureArgs",
+            "signature": "([[Lbbbb;)V",
+            "expectList": ["[[Lbbbb;"]
+        },
+        {
+            "name": "parse error: missing opening paren",
+            "kind": "parseSignatureArgs",
+            "signature": "Landroid/os/Bundle;)V",
+            "expectError": "IllegalArgument"
+        },
+        {
+            "name": "parse error: missing closing paren",
+            "kind": "parseSignatureArgs",
+            "signature": "(Landroid/os/Bundle;V",
+            "expectError": "IllegalArgument"
+        },
+        {
+            "name": "parse error: unterminated object type",
+            "kind": "parseSignatureArgs",
+            "signature": "(Landroid/os/Bundle)V",
+            "expectError": "IllegalArgument"
+        },
+        {
+            "name": "parse error: array prefix without element",
+            "kind": "parseSignatureArgs",
+            "signature": "([)V",
+            "expectError": "IllegalArgument"
+        },
+        {
+            "name": "parse error: unterminated array-of-object type",
+            "kind": "parseSignatureArgs",
+            "signature": "([Lbbbb)V",
+            "expectError": "IllegalArgument"
+        },
+        {
+            "name": "descriptor: primitive int",
+            "kind": "toJvmDescriptor",
+            "type": "int",
+            "expectResult": "I"
+        },
+        {
+            "name": "descriptor: primitive boolean",
+            "kind": "toJvmDescriptor",
+            "type": "boolean",
+            "expectResult": "Z"
+        },
+        {
+            "name": "descriptor: void",
+            "kind": "toJvmDescriptor",
+            "type": "void",
+            "expectResult": "V"
+        },
+        {
+            "name": "descriptor: unmapped framework class",
+            "kind": "toJvmDescriptor",
+            "type": "android.os.Bundle",
+            "expectResult": "Landroid/os/Bundle;"
+        },
+        {
+            "name": "descriptor: mapped real class translates to obf",
+            "kind": "toJvmDescriptor",
+            "type": "com.example.app.Foo",
+            "expectResult": "Lxyz;"
+        },
+        {
+            "name": "descriptor: primitive array",
+            "kind": "toJvmDescriptor",
+            "type": "int[]",
+            "expectResult": "[I"
+        },
+        {
+            "name": "descriptor: multi-dim object array",
+            "kind": "toJvmDescriptor",
+            "type": "java.lang.String[][]",
+            "expectResult": "[[Ljava/lang/String;"
+        },
+        {
+            "name": "descriptor: already-object-descriptor passthrough",
+            "kind": "toJvmDescriptor",
+            "type": "Lbbbb;",
+            "expectResult": "Lbbbb;"
+        },
+        {
+            "name": "descriptor: already-array-descriptor passthrough",
+            "kind": "toJvmDescriptor",
+            "type": "[I",
+            "expectResult": "[I"
+        },
+        {
+            "name": "descriptor: lone primitive letter passthrough",
+            "kind": "toJvmDescriptor",
+            "type": "J",
+            "expectResult": "J"
+        },
+        {
+            "name": "descriptor error: empty type name",
+            "kind": "toJvmDescriptor",
+            "type": "",
+            "expectError": "IllegalArgument"
+        }
+    ]
+}

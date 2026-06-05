@@ -1,0 +1,95 @@
+{
+    "description": "Field resolution: static vs instance, type and obf-class-name propagation, and field/fields-map/class misses. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Holder": {
+                "obfuscated": "aaaa",
+                "fields": {
+                    "DESCRIPTOR": {
+                        "obfuscated": "X",
+                        "type": "Ljava/lang/String;",
+                        "static": true
+                    },
+                    "count": {
+                        "obfuscated": "a",
+                        "type": "I"
+                    },
+                    "callback": {
+                        "obfuscated": "b",
+                        "type": "Lbbbb;",
+                        "static": false
+                    }
+                }
+            },
+            "com.example.app.NoFields": {
+                "obfuscated": "cccc"
+            },
+            "com.example.app.EmptyFields": {
+                "obfuscated": "dddd",
+                "fields": {}
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "static field",
+            "kind": "field",
+            "class": "com.example.app.Holder",
+            "field": "DESCRIPTOR",
+            "expectObf": "X",
+            "expectStatic": true,
+            "expectType": "Ljava/lang/String;",
+            "expectClassName": "aaaa"
+        },
+        {
+            "name": "instance field defaults static=false (absent flag)",
+            "kind": "field",
+            "class": "com.example.app.Holder",
+            "field": "count",
+            "expectObf": "a",
+            "expectStatic": false,
+            "expectType": "I"
+        },
+        {
+            "name": "instance field with explicit static=false",
+            "kind": "field",
+            "class": "com.example.app.Holder",
+            "field": "callback",
+            "expectObf": "b",
+            "expectStatic": false,
+            "expectType": "Lbbbb;"
+        },
+        {
+            "name": "miss: unknown field on known class",
+            "kind": "field",
+            "class": "com.example.app.Holder",
+            "field": "nope",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: field on class with no fields map",
+            "kind": "field",
+            "class": "com.example.app.NoFields",
+            "field": "anything",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: field on class with empty fields map",
+            "kind": "field",
+            "class": "com.example.app.EmptyFields",
+            "field": "anything",
+            "expectError": "Resolve"
+        },
+        {
+            "name": "miss: field on unknown class",
+            "kind": "field",
+            "class": "com.example.app.Ghost",
+            "field": "x",
+            "expectError": "Resolve"
+        }
+    ]
+}
