@@ -51,7 +51,7 @@ class CoverageTest {
             """.trimIndent(),
         )
 
-    private val rosetta = RosettaXposed.fromMap(map, javaClass.classLoader)
+    private val rosetta = RosettaXposed.fromMapUnverified(map, javaClass.classLoader)
 
     // ---- JvmDescriptors: every primitive, plus array and object wrapping.
 
@@ -128,12 +128,12 @@ class CoverageTest {
                 packageName = "com.example.app",
                 versionCode = 42,
                 versionName = "1.2.3",
-                signerSha256 = "deadbeef",
+                signerSha256s = setOf("a".repeat(64), "b".repeat(64)),
             )
         assertEquals("com.example.app", id.packageName)
         assertEquals(42, id.versionCode)
         assertEquals("1.2.3", id.versionName)
-        assertEquals("deadbeef", id.signerSha256)
+        assertEquals(setOf("a".repeat(64), "b".repeat(64)), id.signerSha256s)
     }
 
     @Test

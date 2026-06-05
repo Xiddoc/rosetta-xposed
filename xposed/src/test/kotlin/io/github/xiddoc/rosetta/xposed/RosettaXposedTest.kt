@@ -43,7 +43,7 @@ class RosettaXposedTest {
             """.trimIndent(),
         )
 
-    private val rosetta = RosettaXposed.fromMap(map, javaClass.classLoader)
+    private val rosetta = RosettaXposed.fromMapUnverified(map, javaClass.classLoader)
 
     @Test
     fun `binds a single-overload method to the obfuscated member`() {

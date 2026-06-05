@@ -4,15 +4,18 @@
  * JVM — no Android, no device — by driving SignerGuard / RosettaXposed with
  * synthetic AppIdentity values:
  *
- *   - match (normalized-equal)                → passes
- *   - mismatch                                → SignerMismatchException
- *   - map demands signer, identity has none   → MissingSignerException
- *   - map has no signer                       → no check (passes)
- *   - normalization (colons + case)           → equal hashes match
- *   - no identity at all (fromMap no-identity)→ no check (passes)
+ *   - match (normalized-equal, single signer)  → passes
+ *   - multi-signer match-any (non-first cert)   → passes
+ *   - mismatch                                  → SignerMismatchException
+ *   - map demands signer, app set empty         → MissingSignerException
+ *   - map has no signer                         → no check (passes)
+ *   - normalization (colons + case + trim)      → equal hashes match
+ *   - malformed map hash                        → MalformedSignerException
+ *   - unverified path performs no signer check
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.MalformedSignerException
 import io.github.xiddoc.rosetta.core.MapLoader
 import io.github.xiddoc.rosetta.core.MissingSignerException
 import io.github.xiddoc.rosetta.core.SignerMismatchException
@@ -25,6 +28,11 @@ import kotlin.test.assertTrue
 
 class SignerGuardTest {
     private val obf = "io.github.xiddoc.rosetta.xposed.fixtures.ObfClient"
+
+    // Full 64-char hex SHA-256 fixtures.
+    private val hashA = "a".repeat(64)
+    private val hashB = "b".repeat(64)
+    private val hashC = "c".repeat(64)
 
     private fun mapJson(signer: String?): String {
         val signerLine = if (signer == null) "" else """"signer_sha256": "$signer","""
@@ -49,12 +57,12 @@ class SignerGuardTest {
 
     private fun map(signer: String?) = MapLoader.fromJson(mapJson(signer))
 
-    private fun identity(signer: String?) =
+    private fun identity(vararg signers: String) =
         AppIdentity(
             packageName = "com.example.app",
             versionCode = 100,
             versionName = "1.0.0",
-            signerSha256 = signer,
+            signerSha256s = signers.toSet(),
         )
 
     private val loader = javaClass.classLoader
@@ -63,14 +71,23 @@ class SignerGuardTest {
 
     @Test
     fun `matching signer passes and binds`() {
-        val bound = RosettaXposed.fromMap(map("abcd1234"), loader, identity("abcd1234"))
+        val bound = RosettaXposed.fromMap(map(hashA), loader, identity(hashA))
         assertTrue(bound.knows("com.example.RealClient"))
     }
 
     @Test
-    fun `verifySigner is a no-op on a match`() {
+    fun `verify is a no-op on a match`() {
         // verify() returns Unit and throws nothing on a match.
-        RosettaXposed.verifySigner(map("abcd1234"), identity("abcd1234"))
+        SignerGuard.verify(map(hashA), identity(hashA))
+    }
+
+    // ---- multi-signer match-any.
+
+    @Test
+    fun `multi-signer set matches a non-first certificate`() {
+        // Map pins hashC; the app is signed by {hashA, hashB, hashC}.
+        val bound = RosettaXposed.fromMap(map(hashC), loader, identity(hashA, hashB, hashC))
+        assertTrue(bound.knows("com.example.RealClient"))
     }
 
     // ---- mismatch.
@@ -79,108 +96,165 @@ class SignerGuardTest {
     fun `mismatched signer fails closed with expected vs actual`() {
         val ex =
             assertFailsWith<SignerMismatchException> {
-                RosettaXposed.fromMap(map("aaaa"), loader, identity("bbbb"))
+                RosettaXposed.fromMap(map(hashA), loader, identity(hashB))
             }
-        assertEquals("aaaa", ex.expected)
-        assertEquals("bbbb", ex.actual)
-        assertTrue(ex.message!!.contains("aaaa"))
-        assertTrue(ex.message!!.contains("bbbb"))
+        assertEquals(hashA, ex.expected)
+        assertTrue(ex.actual.contains(hashB))
+        assertTrue(ex.message!!.contains(hashA))
+        assertTrue(ex.message!!.contains(hashB))
+    }
+
+    @Test
+    fun `multi-signer set with no member matching fails closed`() {
+        val ex =
+            assertFailsWith<SignerMismatchException> {
+                RosettaXposed.fromMap(map(hashC), loader, identity(hashA, hashB))
+            }
+        assertEquals(hashC, ex.expected)
+        assertTrue(ex.actual.contains(hashA))
+        assertTrue(ex.actual.contains(hashB))
     }
 
     @Test
     fun `mismatch through fromRegistry fails closed`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map("aaaa"))
+        val registry: MapRegistry = mapOf("1.0.0" to map(hashA))
         assertFailsWith<SignerMismatchException> {
-            RosettaXposed.fromRegistry(registry, identity("ffff"), loader)
+            RosettaXposed.fromRegistry(registry, identity(hashB), loader)
         }
     }
 
-    // ---- map demands signer, identity supplies none.
+    // ---- map demands signer, app set is empty.
 
     @Test
-    fun `map demands signer but identity is null fails closed`() {
+    fun `map demands signer but app set is empty fails closed`() {
         val ex =
             assertFailsWith<MissingSignerException> {
-                RosettaXposed.fromMap(map("abcd"), loader, identity(null))
+                RosettaXposed.fromMap(map(hashA), loader, identity())
             }
-        assertEquals("abcd", ex.expected)
-        assertTrue(ex.message!!.contains("supply AppIdentity.signerSha256"))
+        assertEquals(hashA, ex.expected)
+        assertTrue(ex.message!!.contains("populate AppIdentity.signerSha256s"))
     }
 
     @Test
-    fun `map demands signer but identity is null through fromRegistry fails closed`() {
-        val registry: MapRegistry = mapOf("1.0.0" to map("abcd"))
+    fun `map demands signer but app set is empty through fromRegistry fails closed`() {
+        val registry: MapRegistry = mapOf("1.0.0" to map(hashA))
         assertFailsWith<MissingSignerException> {
-            RosettaXposed.fromRegistry(registry, identity(null), loader)
+            RosettaXposed.fromRegistry(registry, identity(), loader)
+        }
+    }
+
+    @Test
+    fun `app set with only malformed entries is treated as empty`() {
+        // Malformed app-set hashes are skipped; if nothing well-formed
+        // remains, the map's demand can't be satisfied → MissingSigner.
+        assertFailsWith<MissingSignerException> {
+            RosettaXposed.fromMap(map(hashA), loader, identity("not-hex", "abcd"))
         }
     }
 
     // ---- map has no signer → opt-in guard skipped.
 
     @Test
-    fun `map without signer skips the check even when identity has one`() {
-        val bound = RosettaXposed.fromMap(map(null), loader, identity("abcd"))
+    fun `map without signer skips the check even when app set has hashes`() {
+        val bound = RosettaXposed.fromMap(map(null), loader, identity(hashA))
         assertTrue(bound.knows("com.example.RealClient"))
     }
 
     @Test
-    fun `map without signer skips the check when identity is null`() {
-        RosettaXposed.verifySigner(map(null), identity(null))
+    fun `map without signer skips the check when app set is empty`() {
+        SignerGuard.verify(map(null), identity())
     }
 
-    // ---- no-identity fromMap performs no signer check (documented).
+    // ---- unverified path performs no signer check.
 
     @Test
-    fun `no-identity fromMap does not enforce a signer guard`() {
-        // Even a signer-bearing map binds via the no-identity overload — that
+    fun `unverified fromMap does not enforce a signer guard`() {
+        // Even a signer-bearing map binds via the unverified overload — that
         // path deliberately performs no check.
-        val bound = RosettaXposed.fromMap(map("abcd"), loader)
+        val bound = RosettaXposed.fromMapUnverified(map(hashA), loader)
         assertTrue(bound.knows("com.example.RealClient"))
     }
 
+    // ---- malformed map hash → MalformedSignerException.
+
     @Test
-    fun `SignerGuard verify with null identity is a no-op`() {
-        // The identity==null branch of SignerGuard.verify (used by the
-        // no-identity path) skips silently for a signer-bearing map.
-        SignerGuard.verify(map("abcd"), null)
+    fun `too-short map hash is malformed`() {
+        val ex =
+            assertFailsWith<MalformedSignerException> {
+                SignerGuard.verify(map("deadbeef"), identity(hashA))
+            }
+        assertEquals("deadbeef", ex.value)
+        assertTrue(ex.reason.contains("64"))
     }
 
-    // ---- normalization: colons + case differences still match.
+    @Test
+    fun `non-hex map hash is malformed`() {
+        assertFailsWith<MalformedSignerException> {
+            // 64 chars but contains non-hex letters.
+            SignerGuard.verify(map("z".repeat(64)), identity(hashA))
+        }
+    }
+
+    @Test
+    fun `empty map hash is malformed`() {
+        assertFailsWith<MalformedSignerException> {
+            SignerGuard.verify(map(""), identity(hashA))
+        }
+    }
+
+    @Test
+    fun `interior-whitespace map hash is malformed`() {
+        // Surrounding whitespace is trimmed, but interior whitespace is not
+        // stripped, so it survives to fail the 64-hex check.
+        val withInterior = "a".repeat(32) + " " + "a".repeat(31)
+        assertFailsWith<MalformedSignerException> {
+            SignerGuard.verify(map(withInterior), identity(hashA))
+        }
+    }
+
+    // ---- normalization: colons + case + surrounding whitespace still match.
 
     @Test
     fun `normalization strips colons and lowercases`() {
-        // Map carries colon-grouped uppercase; identity carries lowercase
+        // Map carries colon-grouped uppercase; app carries lowercase
         // contiguous hex. They normalize to the same value → match.
-        val bound =
-            RosettaXposed.fromMap(
-                map("AB:CD:EF:01"),
-                loader,
-                identity("abcdef01"),
-            )
+        val colonUpper = ("AB").let { pair -> List(32) { pair }.joinToString(":") } // 32 "AB" groups
+        val contiguous = "ab".repeat(32)
+        val bound = RosettaXposed.fromMap(map(colonUpper), loader, identity(contiguous))
         assertTrue(bound.knows("com.example.RealClient"))
     }
 
     @Test
-    fun `normalization strips whitespace`() {
-        RosettaXposed.verifySigner(map("ab cd\tef"), identity("ABCDEF"))
+    fun `normalization trims surrounding whitespace`() {
+        SignerGuard.verify(map("  " + hashA.uppercase() + "\t"), identity(hashA))
     }
 
     @Test
     fun `normalized mismatch still throws and reports normalized forms`() {
+        val expected = "ab".repeat(32)
         val ex =
             assertFailsWith<SignerMismatchException> {
-                RosettaXposed.verifySigner(map("AA:BB"), identity("ccdd"))
+                SignerGuard.verify(map("AB".let { p -> List(32) { p }.joinToString(":") }), identity(hashC))
             }
-        assertEquals("aabb", ex.expected)
-        assertEquals("ccdd", ex.actual)
+        assertEquals(expected, ex.expected)
+        assertTrue(ex.actual.contains(hashC))
     }
 
     // ---- exception field accessors (coverage of the typed taxonomy).
 
     @Test
     fun `MissingSignerException exposes the expected hash`() {
-        val ex = MissingSignerException("nope", expected = "abcd")
-        assertEquals("abcd", ex.expected)
+        val ex = MissingSignerException("nope", expected = hashA)
+        assertEquals(hashA, ex.expected)
         assertNotNull(ex.message)
+    }
+
+    @Test
+    fun `MalformedSignerException exposes value and reason`() {
+        val ex = MalformedSignerException(value = "bad", reason = "too short")
+        assertEquals("bad", ex.value)
+        assertEquals("too short", ex.reason)
+        assertTrue(ex.message!!.contains("bad"))
+        assertTrue(ex.message!!.contains("too short"))
     }
 }
