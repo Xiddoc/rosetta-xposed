@@ -77,6 +77,10 @@ internal class TargetLoader(
         // the app loader (or one of its descendants/ancestors short of the
         // boot/system loaders). A boot/null/system-loaded class with a
         // non-allowlisted FQN is a foreign target — hard-deny.
+        // Restricting to boot/null/system/platform scope is an explicit design
+        // decision (owner-approved, RFC 0001 C1): it covers every framework
+        // class on a stock Android device while leaving the app's own class
+        // hierarchy (realised by child loaders) fully accessible.
         if (!policy.allow.contains(normalizedElement(fqn)) && loadedByPlatformLoader(cls)) {
             throw TargetPolicyException(
                 name = name,

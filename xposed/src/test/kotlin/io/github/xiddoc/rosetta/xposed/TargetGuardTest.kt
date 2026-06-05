@@ -150,6 +150,17 @@ class TargetGuardTest {
     }
 
     @Test
+    fun `bare internal-slash form is denied (normalize maps slash to dot)`() {
+        // A bare un-wrapped internal name like `java/lang/Runtime` (no leading `[L…;`)
+        // is not an array descriptor: normalize replaces `/` → `.` on the raw body,
+        // yielding `java.lang.Runtime`, which hits the reserved denylist.
+        // This pins the non-array-wrapped slash-separator branch of normalize().
+        assertFalse(allowed("java/lang/Runtime"), "bare internal name should be DENIED")
+        // Confirm that a bare app-prefixed internal name (no array) resolves fine.
+        assertTrue(allowed("com/example/app/Foo"), "bare internal app name should be ALLOWED")
+    }
+
+    @Test
     fun `nested classes split namespace on dot only`() {
         assertTrue(allowed("com.example.app.Foo\$Bar"))
         assertFalse(allowed("android.os.Foo\$Bar"))
@@ -163,6 +174,35 @@ class TargetGuardTest {
         assertFalse(allowed("Java.lang.Runtime"))
         // An app-prefixed but wrong-case prefix is foreign => DENY.
         assertFalse(allowed("Com.example.app.Foo"))
+    }
+
+    // ---- reserved-tree app friction -----------------------------------------
+
+    @Test
+    fun `app whose package is under a reserved tree cannot implicitly resolve those targets`() {
+        // Real-world case: the Play Store (`com.android.vending`) has
+        // appNamespaceLabels = 2 → app prefix `com.android`, which sits inside
+        // the reserved `com.android.` tree.  The reserved denylist wins over the
+        // app-prefix ALLOW (decision step 3 beats step 5), so even classes that
+        // are genuinely part of the app package are denied implicitly.
+        // The escape hatch (exact-FQN allow) is the only path to permit them.
+        val p = TargetPolicy() // default policy, includes "com.android." in denylist
+        val ap = TargetGuard.appPrefixOf("com.android.vending", p) // → "com.android"
+        assertEquals("com.android", ap)
+
+        // Implicit resolution of an app-owned class is DENIED (reserved wins).
+        assertFalse(
+            TargetGuard.isAllowed("com.android.vending.billing.InAppBillingService", ap, p),
+            "reserved denylist must beat the app prefix for com.android.vending",
+        )
+
+        // Exact-FQN allowlist is the only escape — the allow list wins at step 2,
+        // before the reserved denylist is consulted.
+        val withAllow = TargetPolicy(allow = listOf("com.android.vending.billing.InAppBillingService"))
+        assertTrue(
+            TargetGuard.isAllowed("com.android.vending.billing.InAppBillingService", ap, withAllow),
+            "explicit allow must permit an app class in a reserved namespace",
+        )
     }
 
     // ---- escape hatch --------------------------------------------------------

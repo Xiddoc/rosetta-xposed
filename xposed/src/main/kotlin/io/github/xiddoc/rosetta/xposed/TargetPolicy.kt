@@ -99,6 +99,11 @@ public object TargetGuard {
      * Derive the app namespace prefix (the first [TargetPolicy.appNamespaceLabels]
      * dot-separated labels of [app]). Used by the binding to pass a concrete
      * prefix into [isAllowed]/[assertAllowed].
+     *
+     * **Caveat:** a very short [app] value (e.g. a single-label package like
+     * `"myapp"`) yields an equally short — and therefore very broad — app prefix.
+     * Callers should validate that `app` is a well-formed reverse-DNS package name
+     * before calling this function.
      */
     public fun appPrefixOf(
         app: String,

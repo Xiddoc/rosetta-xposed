@@ -101,22 +101,32 @@ a **namespace guard** (`TargetGuard` / `TargetPolicy`) before any load.
 Decision order (fail-closed, strict — a denied target **throws**
 `TargetPolicyException`, there is no warn-and-proceed):
 
-1. exact-FQN allowlist (`TargetPolicy.allow`) → ALLOW;
-2. top-level prefix on the reserved denylist
+1. normalize: strip array markers (`[L…;`, `…[]`) to the element class
+   FQN; map internal `/`-separators to `.`; primitives / `void` / empty
+   → ALLOW immediately (not loadable classes, never a threat);
+2. exact-FQN allowlist (`TargetPolicy.allow`) → ALLOW — matched on the
+   **normalized** element FQN (so `allow = ["java.lang.Runtime"]` also
+   allows `[Ljava.lang.Runtime;`); matching is **case-sensitive**;
+3. top-level prefix on the reserved denylist
    (`DEFAULT_DENY_PREFIXES` — `java.`, `android.`, `androidx.`,
-   `kotlin.`, `dalvik.`, `dagger.`, …) → DENY (even under the app prefix);
-3. package-local (no `.`) → ALLOW;
-4. under the app's own prefix (first two labels of `map.app`,
+   `kotlin.`, `dalvik.`, `dagger.`, …) → DENY (beats the app prefix —
+   see note below);
+4. package-local (no `.` in the element FQN) → ALLOW;
+5. under the app's own prefix (first two labels of `map.app`,
    configurable via `appNamespaceLabels`) → ALLOW;
-5. otherwise → DENY.
+6. otherwise → DENY.
 
-Targets are normalized first: array markers are stripped to the element
-class, primitives/`void` are always allowed, and the namespace is split
-on `.` (so `com.example.app.Foo$Bar` is allowed but `android.os.Foo$Bar`
-is denied). Matching is case-sensitive. As defense-in-depth, after a
-successful `Class.forName` the binding hard-denies a target realised by
-the boot/system/platform class loader unless it was explicitly
-allowlisted.
+> **Reserved-prefix beats app-prefix.** If the app's own package falls
+> inside a reserved tree — e.g. `app = "com.android.vending"` with
+> app-prefix `com.android` — the reserved denylist still wins for
+> `com.android.*` targets (step 3 fires before step 5). The app must use
+> the exact-FQN `allow` escape hatch (step 2) to explicitly permit any of
+> its own classes that live in a reserved namespace. This is intentional
+> fail-closed behaviour, not a bug.
+
+As defense-in-depth, after a successful `Class.forName` the binding
+hard-denies a target realised by the boot/system/platform class loader
+unless it was explicitly allowlisted (step 2).
 
 ```kotlin
 // Default policy: app-owned + package-local targets only.
