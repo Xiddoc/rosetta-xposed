@@ -323,4 +323,22 @@ class CoverageTest {
             Properties.decodeFromMap(MethodOverloads.serializer(), emptyMap())
         }
     }
+
+    @Test
+    fun `TargetPolicyException carries name, target, reason and renders a message`() {
+        val ex =
+            TargetPolicyException(
+                name = "com.example.app.RemoteClient",
+                target = "java.lang.Runtime",
+                reason = "on the reserved denylist",
+            )
+        assertEquals("com.example.app.RemoteClient", ex.name)
+        assertEquals("java.lang.Runtime", ex.target)
+        assertEquals("on the reserved denylist", ex.reason)
+        assertTrue(ex is RosettaException)
+        val message = ex.message
+        assertTrue(message != null && message.contains("java.lang.Runtime"))
+        assertTrue(message.contains("com.example.app.RemoteClient"))
+        assertTrue(message.contains("on the reserved denylist"))
+    }
 }
