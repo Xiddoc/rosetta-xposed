@@ -127,10 +127,12 @@ val installGitHooks by tasks.registering(Copy::class) {
     group = "git hooks"
 
     val gitDir = rootProject.layout.projectDirectory.dir(".git")
-    // Skip silently when there is no .git dir (e.g. a source tarball or a CI
-    // checkout that builds without repo metadata) so the build never fails for
-    // lack of a hooks directory.
-    onlyIf { gitDir.asFile.exists() }
+    // Skip silently unless `.git` is a real directory. In a `git worktree`,
+    // `.git` is a POINTER FILE (not a directory) and has no `hooks/` subdir to
+    // copy into, so an `.exists()` guard would wrongly pass and then fail the
+    // copy. `isDirectory` also covers the source-tarball / CI-without-metadata
+    // case (no `.git` at all), so the build never fails for lack of hooks.
+    onlyIf { gitDir.asFile.isDirectory }
 
     from(rootProject.layout.projectDirectory.file("gradle/hooks/pre-commit"))
     into(gitDir.dir("hooks"))
