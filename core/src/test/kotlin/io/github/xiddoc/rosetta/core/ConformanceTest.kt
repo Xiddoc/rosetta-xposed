@@ -57,6 +57,8 @@ class ConformanceTest {
             "/conformance/signatures.json",
             "/conformance/type-translation.json",
             "/conformance/introspection.json",
+            "/conformance/errors.json",
+            "/conformance/validation.json",
         )
 
     @TestFactory
@@ -91,6 +93,15 @@ class ConformanceTest {
     ) {
         val kind = case["kind"]!!.jsonPrimitive.content
         val expectError = case["expectError"]?.jsonPrimitive?.content
+
+        // `validate` is a VALIDATION case (not resolution): it carries its own
+        // inline `inputMap` and asserts the schema/bounds gate accepts or
+        // rejects it. Handled before the resolution dispatch because it never
+        // touches the shared resolver.
+        if (kind == "validate") {
+            runValidateCase(case, expectError)
+            return
+        }
 
         if (expectError != null) {
             assertExpectedError(expectError) { invoke(resolver, kind, case) }
@@ -165,12 +176,46 @@ class ConformanceTest {
         assertEquals(case.str("expectResult"), result)
     }
 
+    /**
+     * Run a `validate`-kind case: decode the inline `inputMap` and run it
+     * through [MapLoader.validate]. Either `expectError: "MapValidation"` (the
+     * map must be rejected) or `expectValid: true` (the map must pass). This is
+     * how the oracle covers VALIDATION semantics (e.g. the `minLength: 1`
+     * non-empty `obfuscated` rule) on top of resolution semantics.
+     */
+    private fun runValidateCase(
+        case: JsonObject,
+        expectError: String?,
+    ) {
+        val input = case["inputMap"]!!.jsonObject
+        val validate = {
+            val map = json.decodeFromJsonElement(RosettaMap.serializer(), input)
+            MapLoader.validate(map)
+        }
+        if (expectError != null) {
+            assertEquals("MapValidation", expectError, "validate cases only support expectError 'MapValidation'")
+            assertFailsWith<MapValidationException> { validate() }
+        } else {
+            assertEquals(
+                true,
+                case["expectValid"]?.jsonPrimitive?.boolean,
+                "validate success case must set expectValid: true",
+            )
+            // Throws on failure → the case fails, which is the assertion.
+            validate()
+        }
+    }
+
     private fun assertExpectedError(
         expectError: String,
         block: () -> Unit,
     ) {
         when (expectError) {
             "AmbiguousOverload" -> assertFailsWith<AmbiguousOverloadException> { block() }
+            // UnknownArgType is the DISTINCT precise subtype; assert it before
+            // the generic Resolve so a generic ResolveException can't satisfy
+            // an UnknownArgType case (it is a ResolveException subtype).
+            "UnknownArgType" -> assertFailsWith<UnknownArgTypeException> { block() }
             "Resolve" -> assertFailsWith<ResolveException> { block() }
             "IllegalArgument" -> assertFailsWith<IllegalArgumentException> { block() }
             else -> error("unknown expectError '$expectError'")

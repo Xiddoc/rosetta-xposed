@@ -54,12 +54,12 @@
             "expectObf": "e"
         },
         {
-            "name": "single overload: non-matching argTypes is a miss",
+            "name": "single overload: non-matching argTypes is a miss (unmapped arg type -> UnknownArgType)",
             "kind": "method",
             "class": "com.example.app.Api",
             "method": "consume",
             "argTypes": ["java.lang.String"],
-            "expectError": "Resolve"
+            "expectError": "UnknownArgType"
         },
         {
             "name": "static + aidl_txn metadata propagates",

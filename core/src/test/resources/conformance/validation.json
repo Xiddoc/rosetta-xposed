@@ -1,0 +1,81 @@
+{
+    "description": "VALIDATION-semantics parity cases (not resolution): each case carries its own inline `inputMap` that the client validates, asserting the schema-enforced constraints both clients must agree on. This closes the systemic gap that let resolution divergences through unnoticed — previously the oracle only exercised resolution. Currently pins the non-empty (`minLength: 1`) rule on `obfuscated`, plus a known-good baseline. Provider-neutral; see README.md.",
+    "cases": [
+        {
+            "name": "a well-formed minimal map validates (baseline)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectValid": true
+        },
+        {
+            "name": "empty class obfuscated is rejected (minLength:1)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": ""
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "empty method obfuscated is rejected (minLength:1)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa",
+                        "methods": {
+                            "bar": {
+                                "obfuscated": "",
+                                "signature": "()V"
+                            }
+                        }
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "empty field obfuscated is rejected (minLength:1)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa",
+                        "fields": {
+                            "baz": {
+                                "obfuscated": "",
+                                "type": "I"
+                            }
+                        }
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        }
+    ]
+}

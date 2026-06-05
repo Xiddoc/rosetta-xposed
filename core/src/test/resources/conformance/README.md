@@ -52,6 +52,7 @@ Every case has:
 | `translateType`      | `type`                              | `expectResult` (string)                              |
 | `toJvmDescriptor`    | `type`                              | `expectResult` (string descriptor)                   |
 | `parseSignatureArgs` | `signature`                         | `expectList` (array of descriptor strings)           |
+| `validate`           | `inputMap`                          | `expectValid: true`, **or** `expectError: "MapValidation"` |
 
 Notes on inputs:
 
@@ -76,6 +77,15 @@ Notes on inputs:
   arrays / primitives / raw descriptors) and returns a JVM descriptor.
 - **`obf`** — an obfuscated class **short name** for `reverseLookup`.
 - **`signature`** — a JVM method descriptor for `parseSignatureArgs`.
+- **`inputMap`** — for the `validate` kind ONLY: an inline, self-contained
+  map the client runs through its own validator (TS: `validateMap`; Kotlin:
+  `MapLoader.validate`). Unlike the file-level `map` (loaded once and shared
+  by resolution cases), each `validate` case carries its OWN `inputMap` and
+  asserts the validator's verdict — not a resolution result. This is how the
+  oracle covers VALIDATION semantics (the schema/bounds gate) in addition to
+  resolution semantics. A `validate` case asserts either `expectValid: true`
+  (the map must pass) or `expectError: "MapValidation"` (the map must be
+  rejected — e.g. an empty `obfuscated`, violating `minLength: 1`).
 
 ### Expectation fields
 
@@ -88,6 +98,16 @@ Notes on inputs:
   this exact form.
 - **`expectStatic`** (boolean) — resolved static flag (absent flag in the
   map ⇒ `false`).
+
+  > **`Boolean?` null-projection (parity note).** The resolved `static` /
+  > `synthetic` / `isConstructor` flags are tri-state on the Kotlin side
+  > (`Boolean?`, where `null` = "the map didn't say"), whereas the TS side
+  > folds them to a plain `boolean`. The Kotlin conformance runner therefore
+  > folds the resolved value via `== true` before comparing to the fixture's
+  > boolean; the TS runner compares the boolean directly. So **fixtures must
+  > assert only `true` or `false` for these flags, never `null`** — a `null`
+  > expectation has no consistent meaning across the two runners. (An absent
+  > flag in the source map projects to `false`.)
 - **`expectAidlTxn`** (number) — resolved AIDL transaction code.
 - **`expectOverloadCount`** (number) — number of overloads carried in the
   result; the **selected** overload is always first.
@@ -98,6 +118,9 @@ Notes on inputs:
   A JSON `null` asserts an absent / null result (e.g. `reverseLookup`
   miss).
 - **`expectList`** (array of strings) — for `parseSignatureArgs`.
+- **`expectValid`** (boolean) — for the `validate` kind: `true` asserts the
+  `inputMap` passes validation. (Rejection is asserted via `expectError:
+  "MapValidation"` instead.)
 
 Any `expect*` field that is **absent** is simply not asserted, so a case
 can assert as little or as much as it wants. A field present with value
@@ -108,14 +131,24 @@ can assert as little or as much as it wants. A field present with value
 | value               | meaning                                                                   |
 | ------------------- | ------------------------------------------------------------------------- |
 | `Resolve`           | a real name could not be resolved (missing class/method/field, or no overload matched the given `argTypes`). |
+| `UnknownArgType`    | overload disambiguation failed specifically because an `argTypes` entry is a class-name form the map does not know AND no overload declares its translated descriptor. A **distinct subtype** of the `Resolve` family, asserted precisely. |
 | `AmbiguousOverload` | a method has several overloads and no `argTypes` were supplied.           |
-| `IllegalArgument`   | a malformed input to a signature utility (bad signature / empty type name). |
+| `IllegalArgument`   | a malformed input to a signature utility (bad signature / empty type name / unknown descriptor char). |
+| `MapValidation`     | for the `validate` kind: the `inputMap` was rejected by the schema/bounds validator (TS: `MapValidationError`; Kotlin: `MapValidationException`). |
 
 Each client maps these to its own error type (Kotlin: `ResolveException`,
-`AmbiguousOverloadException`, `IllegalArgumentException`; TS: the
-corresponding `ResolveError` / `AmbiguousOverloadError` / thrown
-`Error`/`RangeError` from the signature helpers). The **taxonomy** is what
-is asserted, not the message text.
+`UnknownArgTypeException`, `AmbiguousOverloadException`,
+`IllegalArgumentException`; TS: the corresponding `ResolveError` /
+`UnknownArgTypeError` / `AmbiguousOverloadError` / thrown `Error`/`RangeError`
+from the signature helpers). The **taxonomy** is what is asserted, not the
+message text.
+
+`UnknownArgType` is a **subtype** of the `Resolve` family on both sides
+(`UnknownArgTypeException extends ResolveException`; `UnknownArgTypeError
+extends ResolveError`), so generic `Resolve`-error handling still catches
+it. The conformance runners assert the precise subtype: a `Resolve` case is
+asserted to be NOT the `UnknownArgType` subtype, and an `UnknownArgType`
+case is asserted to be exactly that subtype.
 
 ## Resolution semantics captured here (summary)
 
