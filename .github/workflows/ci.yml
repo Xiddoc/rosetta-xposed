@@ -21,6 +21,13 @@ jobs:
     build:
         name: build + test (JDK ${{ matrix.java }})
         runs-on: ubuntu-latest
+        # Belt-and-suspenders alongside the `develocity-injection-enabled`
+        # input below: the auto-injection init script reads this env var
+        # directly, so pinning it here disables injection regardless of which
+        # code path setup-gradle takes. Keeps strict dependency verification
+        # from tripping over unpinned, injected BOM metadata.
+        env:
+            DEVELOCITY_INJECTION_ENABLED: 'false'
         strategy:
             fail-fast: false
             matrix:
@@ -39,6 +46,19 @@ jobs:
 
             - name: Set up Gradle (with build cache)
               uses: gradle/actions/setup-gradle@v4
+              with:
+                  # Opt out of Develocity auto-injection. setup-gradle@v4
+                  # otherwise injects the Develocity (build-scan) plugin onto
+                  # the buildscript `:classpath` via an init script, which
+                  # drags `junit-bom` / `kotlinx-coroutines-bom` onto the
+                  # classpath from the Plugin Portal. Those artifacts are NOT
+                  # pinned in `gradle/verification-metadata.xml` (generated
+                  # locally where there is no injection), so strict dependency
+                  # verification rejects them and CI fails at configuration
+                  # time. We don't publish build scans, so the clean fix is to
+                  # disable the injection entirely and keep `verify-metadata`
+                  # fully strict. See docs/reference/building.md.
+                  develocity-injection-enabled: false
 
             # The full quality suite — the Kotlin equivalents of rosetta-frida's
             # format + lint + 100%-coverage + test gate:
