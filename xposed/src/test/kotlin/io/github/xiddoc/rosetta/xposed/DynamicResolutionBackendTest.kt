@@ -20,6 +20,7 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.Confidence
 import kotlin.test.Test
@@ -343,7 +344,7 @@ class DynamicResolutionBackendTest {
             DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;")))
         // No throw, and nothing observable to record.
         assertEquals(obf, backend.resolveClass(real).obfName)
-        DiscoverySink.NOOP.record(real, backend.resolveClass(real).entry)
+        DiscoverySink.NOOP.record(real, ClassEntry(obfuscated = obf))
     }
 
     @Test

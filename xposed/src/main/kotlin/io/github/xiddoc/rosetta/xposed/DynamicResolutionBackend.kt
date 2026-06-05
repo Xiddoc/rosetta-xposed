@@ -36,6 +36,7 @@ import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
+import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
@@ -113,7 +114,7 @@ public class DynamicResolutionBackend(
     private val index: DexKitIndex,
     private val hints: Map<String, DiscoveryHints>,
     private val sink: DiscoverySink = DiscoverySink.NOOP,
-) : ResolutionBackend {
+) : DiscoveringBackend {
     /** Memoized discovered class entries, so we scan a real name at most once. */
     private val discovered = mutableMapOf<String, ClassEntry>()
 
@@ -125,8 +126,25 @@ public class DynamicResolutionBackend(
     override fun canResolve(realClass: String): Boolean = hints[realClass]?.canLocateClass == true
 
     override fun resolveClass(realClass: String): ResolvedClass {
-        val entry = discoverClass(realClass)
-        return ResolvedClass(realName = realClass, obfName = entry.obfuscated, entry = entry)
+        val entry = discoverClassEntry(realClass)
+        return ResolvedClass(realName = realClass, obfName = entry.obfuscated, extends = entry.extends)
+    }
+
+    /**
+     * Discover [realClass] and surface the typed [DiscoveredClass] write-back
+     * payload the composite heals into the static backend. Carries only the
+     * resolver-relevant fields (obf name, extends, methods, fields); the full
+     * provenance entry is recorded separately through the [DiscoverySink].
+     */
+    override fun discoverClass(realClass: String): DiscoveredClass {
+        val entry = discoverClassEntry(realClass)
+        return DiscoveredClass(
+            realName = realClass,
+            obfName = entry.obfuscated,
+            extends = entry.extends,
+            methods = entry.methods,
+            fields = entry.fields,
+        )
     }
 
     override fun resolveMethod(
@@ -134,7 +152,7 @@ public class DynamicResolutionBackend(
         realMethod: String,
         argTypes: List<String>?,
     ): ResolvedMethod {
-        val classEntry = discoverClass(realClass)
+        val classEntry = discoverClassEntry(realClass)
         // Discovery records exactly one overload per real method name, so the
         // first entry IS the resolved overload. A missing methods map or an
         // unhinted method name is the only miss case.
@@ -184,11 +202,11 @@ public class DynamicResolutionBackend(
         // (DexKit field queries land with the device adapter). Fail closed
         // rather than fabricate a field mapping.
         //
-        // The discoverClass call below is INTENTIONAL: even though we will
+        // The discoverClassEntry call below is INTENTIONAL: even though we will
         // throw, it ensures the class is discovered and written back through
         // the composite's uniform sink path (memoisation + provenance emit)
         // before we surface the field miss. Do NOT remove it as a dead call.
-        discoverClass(realClass)
+        discoverClassEntry(realClass)
         throw DiscoveryException(
             "rosetta-xposed: dynamic discovery does not resolve fields (real '$realClass.$realField'); " +
                 "ship a static map entry or a future field-discovery hint.",
@@ -201,7 +219,7 @@ public class DynamicResolutionBackend(
      * class. Records the complete entry via [sink] exactly once. Fails closed
      * on any miss or partial result.
      */
-    private fun discoverClass(realClass: String): ClassEntry {
+    private fun discoverClassEntry(realClass: String): ClassEntry {
         discovered[realClass]?.let { return it }
 
         val hint =

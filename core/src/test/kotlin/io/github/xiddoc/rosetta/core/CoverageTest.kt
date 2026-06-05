@@ -15,6 +15,7 @@ import io.github.xiddoc.rosetta.core.model.FieldEntry
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.Resolver
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
@@ -186,7 +187,7 @@ class CoverageTest {
         assertTrue(!resolver.hasClass("com.example.Ghost"))
 
         // Register an override for an as-yet-unknown class, plus re-point Foo.
-        resolver.override("com.example.Ghost", ClassEntry(obfuscated = "g"))
+        resolver.override(DiscoveredClass(realName = "com.example.Ghost", obfName = "g"))
         assertTrue(resolver.hasClass("com.example.Ghost"))
         assertEquals("g", resolver.resolveClass("com.example.Ghost").obfName)
 
@@ -194,9 +195,9 @@ class CoverageTest {
         resolver.resolveMethod("com.example.Foo", "single")
         resolver.resolveField("com.example.Foo", "id")
         resolver.override(
-            "com.example.Foo",
-            ClassEntry(
-                obfuscated = "z",
+            DiscoveredClass(
+                realName = "com.example.Foo",
+                obfName = "z",
                 methods = mapOf("single" to MethodOverloads(listOf(MethodEntry("m2", "()V")))),
                 fields = mapOf("id" to FieldEntry("f2", "Ljava/lang/String;")),
             ),
@@ -216,7 +217,7 @@ class CoverageTest {
         // From the map.
         assertEquals("a", resolver.translateType("com.example.Foo"))
         // From an override (override branch).
-        resolver.override("com.example.Bar", ClassEntry(obfuscated = "b"))
+        resolver.override(DiscoveredClass(realName = "com.example.Bar", obfName = "b"))
         assertEquals("b", resolver.translateType("com.example.Bar"))
         // Unmapped framework type passes through unchanged.
         assertEquals("android.os.Bundle", resolver.translateType("android.os.Bundle"))

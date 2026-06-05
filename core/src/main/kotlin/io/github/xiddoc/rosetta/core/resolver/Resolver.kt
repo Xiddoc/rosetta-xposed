@@ -49,20 +49,27 @@ public class Resolver(
     public fun resolveClass(realName: String): ResolvedClass {
         classCache[realName]?.let { return it }
 
-        val entry = overrides[realName] ?: map.classes[realName]
-        if (entry == null) {
-            throw ResolveException(
+        val entry = entryFor(realName)
+        val value = ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
+        classCache[realName] = value
+        return value
+    }
+
+    /**
+     * The backing [ClassEntry] for [realName] (override-first), or throw a
+     * class [ResolveException]. Kept private so the full map entry never leaks
+     * across the resolution boundary — [resolveMethod] / [resolveField] read
+     * methods/fields through here rather than off a public [ResolvedClass].
+     */
+    private fun entryFor(realName: String): ClassEntry =
+        overrides[realName] ?: map.classes[realName]
+            ?: throw ResolveException(
                 missMessage("class", realName),
                 realName,
                 map.app,
                 map.version,
                 "class",
             )
-        }
-        val value = ResolvedClass(realName = realName, obfName = entry.obfuscated, entry = entry)
-        classCache[realName] = value
-        return value
-    }
 
     /**
      * Resolve a method by real names. When the real name has several
@@ -79,12 +86,13 @@ public class Resolver(
         methodCache[key]?.let { return it }
 
         val cls = resolveClass(className)
+        val entry = entryFor(className)
         // Resolve the nullable `MethodOverloads` first (absent methods map, or
         // no such method name), then read its non-null `entries`. Chaining
         // `?.entries` onto the safe-call would emit an unreachable null-branch,
         // since MethodOverloads.entries is non-nullable by construction.
         val methodOverloads =
-            cls.entry.methods?.get(methodName)
+            entry.methods?.get(methodName)
                 ?: throw ResolveException(
                     missMessage("method", "$className.$methodName"),
                     methodName,
@@ -145,8 +153,9 @@ public class Resolver(
         fieldCache[key]?.let { return it }
 
         val cls = resolveClass(className)
+        val classEntry = entryFor(className)
         val entry =
-            cls.entry.fields?.get(fieldName)
+            classEntry.fields?.get(fieldName)
                 ?: throw ResolveException(
                     missMessage("field", "$className.$fieldName"),
                     fieldName,
@@ -184,14 +193,24 @@ public class Resolver(
         fieldCache.keys.filter { it.startsWith("$realName.") }.forEach { fieldCache.remove(it) }
     }
 
-    /** Register a runtime override for [realName] (e.g. a discovered entry). */
-    public fun override(
-        realName: String,
-        entry: ClassEntry,
-    ) {
-        overrides[realName] = entry
-        reverseClassIndex[entry.obfuscated] = realName
-        invalidate(realName)
+    /**
+     * Register a runtime override from a typed [DiscoveredClass] write-back
+     * (e.g. a self-healing dynamic backend). The next lookup of
+     * [DiscoveredClass.realName] is an O(1) static hit. Only the fields the
+     * resolver re-resolves by are carried in — provenance stays with the
+     * discovery sink, never the resolver.
+     */
+    public fun override(discovered: DiscoveredClass) {
+        val entry =
+            ClassEntry(
+                obfuscated = discovered.obfName,
+                extends = discovered.extends,
+                methods = discovered.methods,
+                fields = discovered.fields,
+            )
+        overrides[discovered.realName] = entry
+        reverseClassIndex[entry.obfuscated] = discovered.realName
+        invalidate(discovered.realName)
     }
 
     /** Reverse-lookup an obfuscated class short name to its real FQN. */

@@ -20,6 +20,7 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
 import io.github.xiddoc.rosetta.core.resolver.ResolvedMethod
@@ -41,4 +42,30 @@ public interface ResolutionBackend {
         realClass: String,
         realField: String,
     ): ResolvedField
+}
+
+/**
+ * A backend that can accept a self-healing write-back (the static path). The
+ * [CompositeResolutionBackend] depends on this narrow seam — not the concrete
+ * [StaticResolutionBackend] — so the composite is decoupled from the backend
+ * implementation it heals into.
+ */
+internal interface OverridableBackend : ResolutionBackend {
+    /** Heal [discovered] into this backend so the next lookup is an O(1) hit. */
+    fun override(discovered: DiscoveredClass)
+}
+
+/**
+ * A backend that discovers names live and can surface the typed
+ * [DiscoveredClass] write-back payload for a resolved class (the dynamic
+ * path). The composite uses this seam — not the concrete
+ * [DynamicResolutionBackend] — to obtain what it writes back into the
+ * [OverridableBackend].
+ */
+internal interface DiscoveringBackend : ResolutionBackend {
+    /**
+     * Resolve [realClass] AND return the write-back payload to heal it into a
+     * static backend. Resolves exactly once (memoized by the implementation).
+     */
+    fun discoverClass(realClass: String): DiscoveredClass
 }

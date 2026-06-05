@@ -171,6 +171,23 @@ class CompositeDiscoveryWiringTest {
     }
 
     @Test
+    fun `composite write-back carries extends through the typed DiscoveredClass`() {
+        // The typed DiscoveredClass contract must preserve `extends` from the
+        // dynamic discovery into the static resolver, so a resolveClass after
+        // write-back surfaces the discovered parent.
+        val index = FakeDexKitIndex(bySuper = mapOf("zzzz" to obf))
+        val static = StaticResolutionBackend(emptyStaticMap())
+        val composite =
+            CompositeResolutionBackend(
+                static,
+                DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(superclass = "zzzz"))),
+            )
+        // First lookup discovers + writes back; second is the static hit.
+        assertEquals("zzzz", composite.resolveClass(real).extends)
+        assertEquals("zzzz", static.resolveClass(real).extends)
+    }
+
+    @Test
     fun `composite canResolve is false when neither backend knows the name`() {
         val composite =
             CompositeResolutionBackend(

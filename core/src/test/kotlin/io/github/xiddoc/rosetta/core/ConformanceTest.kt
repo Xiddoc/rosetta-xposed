@@ -120,7 +120,7 @@ class ConformanceTest {
     ) {
         val resolved = resolver.resolveClass(case.cls())
         assertEquals(case.str("expectObf"), resolved.obfName)
-        case["expectExtends"]?.strOrNull()?.let { assertEquals(it, resolved.entry.extends) }
+        case["expectExtends"]?.strOrNull()?.let { assertEquals(it, resolved.extends) }
     }
 
     private fun assertMethod(

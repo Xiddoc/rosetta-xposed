@@ -8,17 +8,49 @@
  */
 package io.github.xiddoc.rosetta.core.resolver
 
-import io.github.xiddoc.rosetta.core.model.ClassEntry
+import io.github.xiddoc.rosetta.core.model.FieldEntry
 import io.github.xiddoc.rosetta.core.model.MethodEntry
+import io.github.xiddoc.rosetta.core.model.Methods
 
-/** Result of resolving a class. */
+/**
+ * Result of resolving a class — the resolved coordinates a layer-4 binding
+ * needs, NOT the whole map [io.github.xiddoc.rosetta.core.model.ClassEntry].
+ *
+ * The full entry stays private to the [Resolver]; only the fields a consumer
+ * actually reads are surfaced here, so the map model never leaks across the
+ * resolution boundary. The self-healing write-back travels the other way as
+ * a typed [DiscoveredClass] (see [Resolver.override]).
+ */
 public data class ResolvedClass(
     /** Real fully-qualified name. */
     val realName: String,
     /** Obfuscated short name. */
     val obfName: String,
-    /** Full class entry from the map, for downstream consumers. */
-    val entry: ClassEntry,
+    /** Parent class (real or obfuscated name), if the entry declared one. */
+    val extends: String? = null,
+)
+
+/**
+ * The typed write-back contract for a runtime-discovered class — what a
+ * dynamic / self-healing backend feeds into [Resolver.override] so the next
+ * lookup of [realName] is an O(1) static hit.
+ *
+ * It carries exactly the fields the resolver needs to re-resolve the class,
+ * its methods, and its fields — and nothing else. Provenance (kind / source /
+ * confidence / anchors) is the discovery sink's concern, not the resolver's,
+ * so it is intentionally absent here.
+ */
+public data class DiscoveredClass(
+    /** Real fully-qualified name being healed into the static path. */
+    val realName: String,
+    /** Discovered obfuscated short name. */
+    val obfName: String,
+    /** Parent class (real or obfuscated name), if known. */
+    val extends: String? = null,
+    /** Discovered methods keyed by real name (one-or-more overloads each). */
+    val methods: Methods? = null,
+    /** Discovered fields keyed by real name. */
+    val fields: Map<String, FieldEntry>? = null,
 )
 
 /** Result of resolving a method on a class. */
