@@ -207,6 +207,57 @@ class SchemaBoundsTest {
         assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].fields[f].type" })
     }
 
+    // ---- minLength: 1 (non-empty required leaves) ---------------------------
+
+    @Test
+    fun `rejects an empty class obfuscated name`() {
+        val map = base.copy(classes = mapOf("com.example.Foo" to ClassEntry(obfuscated = "")))
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].obfuscated" && it.message.contains("empty") })
+    }
+
+    @Test
+    fun `rejects an empty method obfuscated name and signature`() {
+        val map =
+            base.copy(
+                classes =
+                    mapOf(
+                        "com.example.Foo" to
+                            ClassEntry(
+                                "a",
+                                methods = mapOf("m" to MethodOverloads(listOf(MethodEntry(obfuscated = "", signature = "")))),
+                            ),
+                    ),
+            )
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].methods[m][0].obfuscated" && it.message.contains("empty") })
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].methods[m][0].signature" && it.message.contains("empty") })
+    }
+
+    @Test
+    fun `rejects an empty field obfuscated name and type`() {
+        val map =
+            base.copy(
+                classes =
+                    mapOf(
+                        "com.example.Foo" to
+                            ClassEntry("a", fields = mapOf("f" to FieldEntry(obfuscated = "", type = ""))),
+                    ),
+            )
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].fields[f].obfuscated" && it.message.contains("empty") })
+        assertTrue(ex.issues.any { it.path == "classes[com.example.Foo].fields[f].type" && it.message.contains("empty") })
+    }
+
+    @Test
+    fun `rejects an empty source tool`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.validate(base.copy(sources = listOf(MapSource(tool = ""))))
+            }
+        assertTrue(ex.issues.any { it.path == "sources[0].tool" && it.message.contains("empty") })
+    }
+
     @Test
     fun `rejects an over-length app`() {
         // Keep the package shape valid so the length check is what fires.

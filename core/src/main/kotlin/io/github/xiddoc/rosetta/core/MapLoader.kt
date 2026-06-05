@@ -251,6 +251,7 @@ public object MapLoader {
             val sources = map.sources ?: return
             cap("sources", sources.size, MAX_SOURCES, "entries")
             sources.forEachIndexed { i, src ->
+                nonEmpty("sources[$i].tool", src.tool)
                 free("sources[$i].tool", src.tool)
                 free("sources[$i].config", src.config)
                 free("sources[$i].notes", src.notes)
@@ -270,6 +271,7 @@ public object MapLoader {
             entry: ClassEntry,
         ) {
             val path = "classes[$realName]"
+            nonEmpty("$path.obfuscated", entry.obfuscated)
             short("$path.obfuscated", entry.obfuscated)
             free("$path.extends", entry.extends)
             free("$path.dex", entry.dex)
@@ -286,7 +288,9 @@ public object MapLoader {
                     val mpath = "$path.methods[$name]"
                     cap(mpath, overloads.entries.size, MAX_OVERLOADS_PER_METHOD, "overloads")
                     overloads.entries.forEachIndexed { i, m ->
+                        nonEmpty("$mpath[$i].obfuscated", m.obfuscated)
                         short("$mpath[$i].obfuscated", m.obfuscated)
+                        nonEmpty("$mpath[$i].signature", m.signature)
                         len("$mpath[$i].signature", m.signature, MAX_SIGNATURE_LEN)
                     }
                 }
@@ -296,7 +300,9 @@ public object MapLoader {
                 for ((name, f) in fields) {
                     reserved("$path.fields", name)
                     val fpath = "$path.fields[$name]"
+                    nonEmpty("$fpath.obfuscated", f.obfuscated)
                     short("$fpath.obfuscated", f.obfuscated)
+                    nonEmpty("$fpath.type", f.type)
                     len("$fpath.type", f.type, MAX_SIGNATURE_LEN)
                 }
             }
@@ -318,6 +324,19 @@ public object MapLoader {
             key: String,
         ) {
             if (key in RESERVED_KEYS) issues += ValidationIssue(container, "reserved key \"$key\" is not allowed")
+        }
+
+        /**
+         * Non-empty leaf check for a required string. The canonical schema +
+         * Frida Zod pin `minLength: 1` on `obfuscated` / `signature` / field
+         * `type` / `source.tool`; an empty value is rejected fail-closed
+         * (these are non-null in the model, so only the empty case is possible).
+         */
+        private fun nonEmpty(
+            path: String,
+            value: String,
+        ) {
+            if (value.isEmpty()) issues += ValidationIssue(path, "must not be empty")
         }
 
         /** Length cap for a (possibly null) string; null is a no-op. */
