@@ -100,6 +100,7 @@ nav:
       - Usage: getting-started/usage.md
   - Reference:
       - Resolution backends: reference/backends.md
+      - DexKit integration: reference/dexkit-integration.md
       - Building: reference/building.md
       - Status: reference/status.md
       - Related repos: reference/related.md

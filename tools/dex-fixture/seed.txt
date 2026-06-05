@@ -1,0 +1,5 @@
+com.rosetta.dexfixture.AnchoredWidget -> com.rosetta.dexfixture.a:
+com.rosetta.dexfixture.BaseHandler -> com.rosetta.dexfixture.b:
+com.rosetta.dexfixture.NetworkHandler -> com.rosetta.dexfixture.c:
+    java.lang.String process(java.lang.String) -> a
+com.rosetta.dexfixture.RemoteStub -> com.rosetta.dexfixture.d:

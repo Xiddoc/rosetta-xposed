@@ -1,0 +1,27 @@
+{
+  "dexkitFixtureVersion": 1,
+  "package": "com.rosetta.dexfixture",
+  "classes": {
+    "com.rosetta.dexfixture.AnchoredWidget": {
+      "obfuscated": "com.rosetta.dexfixture.a",
+      "anchors": ["rosetta-dexfixture-anchor-AnchoredWidget"]
+    },
+    "com.rosetta.dexfixture.BaseHandler": {
+      "obfuscated": "com.rosetta.dexfixture.b"
+    },
+    "com.rosetta.dexfixture.NetworkHandler": {
+      "obfuscated": "com.rosetta.dexfixture.c",
+      "extends": "com.rosetta.dexfixture.b",
+      "methods": {
+        "process": {
+          "obfuscated": "a",
+          "signature": "(Ljava/lang/String;)Ljava/lang/String;"
+        }
+      }
+    },
+    "com.rosetta.dexfixture.RemoteStub": {
+      "obfuscated": "com.rosetta.dexfixture.d",
+      "aidlDescriptor": "com.rosetta.dexfixture.IRemote"
+    }
+  }
+}

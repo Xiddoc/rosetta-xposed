@@ -132,6 +132,8 @@ gradle-app.setting
 
 # Files for the ART/Dalvik VM
 *.dex
+# Exception: committed test fixture DEX (not a build artefact)
+!dexkit/src/test/resources/dex/fixture.dex
 
 # Java class files
 
@@ -249,3 +251,9 @@ fabric.properties
 
 # MkDocs build output (docs site is built in CI; never committed).
 site/
+
+# Host-built DexKit native (`libdexkit.so`) for the :dexkit integration test.
+# It is BUILT IN CI (cached) from pinned DexKit source via
+# tools/dexkit-native/build-libdexkit.sh and is NOT committed (avoids binary
+# bloat). Locally, build it on demand; the integration test skips when absent.
+dexkit/src/test/resources/native/
