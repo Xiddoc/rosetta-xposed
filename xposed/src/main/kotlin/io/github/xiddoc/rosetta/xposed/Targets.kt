@@ -94,6 +94,39 @@ internal class TargetLoader(
         return cls
     }
 
+    /**
+     * Probe whether the target [fqn] (produced for real name [name]) is
+     * currently loadable, WITHOUT initialising it and WITHOUT making any member
+     * accessible. Used by [DeferredBinding] to decide when a late-loaded class
+     * has appeared.
+     *
+     * The C1 namespace guard runs FIRST (same chokepoint as
+     * [loadGuardedClass]), so a forbidden target throws [TargetPolicyException]
+     * before any `Class.forName` — a malicious map can never use the deferred
+     * probe to load a denied/framework class (RFC 0001 C1, the M1 lesson).
+     * Only an allowed target is ever probe-loaded.
+     *
+     * @return `true` when the (allowed) class is loadable now, `false` when it
+     *   is not yet present.
+     * @throws TargetPolicyException if [fqn] is forbidden by the namespace
+     *   policy (thrown before any load), or if a loaded (allowed) class is a
+     *   foreign platform-loaded target.
+     */
+    fun probeLoadable(
+        name: String,
+        fqn: String,
+    ): Boolean =
+        try {
+            // Routes through the SAME guard-first chokepoint: assertAllowed runs
+            // inside loadGuardedClass before any Class.forName, so a denied
+            // target throws TargetPolicyException and is never probe-loaded.
+            loadGuardedClass(name, fqn)
+            true
+        } catch (_: BindException) {
+            // Allowed, but the (late-loaded) class is not present yet.
+            false
+        }
+
     /** The normalized element FQN, matching the form [TargetPolicy.allow] holds. */
     private fun normalizedElement(fqn: String): String = fqn.replace('/', '.')
 

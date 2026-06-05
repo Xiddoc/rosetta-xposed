@@ -149,14 +149,9 @@ class CoverageTest {
         assertNull(BindException("just a message").cause)
     }
 
-    // ---- Architected-but-unbuilt backends (throw on purpose, RFC 0001 D2).
-
-    @Test
-    fun `DeferredBinding whenClassAvailable is not yet implemented`() {
-        assertFailsWith<NotImplementedError> {
-            DeferredBinding.whenClassAvailable("com.example.RealClient") { /* never called */ }
-        }
-    }
+    // DeferredBinding is now built (B.2); its behaviour — guarded probe,
+    // run-once, both watchers, the denied-target M1 case — is covered in
+    // DeferredBindingTest.
 
     // The dynamic backend is now built (B.1); its behaviour is covered in
     // DynamicResolutionBackendTest. See that file for the strategy + miss +

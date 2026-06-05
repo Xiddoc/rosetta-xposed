@@ -70,6 +70,48 @@ public class RosettaXposed internal constructor(
         realField: String,
     ): FieldTarget = FieldTarget(backend.resolveField(realClass, realField), loader)
 
+    /**
+     * Defer a hook until [realClass]'s declaring obfuscated class is loadable,
+     * then run [onAvailable]. A thin convenience that forwards to
+     * [DeferredBinding.whenClassAvailable]; the object API there is the full
+     * surface (see it for the guarded-probe + run-once semantics).
+     */
+    public fun deferred(
+        realClass: String,
+        watcher: ClassAvailabilityWatcher,
+        onAvailable: (RosettaXposed) -> Unit,
+    ): Registration = DeferredBinding.whenClassAvailable(this, realClass, watcher, onAvailable)
+
+    /**
+     * Resolve [realClass] to its obfuscated FQN and probe whether it is
+     * loadable NOW through the C1-guarded chokepoint. Internal seam for
+     * [DeferredBinding] so the deferred probe shares the exact guard path used
+     * by every other target (a denied target throws [TargetPolicyException]
+     * before any load — the M1 lesson).
+     *
+     * [realClass] is resolved exactly ONCE per call: the returned obfuscated
+     * name (or `null`) is reused by [DeferredBinding] to avoid a second
+     * [ResolutionBackend.resolveClass] round-trip (which matters under a
+     * discovery composite that re-runs DexKit on each miss).
+     *
+     * @return the obfuscated FQN if the class is loadable right now, or `null`
+     *   if it is not yet present; throws [TargetPolicyException] if the map
+     *   points [realClass] at a denied/reserved namespace (thrown before any
+     *   [Class.forName] — the M1 lesson).
+     */
+    internal fun probeClassLoadable(realClass: String): String? {
+        val resolved = backend.resolveClass(realClass)
+        return if (loader.probeLoadable(resolved.realName, resolved.obfName)) resolved.obfName else null
+    }
+
+    /**
+     * The obfuscated FQN [realClass] resolves to (pure data, no load attempt).
+     * Used by [DeferredBinding] after an initial probe returns null (not yet
+     * loadable) to obtain the obfName for the watcher registration without
+     * a third [ResolutionBackend.resolveClass] round-trip on every signal.
+     */
+    internal fun resolveObfName(realClass: String): String = backend.resolveClass(realClass).obfName
+
     public companion object {
         /**
          * Build over a single static map, enforcing the map's
