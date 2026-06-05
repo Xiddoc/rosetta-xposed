@@ -179,4 +179,14 @@ class CoverageTest {
         val resolved = backend.resolveMethod("com.example.RealClient", "single")
         assertEquals("c", resolved.obfName)
     }
+
+    @Test
+    fun `translateType maps a known real class to obf and passes others through`() {
+        // The translator the dynamic discovery backend borrows for real-name
+        // argTypes (see RosettaXposed.fromMapWithDiscovery): a mapped real name
+        // → its obf short name; an unmapped framework type passes through.
+        val backend = StaticResolutionBackend(map)
+        assertEquals(obf, backend.translateType("com.example.RealClient"))
+        assertEquals("java.lang.String", backend.translateType("java.lang.String"))
+    }
 }
