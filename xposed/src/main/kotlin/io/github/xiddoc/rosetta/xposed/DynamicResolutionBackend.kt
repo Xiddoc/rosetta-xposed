@@ -109,11 +109,20 @@ public data class DiscoveryConfig(
  * @property index the device-side index seam (faked in tests).
  * @property hints the per-real-class discovery recipes (contributor input).
  * @property sink where discovered entries are recorded (default: NOOP).
+ * @property translateType translates a caller-supplied `argTypes` entry from a
+ *   real name to its obfuscated short name (a primitive / unmapped framework
+ *   type passes through). It MUST be the SAME translation the static
+ *   [Resolver][io.github.xiddoc.rosetta.core.resolver.Resolver] applies, so a
+ *   mapped app-class arg type matches a discovered overload whose descriptor
+ *   already carries the obfuscated ref. Defaults to identity (no map context),
+ *   which is correct only when callers pass framework types / raw descriptors;
+ *   [RosettaXposed.fromMapWithDiscovery] wires the static map's translator in.
  */
 public class DynamicResolutionBackend(
     private val index: DexKitIndex,
     private val hints: Map<String, DiscoveryHints>,
     private val sink: DiscoverySink = DiscoverySink.NOOP,
+    private val translateType: (String) -> String = { it },
 ) : DiscoveringBackend {
     /** Memoized discovered class entries, so we scan a real name at most once. */
     private val discovered = mutableMapOf<String, ClassEntry>()
@@ -164,14 +173,16 @@ public class DynamicResolutionBackend(
                         "(partial discovery fails closed; the cache is not poisoned).",
                 )
         val methodEntry = overloads.entries.first()
-        // Honour argTypes when supplied (Liskov parity with the static
-        // Resolver / StaticResolutionBackend): the caller pinned a specific
-        // overload, so the discovered overload's descriptor MUST match it.
-        // Discovered descriptors already carry obfuscated class refs, so the
-        // arg-type names are translated as-is (identity translate). A mismatch
-        // fails closed rather than silently returning the wrong overload.
+        // Honour argTypes when supplied (parity with the static Resolver /
+        // StaticResolutionBackend): the caller pinned a specific overload, so
+        // the discovered overload's descriptor MUST match it. The caller passes
+        // REAL names (+ framework types); discovered descriptors carry the
+        // OBFUSCATED class refs, so each arg type is translated real → obf
+        // through [translateType] — exactly what the static resolver does — so a
+        // mapped app-class arg type matches. A mismatch fails closed rather than
+        // silently returning the wrong overload.
         if (argTypes != null) {
-            val wanted = argTypes.map { toJvmDescriptor(it) { name -> name } }
+            val wanted = argTypes.map { toJvmDescriptor(it) { name -> translateType(name) } }
             val actual = parseSignatureArgs(methodEntry.signature)
             if (actual != wanted) {
                 throw DiscoveryException(

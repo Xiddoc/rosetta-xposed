@@ -19,6 +19,15 @@ public class StaticResolutionBackend(
     override fun canResolve(realClass: String): Boolean = resolver.hasClass(realClass)
 
     /**
+     * Translate a single type name real → obf through this backend's map (a
+     * primitive / unmapped framework type passes through). Exposed so a sibling
+     * backend (e.g. the dynamic discovery backend) can translate caller-supplied
+     * real-name `argTypes` against the SAME map the static resolver uses, rather
+     * than forking the translation. Delegates to [Resolver.translateType].
+     */
+    public fun translateType(typeName: String): String = resolver.translateType(typeName)
+
+    /**
      * Register a runtime [discovered] write-back as a resolver override, so the
      * NEXT lookup of its real name is an O(1) static hit. The composite backend
      * uses this to feed a dynamically-discovered entry back into the static

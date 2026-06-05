@@ -161,6 +161,61 @@ class DynamicResolutionBackendTest {
     }
 
     @Test
+    fun `resolveMethod translates real-name argTypes through the map to match a discovered overload`() {
+        // F1: a caller passes a REAL app-class arg type ("com.example.RealArg")
+        // and the map maps it to "obfArg"; the discovered overload's descriptor
+        // carries the OBFUSCATED ref ("(LobfArg;)V"). With the real → obf
+        // translator wired in, the translated descriptor matches and it
+        // resolves — an identity translate would have spuriously thrown.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(LobfArg;)V"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index = index,
+                hints =
+                    mapOf(
+                        real to
+                            DiscoveryHints(
+                                aidlDescriptor = "Lcom/example/IFoo;",
+                                methods = listOf(MethodDiscoveryHint(realName = "single", descriptor = "(LobfArg;)V")),
+                            ),
+                    ),
+                translateType = { name -> if (name == "com.example.RealArg") "obfArg" else name },
+            )
+        val m = backend.resolveMethod(real, "single", listOf("com.example.RealArg"))
+        assertEquals("c", m.obfName)
+    }
+
+    @Test
+    fun `resolveMethod with a translator still fails closed on a genuine arg-type mismatch`() {
+        // Same translator wiring, but the caller asks for an arg type the
+        // discovered overload does not declare — the real → obf translation
+        // must NOT mask a genuine mismatch.
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(LobfArg;)V"))),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index = index,
+                hints =
+                    mapOf(
+                        real to
+                            DiscoveryHints(
+                                aidlDescriptor = "Lcom/example/IFoo;",
+                                methods = listOf(MethodDiscoveryHint(realName = "single", descriptor = "(LobfArg;)V")),
+                            ),
+                    ),
+                translateType = { name -> if (name == "com.example.RealArg") "obfArg" else name },
+            )
+        assertFailsWith<DiscoveryException> { backend.resolveMethod(real, "single", listOf("com.example.OtherArg")) }
+    }
+
+    @Test
     fun `resolveMethod fails closed when argTypes do not match the discovered overload`() {
         // The single discovered overload takes (String); the caller asks for
         // (int) — a wrong-overload request must NOT silently return the String

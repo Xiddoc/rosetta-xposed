@@ -218,10 +218,15 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed {
             if (identity != null) SignerGuard.verify(map, identity)
+            val static = StaticResolutionBackend(map)
             val composite =
                 CompositeResolutionBackend(
-                    static = StaticResolutionBackend(map),
-                    dynamic = DynamicResolutionBackend(index, discovery.hints, discovery.sink),
+                    static = static,
+                    // Translate the dynamic backend's `argTypes` through the SAME
+                    // map the static resolver uses (real → obf), so a mapped
+                    // app-class arg type matches a discovered overload's obf
+                    // descriptor instead of spuriously failing on identity.
+                    dynamic = DynamicResolutionBackend(index, discovery.hints, discovery.sink, static::translateType),
                 )
             return RosettaXposed(composite, classLoader, map.app, policy)
         }

@@ -259,6 +259,55 @@ class CompositeDiscoveryWiringTest {
     }
 
     @Test
+    fun `fromMapWithDiscovery wires the static map translator into dynamic argTypes`() {
+        // F1 end-to-end: the static map maps an arg class real → obf, but the
+        // class being hooked is discovered dynamically. The discovered overload
+        // carries the OBFUSCATED arg ref; the caller hooks with the REAL arg
+        // name. fromMapWithDiscovery must feed the static map's translator into
+        // the dynamic backend so the real → obf translation matches the
+        // discovered descriptor (identity translate would have thrown).
+        val mapWithArg =
+            MapLoader.fromJson(
+                """
+                {
+                  "schema_version": 2,
+                  "app": "com.example.app",
+                  "version": "1.0.0",
+                  "version_code": 100,
+                  "classes": { "com.example.RealArg": { "obfuscated": "obfArg" } }
+                }
+                """.trimIndent(),
+            )
+        val index =
+            FakeDexKitIndex(
+                byAidl = mapOf("Lcom/example/IFoo;" to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(LobfArg;)V"))),
+            )
+        val rosetta =
+            RosettaXposed.fromMapWithDiscovery(
+                map = mapWithArg,
+                index = index,
+                classLoader = javaClass.classLoader,
+                discovery =
+                    DiscoveryConfig(
+                        hints =
+                            mapOf(
+                                real to
+                                    DiscoveryHints(
+                                        aidlDescriptor = "Lcom/example/IFoo;",
+                                        methods = listOf(MethodDiscoveryHint(realName = "single", descriptor = "(LobfArg;)V")),
+                                    ),
+                            ),
+                    ),
+                policy = TargetPolicy(allow = listOf(obf)),
+            )
+        // Hook the discovered method by its REAL arg type; the static map's
+        // translator turns "com.example.RealArg" → "obfArg" so it matches.
+        val m = rosetta.method(real, "single", listOf("com.example.RealArg"))
+        assertEquals("c", m.resolved.obfName)
+    }
+
+    @Test
     fun `fromMapWithDiscovery enforces the signer guard before wiring discovery`() {
         val signedMap =
             MapLoader.fromJson(
