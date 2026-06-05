@@ -86,6 +86,16 @@ These come from RFC 0001 and were confirmed with the project owner.
 4. **`explicitApi()` is on** for both modules — declare visibility on every
    public symbol.
 
+## Testing mandate
+
+We strive for maximum coverage: **everything that can be tested must be
+tested.** Every change adds or extends unit tests that prove it, and
+`./gradlew build` (compile + detekt + tests, under `explicitApi()`) must
+stay green. Co-locate tests with the module they cover; do **not** touch
+the shared conformance fixtures (`core/src/test/resources/conformance/`) —
+those are owned by the cross-repo parity agent that keeps the TS and
+Kotlin resolvers in lockstep.
+
 ## Anti-scope
 
 - **Not a hook framework.** It doesn't define what a hook is; it makes the
