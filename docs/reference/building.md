@@ -38,7 +38,9 @@ The build chain is pinned against tampering:
   resolved dependency and plugin by **SHA-256 checksum**
   (`verify-metadata=true`, `verify-signatures=false` — checksum pinning, not
   PGP signatures, which are too brittle across this plugin set). A normal
-  `./gradlew build` verifies every artifact against it. Regenerate after a
+  `./gradlew build` verifies every artifact against it — adding or bumping a
+  dependency will FAIL the build until `gradle/verification-metadata.xml` is
+  regenerated with the full-task-set command below. Regenerate after a
   dependency or plugin bump with:
 
   ```sh
