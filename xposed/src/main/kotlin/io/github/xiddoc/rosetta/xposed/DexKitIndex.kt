@@ -90,4 +90,7 @@ public interface DexKitIndex {
 
     /** Find a single method matching [query]; null on miss / no unique match. */
     public fun findMethod(query: MethodQuery): MethodMatch?
+
+    /** All methods declared on the OBFUSCATED class [obfClass] (may be empty). */
+    public fun membersOf(obfClass: String): List<MethodMatch>
 }

@@ -47,6 +47,11 @@ class FakeDexKitIndex(
         }
     }
 
+    override fun membersOf(obfClass: String): List<MethodMatch> {
+        calls++
+        return methods[obfClass].orEmpty()
+    }
+
     /** Test-only helper to inspect the seeded methods for an obf class. */
     fun seededMethods(obfClass: String): List<MethodMatch> = methods[obfClass].orEmpty()
 }

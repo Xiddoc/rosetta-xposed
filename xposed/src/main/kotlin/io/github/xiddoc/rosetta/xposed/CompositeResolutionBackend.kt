@@ -29,6 +29,18 @@ public class CompositeResolutionBackend internal constructor(
     private val static: OverridableBackend,
     private val dynamic: DiscoveringBackend,
 ) : ResolutionBackend {
+    /**
+     * Build a composite from the two built-in backends. This is the public
+     * construction path for advanced wiring (e.g. a real DexKit-backed
+     * [DynamicResolutionBackend] supplying the self-healing dynamic side); the
+     * internal primary constructor keeps the decoupled [OverridableBackend] /
+     * [DiscoveringBackend] write-back seam for in-module collaborators.
+     */
+    public constructor(
+        static: StaticResolutionBackend,
+        dynamic: DynamicResolutionBackend,
+    ) : this(static as OverridableBackend, dynamic as DiscoveringBackend)
+
     /** Resolvable if EITHER backend can answer for [realClass]. */
     override fun canResolve(realClass: String): Boolean = static.canResolve(realClass) || dynamic.canResolve(realClass)
 
