@@ -20,6 +20,7 @@ package io.github.xiddoc.rosetta.core.resolver
 
 import io.github.xiddoc.rosetta.core.AmbiguousOverloadException
 import io.github.xiddoc.rosetta.core.ResolveException
+import io.github.xiddoc.rosetta.core.ResolveTarget
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 
@@ -64,11 +65,11 @@ public class Resolver(
     private fun entryFor(realName: String): ClassEntry =
         overrides[realName] ?: map.classes[realName]
             ?: throw ResolveException(
-                missMessage("class", realName),
+                missMessage(ResolveTarget.CLASS, realName),
                 realName,
                 map.app,
                 map.version,
-                "class",
+                ResolveTarget.CLASS,
             )
 
     /**
@@ -94,11 +95,11 @@ public class Resolver(
         val methodOverloads =
             entry.methods?.get(methodName)
                 ?: throw ResolveException(
-                    missMessage("method", "$className.$methodName"),
+                    missMessage(ResolveTarget.METHOD, "$className.$methodName"),
                     methodName,
                     map.app,
                     map.version,
-                    "method",
+                    ResolveTarget.METHOD,
                     className,
                 )
         val overloads = methodOverloads.entries
@@ -123,7 +124,7 @@ public class Resolver(
                         methodName,
                         map.app,
                         map.version,
-                        "method",
+                        ResolveTarget.METHOD,
                         className,
                     )
             }
@@ -157,11 +158,11 @@ public class Resolver(
         val entry =
             classEntry.fields?.get(fieldName)
                 ?: throw ResolveException(
-                    missMessage("field", "$className.$fieldName"),
+                    missMessage(ResolveTarget.FIELD, "$className.$fieldName"),
                     fieldName,
                     map.app,
                     map.version,
-                    "field",
+                    ResolveTarget.FIELD,
                     className,
                 )
         val value =
@@ -226,7 +227,8 @@ public class Resolver(
     }
 
     private fun missMessage(
-        target: String,
+        target: ResolveTarget,
         name: String,
-    ): String = "rosetta-xposed: no $target mapping for '$name' in map for ${map.app}@${map.version}."
+    ): String =
+        "rosetta-xposed: no ${target.name.lowercase()} mapping for '$name' in map for ${map.app}@${map.version}."
 }

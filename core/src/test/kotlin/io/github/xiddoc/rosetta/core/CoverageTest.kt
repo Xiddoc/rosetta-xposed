@@ -19,6 +19,7 @@ import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.Resolver
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MatchedBy
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.properties.Properties
 import kotlin.test.Test
@@ -123,6 +124,17 @@ class CoverageTest {
         // Second call hits the memoized cache (same instance).
         assertSame(first, resolver.resolveClass("com.example.Foo"))
         assertFailsWith<ResolveException> { resolver.resolveClass("com.example.Nope") }
+    }
+
+    @Test
+    fun `ResolveException carries the typed ResolveTarget discriminator`() {
+        val resolver = Resolver(map)
+        val cls = assertFailsWith<ResolveException> { resolver.resolveClass("com.example.Nope") }
+        assertEquals(ResolveTarget.CLASS, cls.target)
+        val method = assertFailsWith<ResolveException> { resolver.resolveMethod("com.example.Foo", "ghost") }
+        assertEquals(ResolveTarget.METHOD, method.target)
+        val field = assertFailsWith<ResolveException> { resolver.resolveField("com.example.Foo", "ghost") }
+        assertEquals(ResolveTarget.FIELD, field.target)
     }
 
     @Test
@@ -284,10 +296,10 @@ class CoverageTest {
         // Code given but no map carries it, then the label DOES match → the
         // code block falls through and the label branch wins.
         val byLabel = VersionMatch.select(registry, versionCode = 999, versionLabel = "1.0.0")
-        assertEquals("label", byLabel!!.matchedBy)
+        assertEquals(MatchedBy.LABEL, byLabel!!.matchedBy)
         // A matching code → the firstOrNull predicate's true arm + early return.
         val byCode = VersionMatch.select(registry, versionCode = 100)
-        assertEquals("version_code", byCode!!.matchedBy)
+        assertEquals(MatchedBy.VERSION_CODE, byCode!!.matchedBy)
         // Code given, no match, no label → reaches the final `return null`
         // via the `versionLabel != null` false arm.
         assertNull(VersionMatch.select(registry, versionCode = 999))

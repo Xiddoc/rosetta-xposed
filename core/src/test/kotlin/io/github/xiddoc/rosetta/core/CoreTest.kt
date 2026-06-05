@@ -7,6 +7,7 @@ package io.github.xiddoc.rosetta.core
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MatchedBy
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -136,10 +137,10 @@ class CoreTest {
 
         val byCode = VersionMatch.select(registry, versionCode = 200)
         assertEquals(200, byCode!!.map.versionCode)
-        assertEquals("version_code", byCode.matchedBy)
+        assertEquals(MatchedBy.VERSION_CODE, byCode.matchedBy)
 
         val byLabel = VersionMatch.select(registry, versionLabel = "1.0.0-b")
-        assertEquals("label", byLabel!!.matchedBy)
+        assertEquals(MatchedBy.LABEL, byLabel!!.matchedBy)
 
         assertNull(VersionMatch.select(registry, versionCode = 999))
     }

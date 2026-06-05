@@ -18,11 +18,19 @@ import io.github.xiddoc.rosetta.core.model.RosettaMap
 /** A set of single-version maps, keyed by version label. */
 public typealias MapRegistry = Map<String, RosettaMap>
 
+/** How a [SelectedMap] was chosen from the registry. */
+public enum class MatchedBy {
+    /** Matched on the authoritative `version_code` key (the O(1), exact path). */
+    VERSION_CODE,
+
+    /** Matched on the `version` label fallback. */
+    LABEL,
+}
+
 /** A selection result, recording how the map was chosen. */
 public data class SelectedMap(
     val map: RosettaMap,
-    /** "version_code" | "label". */
-    val matchedBy: String,
+    val matchedBy: MatchedBy,
 )
 
 public object VersionMatch {
@@ -49,12 +57,12 @@ public object VersionMatch {
             val code: Long = versionCode
             for (candidate in registry.values) {
                 if (candidate.versionCode == code) {
-                    return SelectedMap(candidate, "version_code")
+                    return SelectedMap(candidate, MatchedBy.VERSION_CODE)
                 }
             }
         }
         if (versionLabel != null) {
-            registry[versionLabel]?.let { return SelectedMap(it, "label") }
+            registry[versionLabel]?.let { return SelectedMap(it, MatchedBy.LABEL) }
         }
         return null
     }

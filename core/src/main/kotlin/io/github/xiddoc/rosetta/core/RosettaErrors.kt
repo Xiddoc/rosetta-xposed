@@ -41,14 +41,20 @@ public class MapInputTooLargeException(
     message: String,
 ) : RosettaException(message)
 
+/** Which kind of symbol a [ResolveException] failed to resolve. */
+public enum class ResolveTarget {
+    CLASS,
+    METHOD,
+    FIELD,
+}
+
 /** A real name could not be resolved to an obfuscated one. */
 public class ResolveException(
     message: String,
     public val name: String,
     public val app: String,
     public val version: String,
-    /** "class" | "method" | "field". */
-    public val target: String,
+    public val target: ResolveTarget,
     public val classScope: String? = null,
 ) : RosettaException(message)
 
