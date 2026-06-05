@@ -174,6 +174,9 @@ class CoverageTest {
                 resolver.resolveMethod("com.example.Holder", "take", listOf("com.example.NotMapped"))
             }
         assertEquals("com.example.NotMapped", ex.argType)
+        // F4: classScope is a required (non-defaulted) field on this subtype —
+        // assert it so a swap with `app` in overloadMissException would be caught.
+        assertEquals("com.example.Holder", ex.classScope)
         assertTrue(ex is ResolveException)
     }
 
