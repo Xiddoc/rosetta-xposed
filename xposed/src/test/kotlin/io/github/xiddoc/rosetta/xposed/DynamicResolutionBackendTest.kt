@@ -438,6 +438,14 @@ class DynamicResolutionBackendTest {
     }
 
     @Test
+    fun `SafePattern bounds are sourced from the core map caps (no drift)`() {
+        // The discovery caps must equal the canonical map-loader caps so the
+        // runtime-discovered path and the static map share one budget.
+        assertEquals(io.github.xiddoc.rosetta.core.MapLoader.MAX_SIGNATURE_LEN, SafePattern.MAX_SIGNATURE_LEN)
+        assertEquals(io.github.xiddoc.rosetta.core.MapLoader.MAX_ANCHORS_PER_CLASS, SafePattern.MAX_ANCHORS)
+    }
+
+    @Test
     fun `SafePattern rejects a malformed RE2 expression`() {
         assertFailsWith<DiscoveryException> { SafePattern.compile("(unclosed") }
     }
@@ -576,7 +584,7 @@ class DynamicResolutionBackendTest {
 
     @Test
     fun `findMethod by descriptor selects the matching overload in the fake`() {
-        // Exercises the FakeDexKitIndex descriptor-matching + membersOf paths.
+        // Exercises the FakeDexKitIndex descriptor-matching path.
         val index =
             FakeDexKitIndex(
                 methods =
@@ -590,7 +598,7 @@ class DynamicResolutionBackendTest {
             )
         val match = index.findMethod(MethodQuery(declaringClass = obf, descriptor = "(Ljava/lang/String;J)V"))
         assertEquals("(Ljava/lang/String;J)V", match?.descriptor)
-        assertEquals(2, index.membersOf(obf).size)
+        assertEquals(2, index.seededMethods(obf).size)
         assertNull(index.findMethod(MethodQuery(declaringClass = "unknown")))
     }
 }

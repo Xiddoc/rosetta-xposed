@@ -37,6 +37,7 @@
 package io.github.xiddoc.rosetta.xposed
 
 import com.google.re2j.Pattern
+import io.github.xiddoc.rosetta.core.MapLoader
 
 /**
  * Schema-cap-aligned bounds and the RE2-only compiler for contributor input.
@@ -47,11 +48,18 @@ import com.google.re2j.Pattern
  * keeping the runtime-discovered path and the static map under one budget.
  */
 public object SafePattern {
-    /** Max length of a single contributor pattern / signature string. */
-    public const val MAX_SIGNATURE_LEN: Int = 4_096
+    /**
+     * Max length of a single contributor pattern / signature string. Sourced
+     * from the canonical map cap ([MapLoader.MAX_SIGNATURE_LEN]) rather than
+     * re-declared, so the discovery path and the map loader can never drift.
+     */
+    public const val MAX_SIGNATURE_LEN: Int = MapLoader.MAX_SIGNATURE_LEN
 
-    /** Max number of anchors (or pattern entries) in one discovery request. */
-    public const val MAX_ANCHORS: Int = 1_000
+    /**
+     * Max number of anchors (or pattern entries) in one discovery request.
+     * Sourced from the canonical map cap ([MapLoader.MAX_ANCHORS_PER_CLASS]).
+     */
+    public const val MAX_ANCHORS: Int = MapLoader.MAX_ANCHORS_PER_CLASS
 
     /**
      * Compile [pattern] (a contributor-supplied string) to a linear-time RE2
