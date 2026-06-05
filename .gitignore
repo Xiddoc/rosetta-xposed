@@ -132,6 +132,8 @@ gradle-app.setting
 
 # Files for the ART/Dalvik VM
 *.dex
+# Exception: committed test fixture DEX (not a build artefact)
+!dexkit/src/test/resources/dex/fixture.dex
 
 # Java class files
 
