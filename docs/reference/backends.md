@@ -26,10 +26,13 @@ DexKit types** — only plain value types (`MethodQuery` / `MethodMatch`) and
 `FakeDexKitIndex` with canned answers.
 
 The real, device-only piece — a thin adapter that *implements* `DexKitIndex`
-by translating these calls into `DexKitBridge` queries — is a deferred
-follow-up. DexKit stays an **optional** later-phase dependency (it is the
-only file that ever imports an `org.luckypray:dexkit` type) and is not in the
-default build.
+by translating these calls into `DexKitBridge` queries — lives in the
+`:dexkit` module (`DexKitBackedIndex`). DexKit stays an **optional**
+later-phase dependency (it is the only file that ever imports an
+`org.luckypray:dexkit` type) and is not in the default build. See
+[DexKit integration](dexkit-integration.md) for the adapter, its build wiring,
+the native-library / supported-platform skip semantics, and how to refresh the
+fixtures.
 
 ### Strategy order
 
