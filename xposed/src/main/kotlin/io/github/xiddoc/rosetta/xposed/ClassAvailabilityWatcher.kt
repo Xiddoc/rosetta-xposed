@@ -66,6 +66,11 @@ public fun interface ClassAvailabilityWatcher {
  * cancelled. Production code can back this with a `ScheduledExecutorService`
  * or an Xposed/Handler post; tests drive it synchronously so there are no real
  * threads or sleeps.
+ *
+ * IMPORTANT: an implementation that ignores the returned [Registration.cancel]
+ * (i.e. does nothing on cancel) leaks its poll loop — the task keeps running
+ * after [DeferredBinding] auto-cancels the watch on first successful probe.
+ * Always wire [Registration.cancel] to a real stop mechanism.
  */
 public fun interface Ticker {
     /** Schedule [task] to run on a cadence; cancel via the returned handle. */
@@ -106,6 +111,22 @@ public class ClassLoaderProbeWatcher(
  * Signals are coalesced per obfuscated name: registering after a signal has
  * already arrived for that name fires immediately (the dex may have loaded
  * before the deferral was set up).
+ *
+ * **Double-fire window (intentional).** In the coalesced path, [await] fires
+ * [onLoadable] synchronously before returning the [Registration], and then
+ * [signalLoadable] may fire the same listener again before [DeferredBinding]
+ * has had a chance to cancel the registration. This possible second fire is
+ * intentional and harmless: the caller's run-once guard (an [AtomicBoolean]
+ * compareAndSet in [DeferredBinding]) absorbs it. Do NOT "fix" this by adding
+ * deduplication logic here — it would break the coalesced-fire sequence that
+ * [DeferredBinding] relies on.
+ *
+ * **Unbounded [alreadySignalled] set (tracked follow-up).** The set grows by
+ * one entry per distinct obfuscated name ever signalled and is never pruned.
+ * For a typical module (a handful of watched classes per session) this is
+ * negligible; for a long-lived process watching many classes it is a minor
+ * memory leak. A future improvement could cap or evict entries once all
+ * waiters for a name have been serviced.
  */
 public class CallbackWatcher : ClassAvailabilityWatcher {
     private val listeners = ConcurrentHashMap<String, CopyOnWriteArrayList<() -> Unit>>()

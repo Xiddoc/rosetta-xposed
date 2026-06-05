@@ -220,6 +220,52 @@ class DeferredBindingTest {
     }
 
     @Test
+    fun `coalesced DeferredBinding fire does not retain the listener after firing`() {
+        // Regression test for the coalesced-fire listener leak:
+        //   1. Signal arrived before whenClassAvailable → watcher fires
+        //      onSignal synchronously INSIDE await(), at which point watcherReg
+        //      is still NO_OP_REGISTRATION, so the auto-cancel inside onSignal
+        //      is a no-op and the listener is still in the bucket.
+        //   2. DeferredBinding must cancel the real Registration after await()
+        //      returns to prune the dead listener from the bucket.
+        //   3. A subsequent signalLoadable(same name) must NOT re-invoke the
+        //      listener (it was fired exactly once and is now detached).
+        //
+        // Setup: class is NOT loadable at the initial probe, but becomes
+        // loadable right inside the watcher's await() call (the class-becomes-
+        // available race simulated deterministically via a custom watcher).
+        val late = LateLoadingClassLoader(javaClass.classLoader, setOf(obf))
+        val rosetta = rosettaOver(late)
+
+        // A watcher that fires onLoadable() synchronously inside await(),
+        // releasing the class first so the re-probe inside onSignal succeeds.
+        // Captures the registration returned so later signalLoadable calls can
+        // be simulated (the bucket-management pattern mirrors CallbackWatcher).
+        val capturedCallbacks = mutableListOf<() -> Unit>()
+        val syncCoalescingWatcher =
+            ClassAvailabilityWatcher { _, onLoadable ->
+                capturedCallbacks.add(onLoadable)
+                late.release() // class becomes available before the sync fire
+                onLoadable() // fire synchronously, watcherReg still NO_OP at this point
+                Registration { capturedCallbacks.remove(onLoadable) }
+            }
+
+        var fires = 0
+        DeferredBinding.whenClassAvailable(rosetta, "com.example.RealClient", syncCoalescingWatcher) {
+            fires++
+        }
+
+        // Coalesced sync-fire should have delivered the callback exactly once.
+        assertEquals(1, fires)
+
+        // Simulate a "subsequent signal": invoke all captured callbacks (as
+        // signalLoadable would). After the fix, the listener was pruned by the
+        // Registration cancel, so capturedCallbacks is empty — no re-invocation.
+        capturedCallbacks.forEach { it() }
+        assertEquals(1, fires) // must still be 1
+    }
+
+    @Test
     fun `CallbackWatcher cancel detaches the listener`() {
         val watcher = CallbackWatcher()
         var fires = 0

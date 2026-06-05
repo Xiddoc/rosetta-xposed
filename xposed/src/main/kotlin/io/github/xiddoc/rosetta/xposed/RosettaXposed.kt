@@ -88,14 +88,29 @@ public class RosettaXposed internal constructor(
      * [DeferredBinding] so the deferred probe shares the exact guard path used
      * by every other target (a denied target throws [TargetPolicyException]
      * before any load — the M1 lesson).
+     *
+     * [realClass] is resolved exactly ONCE per call: the returned obfuscated
+     * name (or `null`) is reused by [DeferredBinding] to avoid a second
+     * [ResolutionBackend.resolveClass] round-trip (which matters under a
+     * discovery composite that re-runs DexKit on each miss).
+     *
+     * @return the obfuscated FQN if the class is loadable right now, or `null`
+     *   if it is not yet present; throws [TargetPolicyException] if the map
+     *   points [realClass] at a denied/reserved namespace (thrown before any
+     *   [Class.forName] — the M1 lesson).
      */
-    internal fun probeClassLoadable(realClass: String): Boolean {
+    internal fun probeClassLoadable(realClass: String): String? {
         val resolved = backend.resolveClass(realClass)
-        return loader.probeLoadable(resolved.realName, resolved.obfName)
+        return if (loader.probeLoadable(resolved.realName, resolved.obfName)) resolved.obfName else null
     }
 
-    /** The obfuscated FQN [realClass] resolves to (used by [DeferredBinding]). */
-    internal fun obfNameOf(realClass: String): String = backend.resolveClass(realClass).obfName
+    /**
+     * The obfuscated FQN [realClass] resolves to (pure data, no load attempt).
+     * Used by [DeferredBinding] after an initial probe returns null (not yet
+     * loadable) to obtain the obfName for the watcher registration without
+     * a third [ResolutionBackend.resolveClass] round-trip on every signal.
+     */
+    internal fun resolveObfName(realClass: String): String = backend.resolveClass(realClass).obfName
 
     public companion object {
         /**

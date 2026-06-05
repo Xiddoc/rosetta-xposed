@@ -59,12 +59,22 @@ public object DeferredBinding {
         watcher: ClassAvailabilityWatcher,
         onAvailable: (RosettaXposed) -> Unit,
     ): Registration {
-        // Initial guarded probe. A denied target throws TargetPolicyException
-        // HERE, before any Class.forName — never probe-loaded.
-        if (rosetta.probeClassLoadable(realClass)) {
+        // Initial guarded probe. probeClassLoadable resolves realClass to its
+        // obfuscated FQN exactly ONCE: it returns the obfName when the class is
+        // already loadable, null when it is not yet present, and throws
+        // TargetPolicyException BEFORE any Class.forName for a denied target
+        // (the M1 lesson — guard fires before load, never after).
+        val initialObfName = rosetta.probeClassLoadable(realClass)
+        if (initialObfName != null) {
             onAvailable(rosetta)
             return NO_OP_REGISTRATION
         }
+
+        // Not yet loadable. Obtain the obfuscated name for the watcher
+        // registration — pure data lookup, no load attempted (the guard already
+        // ran inside probeClassLoadable above and did not throw, so this is
+        // a safe second resolveClass call at setup time only, not per-signal).
+        val obfName = rosetta.resolveObfName(realClass)
 
         val fired = AtomicBoolean(false)
         // The watcher's own registration, used by the firing signal to
@@ -75,18 +85,31 @@ public object DeferredBinding {
         val watcherReg = AtomicReference(NO_OP_REGISTRATION)
 
         val onSignal = {
-            // Re-probe through the guarded path on every signal, then claim the
-            // single fire. probeClassLoadable returns false for a spurious early
-            // signal (harmless — the probe is still the chokepoint), and
-            // compareAndSet wins exactly once even if signals overlap, so
-            // onAvailable runs at most once and the watch then auto-cancels.
-            if (rosetta.probeClassLoadable(realClass) && fired.compareAndSet(false, true)) {
+            // Re-probe through the guarded path on every signal (single
+            // backend.resolveClass call per signal — obfName is already known).
+            // probeClassLoadable returns null for a spurious early signal
+            // (harmless — the probe is still the chokepoint), and compareAndSet
+            // wins exactly once even if signals overlap, so onAvailable runs at
+            // most once and the watch then auto-cancels.
+            if (rosetta.probeClassLoadable(realClass) != null && fired.compareAndSet(false, true)) {
                 watcherReg.get().cancel()
                 onAvailable(rosetta)
             }
         }
 
-        watcherReg.set(watcher.await(rosetta.obfNameOf(realClass), onSignal))
+        watcherReg.set(watcher.await(obfName, onSignal))
+
+        // Coalesced-fire cleanup: if onSignal fired SYNCHRONOUSLY inside
+        // await() (e.g. CallbackWatcher's coalesced path), fired is already
+        // true but watcherReg held a no-op at that moment, so the auto-cancel
+        // inside onSignal was a no-op and the listener is still in the bucket.
+        // Now that watcherReg holds the real Registration, cancel it to prune
+        // the dead listener — a subsequent signalLoadable(same name) must not
+        // re-invoke it.
+        if (fired.get()) {
+            watcherReg.get().cancel()
+            return NO_OP_REGISTRATION
+        }
 
         // The user-facing registration: cancelling before load both stops the
         // watcher and trips the run-once flag so a later signal cannot fire.
