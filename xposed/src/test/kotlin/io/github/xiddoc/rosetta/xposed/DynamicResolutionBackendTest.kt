@@ -20,6 +20,7 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.Confidence
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -300,6 +301,50 @@ class DynamicResolutionBackendTest {
         val entry = sink.entries().single().entry
         assertEquals(anchors, entry.anchors)
         assertEquals("zzzz", entry.extends)
+    }
+
+    @Test
+    fun `a descriptor-discovered entry has kind AIDL_STUB`() {
+        // When the locating strategy was the AIDL descriptor, the backend
+        // already knew the class is an AIDL binder stub — set kind so the
+        // fact round-trips upstream rather than being silently dropped.
+        val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
+        val sink = MapDiscoverySink()
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;")),
+                sink,
+            )
+        backend.resolveClass(real)
+        assertEquals(
+            ClassKind.AIDL_STUB,
+            sink
+                .entries()
+                .single()
+                .entry.kind,
+        )
+    }
+
+    @Test
+    fun `a non-aidl discovered entry has kind null`() {
+        // Entries found by anchors or superclass only carry no implied kind.
+        val anchors = listOf("tok1")
+        val index = FakeDexKitIndex(byAnchors = mapOf(anchors to obf))
+        val sink = MapDiscoverySink()
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(real to DiscoveryHints(anchors = anchors)),
+                sink,
+            )
+        backend.resolveClass(real)
+        assertNull(
+            sink
+                .entries()
+                .single()
+                .entry.kind,
+        )
     }
 
     // ---- ReDoS / bounds cases (audit H4) ------------------------------------

@@ -32,6 +32,7 @@
 package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.model.ClassEntry
+import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
@@ -161,6 +162,11 @@ public class DynamicResolutionBackend(
         // Field discovery by signature is not part of the B.1 strategy set
         // (DexKit field queries land with the device adapter). Fail closed
         // rather than fabricate a field mapping.
+        //
+        // The discoverClass call below is INTENTIONAL: even though we will
+        // throw, it ensures the class is discovered and written back through
+        // the composite's uniform sink path (memoisation + provenance emit)
+        // before we surface the field miss. Do NOT remove it as a dead call.
         discoverClass(realClass)
         throw DiscoveryException(
             "rosetta-xposed: dynamic discovery does not resolve fields (real '$realClass.$realField'); " +
@@ -197,6 +203,10 @@ public class DynamicResolutionBackend(
             ClassEntry(
                 obfuscated = obfClass,
                 extends = hint.superclass,
+                // Preserve the fact the backend already knew: a descriptor-located
+                // class is an AIDL binder stub, so the entry round-trips that kind
+                // back upstream rather than losing it.
+                kind = if (hint.aidlDescriptor != null) ClassKind.AIDL_STUB else null,
                 aidlDescriptor = hint.aidlDescriptor,
                 anchors = hint.anchors.ifEmpty { null },
                 methods = methods,

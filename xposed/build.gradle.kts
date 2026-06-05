@@ -30,11 +30,13 @@ plugins {
 dependencies {
     api(project(":core"))
 
-    // Dynamic backend (B.1) — contributor-supplied discovery patterns are
-    // compiled ONLY through RE2 (linear-time; no catastrophic backtracking),
-    // never java.util.regex / kotlin.text.Regex. This is the ReDoS chokepoint
-    // (audit H4); see SafePattern. RE2 is a small, pure-JVM library, so adding
-    // it keeps the module device-free and unit-testable.
+    // Dynamic backend (B.1) — the H4 ReDoS chokepoint; see SafePattern.
+    // The current live path passes contributor strings to the DexKitIndex seam
+    // as literals (bounded by checkLen/checkBounds). RE2J is the ready,
+    // tested seam for when the device adapter routes contributor-supplied
+    // regex anchors through SafePattern.compile / compileAll (linear-time;
+    // no catastrophic backtracking, unlike java.util.regex / kotlin.text.Regex).
+    // RE2 is pure-JVM, so it keeps the module device-free and unit-testable.
     implementation("com.google.re2j:re2j:1.7")
 
     // The real DexKit-backed adapter that implements the `DexKitIndex` seam on
