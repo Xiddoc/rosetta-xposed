@@ -135,5 +135,48 @@ public class RosettaXposed internal constructor(
                     ?: return null
             return fromMap(selected.map, classLoader, identity, policy)
         }
+
+        /**
+         * Build a self-healing binding over [map] with a dynamic discovery
+         * fallback ([CompositeResolutionBackend]): static-first, and on a
+         * static miss it discovers the obfuscated names live via [index]
+         * (writing each discovery back so the next lookup is O(1) static).
+         *
+         * SECURITY — discovery runs AFTER the signer guard, and discovered
+         * names are guarded by C1. When [identity] is supplied the map's
+         * `signer_sha256` guard is enforced fail-closed FIRST (so only a
+         * trusted process ever reaches discovery); pass `null` only when no
+         * `AppIdentity` is available (the unverified path, mirroring
+         * [fromMapUnverified]). Either way, a discovered obfuscated FQN is NOT
+         * trusted blindly: every target — discovered or static — is realised
+         * through the SAME [TargetLoader.loadGuardedClass] chokepoint, so the
+         * C1 namespace guard rejects a discovery result that lands on a
+         * reserved namespace (e.g. `java.lang.Runtime`) before any class load.
+         *
+         * @param map the (possibly empty / incomplete) static map.
+         * @param index the device-side discovery seam (faked in tests).
+         * @param classLoader the app class loader targets are realised through.
+         * @param identity when non-null, enforces the map's signer guard before
+         *   wiring discovery; when null, skips the signer check (unverified).
+         * @param discovery the contributor discovery recipes + provenance sink.
+         * @param policy the C1 target namespace policy applied to every target
+         *   (discovered or static).
+         */
+        public fun fromMapWithDiscovery(
+            map: RosettaMap,
+            index: DexKitIndex,
+            classLoader: ClassLoader,
+            identity: AppIdentity? = null,
+            discovery: DiscoveryConfig = DiscoveryConfig(),
+            policy: TargetPolicy = TargetPolicy(),
+        ): RosettaXposed {
+            if (identity != null) SignerGuard.verify(map, identity)
+            val composite =
+                CompositeResolutionBackend(
+                    static = StaticResolutionBackend(map),
+                    dynamic = DynamicResolutionBackend(index, discovery.hints, discovery.sink),
+                )
+            return RosettaXposed(composite, classLoader, map.app, policy)
+        }
     }
 }
