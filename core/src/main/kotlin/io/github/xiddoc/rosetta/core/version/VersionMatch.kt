@@ -24,12 +24,17 @@ import io.github.xiddoc.rosetta.core.model.RosettaMap
  * the human-label fallback.
  *
  * Build it once from the maps you bundled ([of] / [fromCollection]); both
- * indices are last-write-wins on a duplicate key, surfaced via the size of the
- * source vs the index if a caller cares.
+ * indices are last-write-wins on a duplicate key. A `version_code` collision
+ * (two bundled maps sharing one code — an authoring mistake for the
+ * community-maps use case) is therefore silent in the *result*, but observable:
+ * [inputCount] (the number of maps fed in) exceeding [size] (the number of
+ * distinct `version_code`s indexed) tells a caller that a collapse happened.
  */
 public class MapRegistry private constructor(
     private val byVersionCode: Map<Long, RosettaMap>,
     private val byLabel: Map<String, RosettaMap>,
+    /** The number of maps fed into [fromCollection] (before de-duplication). */
+    public val inputCount: Int,
 ) {
     /** The map registered for [versionCode] (O(1)), or null. */
     public fun byVersionCode(versionCode: Long): RosettaMap? = byVersionCode[versionCode]
@@ -39,6 +44,13 @@ public class MapRegistry private constructor(
 
     /** Number of distinct version_codes indexed. */
     public val size: Int get() = byVersionCode.size
+
+    /**
+     * True when at least one `version_code` collision collapsed two input maps
+     * into one index slot ([inputCount] > [size]) — an authoring mistake worth
+     * surfacing rather than swallowing.
+     */
+    public val hasVersionCodeCollision: Boolean get() = inputCount > size
 
     public companion object {
         /** Build a registry from [maps] (varargs convenience). */
@@ -55,7 +67,7 @@ public class MapRegistry private constructor(
                 byCode[m.versionCode] = m
                 byLabel[m.version] = m
             }
-            return MapRegistry(byCode, byLabel)
+            return MapRegistry(byCode, byLabel, inputCount = maps.size)
         }
     }
 }

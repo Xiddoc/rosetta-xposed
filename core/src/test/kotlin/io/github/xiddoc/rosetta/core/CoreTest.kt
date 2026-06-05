@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class CoreTest {
@@ -182,5 +183,29 @@ class CoreTest {
         assertEquals(100, registry.byLabel("1.0.0")!!.versionCode)
         assertEquals(200, registry.byLabel("2.0.0")!!.versionCode)
         assertNull(registry.byLabel("nope"))
+        // No collision here: every input has a distinct version_code.
+        assertEquals(2, registry.inputCount)
+        assertEquals(false, registry.hasVersionCodeCollision)
+    }
+
+    @Test
+    fun `MapRegistry fromCollection is last-write-wins on a duplicate version_code`() {
+        // F3 + S4: two maps share version_code 100. The LAST one fed in wins the
+        // index slot, the registry collapses to one entry, and the collapse is
+        // observable via inputCount > size (hasVersionCodeCollision).
+        val first = MapLoader.fromJson(minimalMap)
+        val second =
+            MapLoader.fromJson(
+                // Same version_code (100), different label, so we can tell which won.
+                minimalMap.replace("\"version\": \"1.0.0\"", "\"version\": \"1.0.0-second\""),
+            )
+        val registry = MapRegistry.fromCollection(listOf(first, second))
+
+        // Collapsed to one version_code slot, last-write-wins.
+        assertEquals(1, registry.size)
+        assertSame(second, registry.byVersionCode(100))
+        // The collision is surfaced (the documented inputCount-vs-size signal).
+        assertEquals(2, registry.inputCount)
+        assertEquals(true, registry.hasVersionCodeCollision)
     }
 }
