@@ -82,7 +82,10 @@ Notes on inputs:
 - **`expectObf`** (string) — the resolved obfuscated short name.
 - **`expectSignature`** (string) — the picked overload's JVM signature.
 - **`expectClassName`** (string) — the obfuscated short name of the class
-  the resolved method/field lives on.
+  the resolved method/field lives on. The value is the class's `obfuscated`
+  token verbatim (the obfuscated SHORT name, e.g. `aaaa` or `aaaa$Inner`),
+  NOT a fully-qualified obfuscated FQN — a TS-runner author should mirror
+  this exact form.
 - **`expectStatic`** (boolean) — resolved static flag (absent flag in the
   map ⇒ `false`).
 - **`expectAidlTxn`** (number) — resolved AIDL transaction code.
