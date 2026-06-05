@@ -26,17 +26,32 @@ import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 
-public class RosettaXposed(
+public class RosettaXposed internal constructor(
     private val backend: ResolutionBackend,
-    private val classLoader: ClassLoader,
+    private val loader: TargetLoader,
 ) {
+    /**
+     * Build over a [backend] + [classLoader], confining every resolution
+     * target to the namespace allowed by [policy] for the app named by
+     * [appName] (RFC 0001 C1).
+     */
+    public constructor(
+        backend: ResolutionBackend,
+        classLoader: ClassLoader,
+        appName: String,
+        policy: TargetPolicy = TargetPolicy(),
+    ) : this(
+        backend,
+        TargetLoader(classLoader, TargetGuard.appPrefixOf(appName, policy), policy),
+    )
+
     /** True when the loaded map (or backend) knows [realClass]. */
     public fun knows(realClass: String): Boolean = backend.canResolve(realClass)
 
     /** A class target — load the obfuscated class behind a real name. */
     public fun useClass(realClass: String): ClassTarget {
         val resolved = backend.resolveClass(realClass)
-        return ClassTarget(resolved.realName, resolved.obfName, classLoader)
+        return ClassTarget(resolved.realName, resolved.obfName, loader)
     }
 
     /**
@@ -47,13 +62,13 @@ public class RosettaXposed(
         realClass: String,
         realMethod: String,
         argTypes: List<String>? = null,
-    ): MethodTarget = MethodTarget(backend.resolveMethod(realClass, realMethod, argTypes), classLoader)
+    ): MethodTarget = MethodTarget(backend.resolveMethod(realClass, realMethod, argTypes), loader)
 
     /** A field target. */
     public fun field(
         realClass: String,
         realField: String,
-    ): FieldTarget = FieldTarget(backend.resolveField(realClass, realField), classLoader)
+    ): FieldTarget = FieldTarget(backend.resolveField(realClass, realField), loader)
 
     public companion object {
         /**
@@ -73,9 +88,10 @@ public class RosettaXposed(
             map: RosettaMap,
             classLoader: ClassLoader,
             identity: AppIdentity,
+            policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed {
             SignerGuard.verify(map, identity)
-            return RosettaXposed(StaticResolutionBackend(map), classLoader)
+            return RosettaXposed(StaticResolutionBackend(map), classLoader, map.app, policy)
         }
 
         /**
@@ -90,7 +106,8 @@ public class RosettaXposed(
         public fun fromMapUnverified(
             map: RosettaMap,
             classLoader: ClassLoader,
-        ): RosettaXposed = RosettaXposed(StaticResolutionBackend(map), classLoader)
+            policy: TargetPolicy = TargetPolicy(),
+        ): RosettaXposed = RosettaXposed(StaticResolutionBackend(map), classLoader, map.app, policy)
 
         /**
          * Select a map from a registry by the running app's identity, then
@@ -111,11 +128,12 @@ public class RosettaXposed(
             registry: MapRegistry,
             identity: AppIdentity,
             classLoader: ClassLoader,
+            policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed? {
             val selected =
                 VersionMatch.select(registry, identity.versionCode, identity.versionName)
                     ?: return null
-            return fromMap(selected.map, classLoader, identity)
+            return fromMap(selected.map, classLoader, identity, policy)
         }
     }
 }

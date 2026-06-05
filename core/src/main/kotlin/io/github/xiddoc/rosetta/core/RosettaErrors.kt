@@ -52,6 +52,33 @@ public class ResolveException(
     public val classScope: String? = null,
 ) : RosettaException(message)
 
+/**
+ * A resolution target (the fully-qualified class name a map points at, which
+ * would be handed to `Class.forName`) was rejected by the namespace guard.
+ *
+ * Fail-closed (RFC 0001 C1): a community map maps a real name to an arbitrary
+ * obfuscated string, and that string is loaded reflectively and made
+ * accessible. A malicious or buggy map could redirect a hook at a sensitive
+ * framework class (e.g. `java.lang.Runtime`, `android.app.*`). The guard
+ * confines targets to package-local / app-owned namespaces (plus an explicit
+ * escape-hatch allowlist) and THROWS this — before any class load or
+ * `setAccessible` — for anything else.
+ *
+ * This is distinct from the "class not present yet" case (which the layer-4
+ * binding reports as its own `BindException`): a [TargetPolicyException] means
+ * the target is *forbidden*, not merely *absent*.
+ */
+public class TargetPolicyException(
+    /** The real name being resolved when the forbidden target was produced. */
+    public val name: String,
+    /** The rejected target FQN (what would have been passed to `Class.forName`). */
+    public val target: String,
+    /** Why the target was rejected (which rule denied it). */
+    public val reason: String,
+) : RosettaException(
+        "rosetta: target '$target' for real name '$name' is forbidden by the namespace guard: $reason",
+    )
+
 /** A method name had several overloads and no arg types were supplied. */
 public class AmbiguousOverloadException(
     message: String,
