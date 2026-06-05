@@ -66,24 +66,18 @@ public class Resolver(
     /** True if [realName] is a known class real-name (override or map). */
     public fun hasClass(realName: String): Boolean = overrides.containsKey(realName) || map.classes.containsKey(realName)
 
-    /** Resolve a class by real name. */
-    public fun resolveClass(realName: String): ResolvedClass {
-        classCache[realName]?.let { return it }
-        return resolvedClassFrom(realName, entryFor(realName))
-    }
-
     /**
-     * Build (and cache) the [ResolvedClass] for [realName] from an already-
-     * fetched [entry]. The single place the class result is materialized, so
-     * [resolveMethod] / [resolveField] — which already hold the [ClassEntry]
-     * from one [entryFor] call — warm the class cache without a SECOND
-     * map/override lookup.
+     * Resolve a class by real name. Pass [prefetched] to reuse a [ClassEntry]
+     * the caller already fetched from [entryFor] (the method/field paths), so
+     * the class cache is warmed without a SECOND override/map lookup; omit it
+     * for the public class-resolution path.
      */
-    private fun resolvedClassFrom(
+    public fun resolveClass(
         realName: String,
-        entry: ClassEntry,
+        prefetched: ClassEntry? = null,
     ): ResolvedClass {
         classCache[realName]?.let { return it }
+        val entry = prefetched ?: entryFor(realName)
         val value = ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
         classCache[realName] = value
         return value
@@ -125,7 +119,7 @@ public class Resolver(
         // One entry lookup (override-first); warm the class cache from it rather
         // than re-running the lookup inside resolveClass.
         val entry = entryFor(className)
-        val cls = resolvedClassFrom(className, entry)
+        val cls = resolveClass(className, entry)
         // Resolve the nullable `MethodOverloads` first (absent methods map, or
         // no such method name), then read its non-null `entries`. Chaining
         // `?.entries` onto the safe-call would emit an unreachable null-branch,
@@ -195,7 +189,7 @@ public class Resolver(
 
         // One entry lookup (override-first); warm the class cache from it.
         val classEntry = entryFor(className)
-        val cls = resolvedClassFrom(className, classEntry)
+        val cls = resolveClass(className, classEntry)
         val entry =
             classEntry.fields?.get(fieldName)
                 ?: throw ResolveException(
