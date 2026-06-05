@@ -132,9 +132,13 @@ tasks.test {
         events("passed", "skipped", "failed")
     }
 
-    // Let DexKit's `System.loadLibrary("dexkit")` find the committed host-built
-    // native (`libdexkit.so`). Resolve the resources dir to an absolute path and
-    // PREPEND it to any existing `java.library.path` so the test JVM can load it.
+    // Let DexKit's `System.loadLibrary("dexkit")` find the host-built native
+    // (`libdexkit.so`). This native is BUILT IN CI (cached) from pinned DexKit
+    // source via `tools/dexkit-native/build-libdexkit.sh` and is NOT committed,
+    // so on a fresh checkout the directory may be empty — the integration test
+    // detects that via the `rosetta.dexkit.nativeDir` property below and skips.
+    // Resolve the resources dir to an absolute path and PREPEND it to any
+    // existing `java.library.path` so the test JVM can load it when present.
     val nativeDir =
         layout.projectDirectory
             .dir("src/test/resources/native/linux-x86_64")
@@ -143,4 +147,10 @@ tasks.test {
     val mergedLibPath =
         if (existingLibPath.isEmpty()) nativeDir else "$nativeDir${File.pathSeparator}$existingLibPath"
     jvmArgs("-Djava.library.path=$mergedLibPath")
+
+    // Hand the test the SAME directory so it can probe for the native file
+    // itself (`File(nativeDir, System.mapLibraryName("dexkit"))`). This lets
+    // the test distinguish "native absent → skip cleanly" from "native present
+    // but unloadable → fatal", which `java.library.path` alone cannot express.
+    systemProperty("rosetta.dexkit.nativeDir", nativeDir)
 }

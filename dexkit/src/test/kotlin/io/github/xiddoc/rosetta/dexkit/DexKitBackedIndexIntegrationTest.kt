@@ -11,28 +11,35 @@
  *   5. the C1 target guard wrapping a DISCOVERED name,
  *   6. the signer guard running BEFORE discovery (fail-closed).
  *
- * It is hermetic: the dex fixture + its real→obf mapping + the host-built
- * `libdexkit.so` all live under `src/test/resources/` and are committed.
+ * The dex fixture + its real→obf mapping live under `src/test/resources/` and
+ * are committed. The host-built `libdexkit.so`, by contrast, is NOT committed:
+ * it is BUILT IN CI (cached) from pinned DexKit 2.2.0 source via
+ * `tools/dexkit-native/build-libdexkit.sh`, and locally you build it on demand.
  *
- * TWO-STEP NATIVE CONTRACT. The build (`dexkit/build.gradle.kts`) supplies the
- * test JVM with `-Djava.library.path=.../native/linux-x86_64`; `@BeforeAll`
- * then does `System.loadLibrary("dexkit")` and creates the bridge as two
- * SEPARATE steps. The two failure modes are treated differently:
+ * PRESENT ⇒ RUN, ABSENT ⇒ SKIP. The build (`dexkit/build.gradle.kts`) supplies
+ * the test JVM with both `-Djava.library.path=.../native/linux-x86_64` AND the
+ * directory itself as the `rosetta.dexkit.nativeDir` system property. `@BeforeAll`
+ * first probes for `File(nativeDir, System.mapLibraryName("dexkit"))` and then
+ * loads the native + creates the bridge as SEPARATE steps. The cases:
  *
- *   - A *load* failure (`UnsatisfiedLinkError` / `NoClassDefFoundError` /
- *     a missing resource) is the genuine "DexKit native unavailable" signal.
- *     On an UNSUPPORTED platform (mac / arm / non-glibc) it is benign and the
- *     suite skips cleanly via `assumeTrue(ready)`. On a SUPPORTED platform
- *     (linux + amd64/x86_64 — i.e. CI on ubuntu-latest) it is FATAL: the
- *     committed native is expected to load, so a load failure FAILS setup with
- *     a clear pointer at the GLIBC_2.38 floor and the refresh script.
- *   - Any OTHER throwable (e.g. `DexKitBridge.create` choking on a broken
- *     dex) is a real regression and is left to PROPAGATE — never skipped.
+ *   - The native file is ABSENT (a fresh checkout that has not run the build
+ *     script, or an arch CI never builds for): there is simply nothing to load,
+ *     so the suite SKIPS cleanly via `assumeTrue(ready)` on ALL platforms,
+ *     including linux-x86_64. This is the normal local-dev path.
+ *   - The native file is PRESENT but `System.loadLibrary("dexkit")` /
+ *     `DexKitBridge.create` fails with `UnsatisfiedLinkError`: a real binary is
+ *     here but broken (e.g. an older glibc than the GLIBC_2.38 floor, or a
+ *     drifted build). On a SUPPORTED platform (linux + amd64/x86_64 — i.e. CI
+ *     on ubuntu-latest, which builds the native) this is FATAL: setup FAILS
+ *     with a pointer at the GLIBC_2.38 floor and `build-libdexkit.sh`. On an
+ *     UNSUPPORTED arch a present-but-unloadable lib is benign and skips.
+ *   - Any OTHER throwable (e.g. `DexKitBridge.create` choking on a broken dex
+ *     once the lib loaded) is a real regression and is left to PROPAGATE.
  *
- * This guarantees CI actually runs all the tests for real and goes red if the
- * native breaks, while non-supported dev machines still skip cleanly. Because
- * the suite legitimately skips on those machines, this module's coverage is NOT
- * wired into the root 100% Kover gate.
+ * Net effect: CI builds the native, finds it present, and runs every test for
+ * real — going red on any genuine failure — while a local/dev checkout without
+ * the built native skips cleanly. Because the suite legitimately skips on those
+ * machines, this module's coverage is NOT wired into the root 100% Kover gate.
  */
 package io.github.xiddoc.rosetta.dexkit
 
@@ -92,18 +99,33 @@ class DexKitBackedIndexIntegrationTest {
         val mapFile = resource("dex/fixture-mapping.json") ?: return
         mapping = FixtureMapping.parse(mapFile.readText())
 
-        // STEP 1 — load the native, separately from bridge creation. Only a
-        // genuine "native unavailable" signal (UnsatisfiedLinkError, the
-        // DexKit class missing, or a missing resource) is caught here. On a
-        // SUPPORTED platform the committed `libdexkit.so` is expected to load,
-        // so a load failure is FATAL (a broken / drifted native must go red,
-        // not silently skip). On an UNSUPPORTED platform it is benign: leave
-        // `ready` false so every test skips via `assumeTrue`.
+        // STEP 0 — probe for the native file itself. It is NOT committed (CI
+        // builds it via build-libdexkit.sh); on a fresh checkout that has not
+        // run that script, the file is simply ABSENT. That is the normal
+        // local-dev / unsupported-arch path: nothing to load, so leave `ready`
+        // false and every test skips cleanly via `assumeTrue` — on ALL
+        // platforms, linux-x86_64 included.
+        val libFile = nativeLibFile()
+        if (libFile == null || !libFile.isFile) {
+            println(
+                "rosetta-xposed:dexkit: native libdexkit.so not built here " +
+                    "(${libFile?.path ?: "rosetta.dexkit.nativeDir unset"}) — tests will skip. " +
+                    "Build it with tools/dexkit-native/build-libdexkit.sh to run them.",
+            )
+            return
+        }
+
+        // STEP 1 — the native file IS present, so load it (separately from
+        // bridge creation). A load failure now means a real binary is here but
+        // broken (e.g. an older glibc than the GLIBC_2.38 floor, or a drifted
+        // build). On a SUPPORTED platform (linux + amd64/x86_64, i.e. CI) that
+        // is FATAL: a present-but-unloadable native must go red, not skip. On
+        // an UNSUPPORTED arch it is benign — leave `ready` false to skip.
         try {
             System.loadLibrary("dexkit")
         } catch (e: UnsatisfiedLinkError) {
             if (isSupportedPlatform()) throw nativeLoadFailure(e)
-            println("rosetta-xposed:dexkit: native unavailable (${e.javaClass.simpleName}) — tests will skip.")
+            println("rosetta-xposed:dexkit: present native unloadable on this arch (${e.javaClass.simpleName}) — tests will skip.")
             return
         } catch (e: NoClassDefFoundError) {
             // DexKit class itself missing from the classpath — unavailable.
@@ -114,16 +136,36 @@ class DexKitBackedIndexIntegrationTest {
 
         // STEP 2 — create the bridge. This is NOT in the skip-gate: any failure
         // here (e.g. DexKitBridge.create choking on a broken dex) is a real
-        // regression and is allowed to PROPAGATE and fail the run.
-        bridge = DexKitBridge.create(arrayOf(dexFile.readBytes()))
+        // regression and is allowed to PROPAGATE and fail the run. An
+        // UnsatisfiedLinkError out of create() on a supported platform is still
+        // a present-but-broken native, so it is also routed to the fatal path.
+        try {
+            bridge = DexKitBridge.create(arrayOf(dexFile.readBytes()))
+        } catch (e: UnsatisfiedLinkError) {
+            if (isSupportedPlatform()) throw nativeLoadFailure(e)
+            println("rosetta-xposed:dexkit: present native unloadable on this arch (${e.javaClass.simpleName}) — tests will skip.")
+            return
+        }
         index = DexKitBackedIndex(bridge!!)
         ready = true
     }
 
     /**
-     * The platform where the committed native is expected to load: Linux on an
-     * x86_64 / amd64 JVM (the CI runner). On any other platform an
-     * `UnsatisfiedLinkError` is benign and the suite skips.
+     * The expected native file location, derived from the `rosetta.dexkit.nativeDir`
+     * system property the build supplies (the directory also on `java.library.path`).
+     * Returns `null` if the property is unset; otherwise the platform-mapped
+     * `libdexkit.so` under it (which may or may not exist — the caller probes).
+     */
+    private fun nativeLibFile(): File? {
+        val dir = System.getProperty("rosetta.dexkit.nativeDir").orEmpty()
+        if (dir.isEmpty()) return null
+        return File(dir, System.mapLibraryName("dexkit"))
+    }
+
+    /**
+     * The platform where a PRESENT native is expected to load: Linux on an
+     * x86_64 / amd64 JVM (the CI runner that builds it). On any other platform a
+     * present-but-unloadable native is benign and the suite skips.
      */
     private fun isSupportedPlatform(): Boolean {
         val os = System.getProperty("os.name").orEmpty().lowercase()
@@ -133,10 +175,11 @@ class DexKitBackedIndexIntegrationTest {
 
     private fun nativeLoadFailure(cause: Throwable): AssertionError =
         AssertionError(
-            "DexKit native failed to load on a SUPPORTED platform " +
+            "A PRESENT DexKit native failed to load on a SUPPORTED platform " +
                 "(${System.getProperty("os.name")}/${System.getProperty("os.arch")}). " +
-                "The committed dexkit/src/test/resources/native/linux-x86_64/libdexkit.so must load here. " +
-                "It requires GLIBC_2.38 or newer; refresh it with tools/dexkit-native/build-libdexkit.sh. " +
+                "The native at ${nativeLibFile()?.path} exists but is not loadable here. " +
+                "It requires GLIBC_2.38 or newer and is BUILT IN CI (not committed) via " +
+                "tools/dexkit-native/build-libdexkit.sh — rebuild it on a host meeting the GLIBC_2.38 floor. " +
                 "Cause: ${cause.javaClass.name}: ${cause.message}",
             cause,
         )
