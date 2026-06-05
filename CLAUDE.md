@@ -60,9 +60,12 @@ These come from RFC 0001 and were confirmed with the project owner.
    XposedBridge into `:core` or make `:xposed` depend on them at compile
    time — keep the binding pure-JVM and framework-agnostic so it stays
    unit-testable without an emulator.
-4. **App identity: `version_code` selects, `signer_sha256` guards.**
-   `AppIdentity` is a plain value the consuming module fills from
-   `PackageManager`; `:xposed` must not compile against `android.jar`.
+4. **App identity: `version_code` selects, `signer_sha256` guards
+   (enforced).** `AppIdentity` is a plain value the consuming module fills
+   from `PackageManager`; `:xposed` must not compile against `android.jar`.
+   When a map carries a `signer_sha256`, it is enforced fail-closed
+   (`SignerGuard` / `RosettaXposed.verifySigner`, used by `fromRegistry` and
+   the identity-bearing `fromMap`); a map without one is not checked.
 5. **Static backend now, DexKit dynamic backend later.** The dynamic
    (self-healing) backend and deferred binding for late-loaded dex are
    architected as skeletons; DexKit is an *optional* dependency added in a

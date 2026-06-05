@@ -47,6 +47,32 @@ guard (`signer_sha256`) come from the shared schema. Use
 `RosettaXposed.fromRegistry(...)` to select a map from a registry by the
 running app's identity.
 
+## Signer enforcement (fail-closed)
+
+When a map carries a `signer_sha256`, it is **enforced**: `fromRegistry`
+and the identity-bearing `fromMap(map, classLoader, identity)` overload
+compare it against `AppIdentity.signerSha256` (normalized: lowercase hex,
+colons/whitespace stripped) and **fail closed** on a problem:
+
+- hashes differ → `SignerMismatchException` (names expected vs actual);
+- map demands a signer but `AppIdentity.signerSha256` is `null` →
+  `MissingSignerException` (supply the app signer hash);
+- map has no `signer_sha256` → no check (the guard is opt-in per map).
+
+```kotlin
+val identity = AppIdentity(
+    packageName = "com.example.app",
+    versionCode = 30405,
+    signerSha256 = readSignerSha256(),   // from PackageManager, see AppIdentity KDoc
+)
+// Enforces the map's signer_sha256 (if any) before binding:
+val rosetta = RosettaXposed.fromMap(map, classLoader, identity)
+```
+
+The no-identity `fromMap(map, classLoader)` overload performs **no** signer
+check (there is no identity to verify against) — prefer the
+identity-bearing overload, or `fromRegistry`, in production modules.
+
 ## Resolving classes and fields
 
 Beyond methods, the entry point exposes:
