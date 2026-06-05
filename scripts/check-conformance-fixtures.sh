@@ -23,7 +23,9 @@
 #
 # Regenerating the manifest after an INTENTIONAL fixture change (must be done
 # in BOTH repos so the two manifests stay identical):
-#   ( cd <fixtures-dir> && for f in $(ls | sort); do sha256sum "$f"; done ) \
+#   ( cd <fixtures-dir> \
+#       && find . -maxdepth 1 -type f | sed 's|^\./||' | sort \
+#       | while IFS= read -r f; do sha256sum "$f"; done ) \
 #       > scripts/conformance-fixtures.sha256
 
 set -eu
@@ -32,6 +34,11 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
+# NOTE: this single DEFAULT_FIXTURES_DIR line INTENTIONALLY differs between the
+# two repos (rosetta-frida points at tests/conformance/fixtures; rosetta-xposed
+# points at core/src/test/resources/conformance). Do NOT "fix" it to make the
+# scripts byte-identical — the on-disk layouts differ. The manifest itself is
+# path-agnostic (basenames only), so the two manifests still compare equal.
 DEFAULT_FIXTURES_DIR="$REPO_ROOT/core/src/test/resources/conformance"
 FIXTURES_DIR="${1:-$DEFAULT_FIXTURES_DIR}"
 MANIFEST="$SCRIPT_DIR/conformance-fixtures.sha256"
@@ -47,9 +54,12 @@ fi
 
 # Compute the actual manifest (sorted by basename, hashing basenames so the
 # manifest is path-agnostic across the two repos' different dir layouts).
+# Enumerate with `find -maxdepth 1 -type f` (not `ls`) so a stray subdirectory
+# under the fixtures dir cannot be handed to sha256sum (which would warn + fail
+# confusingly); we only ever hash regular files in the top level.
 ACTUAL=$(
     cd "$FIXTURES_DIR" || exit 1
-    for f in $(ls | sort); do
+    find . -maxdepth 1 -type f | sed 's|^\./||' | sort | while IFS= read -r f; do
         sha256sum "$f"
     done
 )
