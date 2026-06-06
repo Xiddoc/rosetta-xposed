@@ -34,9 +34,19 @@ Two-module Gradle (Kotlin/JVM) build:
   `src/types/map.ts` + `src/validate/schema.ts` + `src/resolver/`. No
   Android, no Xposed: it builds and tests on any JVM.
 - **`:xposed`** — the layer-4 binding (`xposed/.../`): `ResolutionBackend`
-  (static, built; dynamic/DexKit, stubbed), `RosettaXposed` entry point,
-  bind `Targets`, the `Hooker` seam, `AppIdentity`, and the
-  `DeferredBinding` skeleton.
+  (static + dynamic/composite, both implemented and unit-tested with a
+  `FakeDexKitIndex`), `RosettaXposed` entry point, bind `Targets`, the
+  `Hooker` seam, `AppIdentity`, `DeferredBinding`, and
+  `ClassAvailabilityWatcher` — all logic implemented and unit-tested on
+  the JVM. What remains: on-device native wiring (exercised via the
+  committed DEX fixture in `:dexkit`; skipped when the native lib is
+  absent) and Maven publishing.
+- **`:dexkit`** (optional module) — the thin `DexKitBackedIndex` adapter
+  that wires the `DexKitIndex` seam to the real `DexKitBridge` native.
+  Built and has an integration test that runs real DexKit against a
+  committed obfuscated DEX fixture; the test skips automatically when the
+  native `.so` is absent (CI builds the `.so` from pinned source and
+  caches it).
 
 ## Decisions already settled (don't re-litigate)
 
@@ -69,10 +79,18 @@ These come from RFC 0001 and were confirmed with the project owner.
    app's signing-cert hashes as a SET (`signerSha256s`) and the guard
    matches-any (the map pins one hash, a real app may present several).
    The unchecked construction path is the explicit `fromMapUnverified`.
-5. **Static backend now, DexKit dynamic backend later.** The dynamic
-   (self-healing) backend and deferred binding for late-loaded dex are
-   architected as skeletons; DexKit is an *optional* dependency added in a
-   later phase. Don't add it to the default build.
+5. **Static + dynamic backends are implemented; on-device native wiring is
+   the remaining step.** The dynamic (self-healing) backend
+   (`DynamicResolutionBackend`), composite backend
+   (`CompositeResolutionBackend`), and deferred binding (`DeferredBinding`
+   + `ClassAvailabilityWatcher`) are fully implemented and unit-tested via
+   a `FakeDexKitIndex`. The `:dexkit` module (`DexKitBackedIndex`) is also
+   built and has an integration test against a committed obfuscated DEX
+   fixture; the test skips when the native lib is absent. What is not yet
+   proven: end-to-end on-device wiring with a real DexKit native loaded on
+   Android, and wiring `AppIdentity` from a real `PackageManager` in the
+   consuming module. Maven publishing is also pending. Do not add the
+   native DexKit dependency to the default build.
 
 ## When picking up work here
 
