@@ -151,6 +151,15 @@ jobs:
                   PATCHED=$(find patched -name '*.apk' | head -1)
                   echo "patched=$PATCHED"
                   echo "PATCHED=$PATCHED" >> "$GITHUB_ENV"
+                  # CONTROL: patch the SAME victim with NO module. If the bare
+                  # LSPatch app boots (logs ticket:T-123) but the module build
+                  # crashes, the fault is the module/loader interaction; if BOTH
+                  # crash, it is LSPatch's metaloader in this emulator. The e2e
+                  # script launches this first as a harness sanity check.
+                  "${JAVA_HOME_21_X64}/bin/java" -jar "$LSPATCH_JAR" "$VICTIM" -o patched-control --force -l 2
+                  PATCHED_CONTROL=$(find patched-control -name '*.apk' | head -1)
+                  echo "patched_control=$PATCHED_CONTROL"
+                  echo "PATCHED_CONTROL=$PATCHED_CONTROL" >> "$GITHUB_ENV"
 
             # --- Emulator: documented snapshot-caching pattern -----------------
             # actions/cache stores the AVD + its saved snapshot. On a HIT the run
@@ -220,6 +229,7 @@ jobs:
                   name: android-e2e-artifacts
                   path: |
                       patched/**/*.apk
+                      patched-control/**/*.apk
                       examples/android/**/build/outputs/apk/**/*.apk
                       e2e-logcat.txt
                   retention-days: 14

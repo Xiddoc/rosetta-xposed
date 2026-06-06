@@ -40,28 +40,56 @@ cd "${GITHUB_WORKSPACE:-$(pwd)}"
 echo "Using patched APK: ${PATCHED}"
 
 adb wait-for-device
+
+# Wait up to ${2:-60}s for the RosettaVictim tag to appear; print it. Returns
+# 0 if seen, 1 on timeout. $1 is a human label for logging.
+await_rosetta_tag() {
+    label="$1"; timeout="${2:-60}"
+    echo "[$label] waiting for RosettaVictim tag (up to ${timeout}s) ..."
+    deadline=$(( $(date +%s) + timeout ))
+    while true; do
+        if adb logcat -d -s RosettaVictim:I | grep -qF 'RosettaVictim'; then
+            return 0
+        fi
+        [ "$(date +%s)" -ge "${deadline}" ] && return 1
+        sleep 2
+    done
+}
+
+# --- Control: bare LSPatch (no module) should boot and log the UNHOOKED line.
+# This is a harness sanity check — it proves the emulator + LSPatch loader work
+# on this victim before we judge the module. Diagnostic only (never fails the
+# job); its result just localizes any later crash.
+if [ -n "${PATCHED_CONTROL:-}" ]; then
+    echo "===== CONTROL: bare LSPatch, no module ====="
+    adb logcat -c
+    adb install -r "${PATCHED_CONTROL}"
+    adb shell am start -n com.example.victim/.MainActivity
+    if await_rosetta_tag control 45; then
+        echo "CONTROL result:"; adb logcat -d -s RosettaVictim:I
+        echo "CONTROL: bare LSPatch app ran (expected unhooked ticket:T-123)."
+    else
+        echo "CONTROL: bare LSPatch app did NOT log RosettaVictim — LSPatch itself" >&2
+        echo "         fails to load on this emulator (not a module problem)." >&2
+        dump_diagnostics
+    fi
+    adb uninstall com.example.victim >/dev/null 2>&1 || true
+fi
+
+echo "===== ASSERTION: module embedded, expect HOOKED(ticket:T-123) ====="
 # Clear logcat BEFORE install/launch so we don't pick up stale lines from the
-# snapshot or a previous run.
+# control run / snapshot.
 adb logcat -c
 adb install -r "${PATCHED}"
 # MainActivity.onCreate calls formatTicket and logs the result under tag
 # RosettaVictim; with the module active it reads HOOKED(ticket:T-123).
 adb shell am start -n com.example.victim/.MainActivity
 
-# Poll until the RosettaVictim tag appears (proves onCreate ran) or time out.
-echo "Waiting for RosettaVictim tag (up to 60 s) ..."
-deadline=$(( $(date +%s) + 60 ))
-while true; do
-    if adb logcat -d -s RosettaVictim:I | grep -qF 'RosettaVictim'; then
-        break
-    fi
-    if [ "$(date +%s)" -ge "${deadline}" ]; then
-        echo "TIMEOUT: RosettaVictim tag never appeared — app may have crashed." >&2
-        dump_diagnostics
-        exit 1
-    fi
-    sleep 2
-done
+if ! await_rosetta_tag assertion 60; then
+    echo "TIMEOUT: RosettaVictim tag never appeared — app may have crashed." >&2
+    dump_diagnostics
+    exit 1
+fi
 
 # Dump the RosettaVictim lines once for the assertion + the log.
 LOGCAT_DUMP="$(adb logcat -d -s RosettaVictim:I)"
