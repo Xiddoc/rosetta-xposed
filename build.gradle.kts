@@ -92,6 +92,10 @@ subprojects {
 dependencies {
     kover(project(":core"))
     kover(project(":xposed"))
+    // :xposed-android is pure JVM (no Android plugin), so its helper LOGIC is
+    // fully unit-testable and joins the 100% line + branch gate. :dexkit stays
+    // OUT (its integration test legitimately skips without the native lib).
+    kover(project(":xposed-android"))
 }
 
 kover {

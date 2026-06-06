@@ -5,7 +5,7 @@
 
 [![CI](https://github.com/Xiddoc/rosetta-xposed/actions/workflows/ci.yml/badge.svg)](https://github.com/Xiddoc/rosetta-xposed/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Status](https://img.shields.io/badge/status-scaffolding-orange)](https://xiddoc.github.io/rosetta-xposed/reference/status/)
+[![Status](https://img.shields.io/badge/status-beta-blue)](https://xiddoc.github.io/rosetta-xposed/reference/status/)
 
 Large Android apps rotate their obfuscation every release, so Xposed hooks
 written against hard-coded obfuscated names break on the next update.
@@ -61,7 +61,7 @@ Full docs live at **<https://xiddoc.github.io/rosetta-xposed/>**:
 
 - [Concepts](https://xiddoc.github.io/rosetta-xposed/getting-started/concepts/) — the four-layer picture and modules
 - [Usage](https://xiddoc.github.io/rosetta-xposed/getting-started/usage/) — resolve-and-hook walkthrough
-- [Resolution backends](https://xiddoc.github.io/rosetta-xposed/reference/backends/) — static (built) and dynamic (planned)
+- [Resolution backends](https://xiddoc.github.io/rosetta-xposed/reference/backends/) — static, dynamic (self-healing), and composite
 - [Building](https://xiddoc.github.io/rosetta-xposed/reference/building/) — toolchain and tasks
 - [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/) — what is built vs. planned
 - [Related repos](https://xiddoc.github.io/rosetta-xposed/reference/related/) — frida, maps, and schema ownership

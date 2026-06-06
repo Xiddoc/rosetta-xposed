@@ -1,0 +1,5 @@
+# Deterministic obfuscation seed for v101 — renames TicketService to a
+# DIFFERENT obfuscated class and method than v100 (a.b/c), simulating the
+# real-world rotation that Rosetta exists to survive.
+com.example.victim.TicketService -> com.example.victim.x.y:
+    java.lang.String formatTicket(java.lang.String) -> q

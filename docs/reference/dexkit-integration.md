@@ -8,9 +8,12 @@ device-side implementation** of that seam: a thin adapter,
 [DexKit](https://github.com/LuckyPray/DexKit) `DexKitBridge` queries.
 
 It is the **only** module in the codebase that imports `org.luckypray.dexkit`.
-DexKit stays an *optional, later-phase* dependency (RFC 0001 Decision 5): the
-production `:xposed` binding never compiles against it, so `:core` and `:xposed`
-keep building and unit-testing on a plain JVM with a fake index.
+DexKit remains an *optional* dependency (RFC 0001 Decision 5) — the module is
+built and integration-tested against a committed obfuscated DEX fixture, but
+the production `:xposed` binding never compiles against it, so `:core` and
+`:xposed` keep building and unit-testing on a plain JVM with a fake index.
+What is not yet proven is end-to-end on-device wiring with the native loaded
+on Android.
 
 ## What the adapter does
 

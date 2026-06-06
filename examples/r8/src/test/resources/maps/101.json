@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "app": "com.example.victim",
+  "version": "1.0.1",
+  "version_code": 101,
+  "captured_at": "2026-06-06",
+  "sources": [
+    { "tool": "hand-authored", "classes": 1, "notes": "obf names pinned by victim/seed-v101.txt; verified against real R8 output by VersionRotationTest" }
+  ],
+  "classes": {
+    "com.example.victim.TicketService": {
+      "obfuscated": "com.example.victim.x.y",
+      "kind": "class",
+      "methods": {
+        "formatTicket": {
+          "obfuscated": "q",
+          "signature": "(Ljava/lang/String;)Ljava/lang/String;"
+        }
+      }
+    }
+  }
+}

@@ -1,8 +1,9 @@
 # Status
 
-**Scaffolding.** The neutral `:core` (model + loader + resolver +
-conformance suite) and the static `:xposed` binding (resolve → bind →
-`Hooker`) are implemented and tested on the JVM.
+The neutral `:core` (model + loader + resolver + conformance suite), the
+static and dynamic `:xposed` bindings, and the optional `:dexkit` adapter
+are all implemented and tested on the JVM. What remains is on-device /
+native wiring and Maven publishing.
 
 ## Built
 
@@ -18,12 +19,31 @@ conformance suite) and the static `:xposed` binding (resolve → bind →
   matches **any** member. Hashes are normalized (lowercase 64-hex, `:`
   stripped, surrounding whitespace trimmed); a malformed map hash throws
   `MalformedSignerException`. The unchecked path is `fromMapUnverified`.
+- **Dynamic (self-healing) backend** — `DynamicResolutionBackend` discovers
+  obfuscated names at runtime via signature strategies (AIDL descriptor,
+  stable string anchors, superclass narrowing, method scan). Fully
+  implemented and unit-tested with a `FakeDexKitIndex` on the plain JVM.
+- **Composite backend** — `CompositeResolutionBackend` answers from the
+  static map first and falls through to discovery on a miss; on success it
+  writes back into the static resolver so subsequent lookups are O(1).
+  Implemented and unit-tested.
+- **Deferred binding** — `DeferredBinding` + `ClassAvailabilityWatcher`
+  retry binding for classes that arrive in late-loaded dex. Implemented
+  and unit-tested.
+- **`:dexkit` optional module** — `DexKitBackedIndex` adapts the pure-JVM
+  `DexKitIndex` seam to the real `DexKitBridge` native. Built and has an
+  integration test that runs real DexKit against a committed obfuscated DEX
+  fixture; the test skips automatically when the native `.so` is absent (CI
+  builds it from pinned source and caches it).
 
-## Planned (architected as skeletons, not yet built)
+## Remaining work
 
-- the DexKit **dynamic backend** and **deferred binding** for late-loaded
-  dex;
-- wiring the `version_code` map selection to a real `PackageManager` read
-  on-device (the consuming module fills `AppIdentity`; selection +
-  signer enforcement themselves are built);
-- publishing to a Maven coordinate.
+- **On-device native wiring** — end-to-end exercise of DexKit on a real
+  Android device is not yet proven; the committed DEX fixture + CI native
+  build cover the adapter path, but a physical-device run has not been
+  validated.
+- **`AppIdentity` from `PackageManager`** — the consuming module fills
+  `AppIdentity`; selection and signer enforcement are built, but the
+  convenience wiring from a real `PackageManager` lives in the consuming
+  module, not here.
+- **Maven publishing** — publishing to a Maven coordinate is pending.
