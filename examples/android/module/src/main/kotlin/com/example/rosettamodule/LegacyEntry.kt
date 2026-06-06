@@ -17,9 +17,11 @@
 package com.example.rosettamodule
 
 import android.annotation.SuppressLint
+import android.app.Application
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
+import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.xiddoc.rosetta.android.BundledMaps
 import io.github.xiddoc.rosetta.core.version.MapRegistry
@@ -62,14 +64,23 @@ class LegacyEntry : IXposedHookLoadPackage {
     }
 
     private fun identityOrFallback(lpparam: XC_LoadPackage.LoadPackageParam): AppIdentity {
-        val app = runCatching { de.robv.android.xposed.AndroidAppHelper.currentApplication() }.getOrNull()
+        // `android.app.AndroidAppHelper` is a @hide framework class: it exists at
+        // runtime in the app process but is absent from both the Xposed API stub
+        // and the public android.jar, so it cannot be referenced at compile time.
+        // Reach it reflectively through XposedHelpers (which IS in the API jar);
+        // this is the awkwardness that makes early identity reads fiddly on the
+        // legacy path. With a real Application we read the full identity (incl. the
+        // signer set) via AndroidAppIdentity.of; otherwise we fall back to the
+        // known selection key (fine here — maps/100.json pins no signer_sha256).
+        val app =
+            runCatching {
+                val helper = XposedHelpers.findClass("android.app.AndroidAppHelper", null)
+                XposedHelpers.callStaticMethod(helper, "currentApplication") as? Application
+            }.getOrNull()
         val pm = app?.packageManager
         return if (pm != null) {
             AndroidAppIdentity.of(pm, lpparam.packageName)
         } else {
-            // currentApplication() is null very early in the process; fall back
-            // to the selection key. A map pinning a signer_sha256 would need the
-            // PackageManager path above (or it fails closed) — see README.
             AppIdentity(packageName = lpparam.packageName, versionCode = TARGET_VERSION_CODE)
         }
     }

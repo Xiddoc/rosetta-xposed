@@ -1,0 +1,205 @@
+name: Android e2e (emulator + LSPatch)
+
+# The ONLY test that exercises the full on-device path: it boots an emulator,
+# uses LSPatch (non-root) to embed the rosetta example module into the victim
+# APK, installs + launches it, and asserts via logcat that the Rosetta-resolved
+# hook fired. The victim's MainActivity.onCreate logs the formatTicket result
+# under tag `RosettaVictim`; with the module active that line reads
+# `HOOKED(ticket:T-123)` instead of `ticket:T-123`.
+#
+# Why LSPatch and not LSPosed: running LSPosed in CI needs Magisk root + a
+# Zygisk module on the AVD (no turnkey action, very flaky). LSPatch patches the
+# target APK to self-load the module — no root, vanilla emulator.
+#
+# This job is ADVISORY (never a required gate): emulator boot + the LSPatch
+# loader are slow and inherently flaky. It runs nightly, on demand, and when the
+# Android example (or the layers it depends on) changes.
+#
+# STATUS: authored for GitHub-hosted (KVM-enabled) ubuntu-latest. It was NOT run
+# in the authoring sandbox (no emulator/KVM there). The LSPatch CLI flags and
+# the embedded-module load are the most likely first-run adjustments — see the
+# inline NOTEs.
+
+on:
+    schedule:
+        - cron: '0 4 * * *' # nightly 04:00 UTC
+    workflow_dispatch: {}
+    pull_request:
+        paths:
+            - 'examples/android/**'
+            - 'xposed-android/**'
+            - '.github/workflows/android-e2e.yml'
+
+permissions:
+    contents: read
+
+concurrency:
+    group: android-e2e-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    e2e:
+        name: emulator + LSPatch hook assertion (advisory)
+        runs-on: ubuntu-latest
+        # Advisory — never block a merge on emulator/LSPatch flakiness.
+        continue-on-error: true
+        env:
+            DEVELOCITY_INJECTION_ENABLED: 'false'
+            # Authenticated gh avoids the unauthenticated API rate limit when
+            # downloading the LSPatch release from another public repo.
+            GH_TOKEN: ${{ github.token }}
+            # Pin the LSPatch release tag + the exact CLI asset name below.
+            # Verify CLI flags against `java -jar "$LSPATCH_JAR" --help` on the
+            # first real run. (v0.8 ships lspatch.jar + lspatch-debug.jar.)
+            LSPATCH_TAG: v0.8
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up JDK 17
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '17'
+
+            - name: Set up Gradle (with build cache)
+              uses: gradle/actions/setup-gradle@v4
+              with:
+                  develocity-injection-enabled: false
+
+            - name: Remove Develocity auto-injection init script
+              run: |
+                  init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+                  rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+
+            - name: Assemble victim + module APKs
+              run: ./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug --stacktrace
+
+            # LSPatch's jar is compiled for JDK 21 (class file 65.0); the Gradle
+            # build above needs JDK 17. Install 21 too and invoke LSPatch with it
+            # explicitly (via $JAVA_HOME_21_X64) so the JDK-17 build is untouched.
+            - name: Set up JDK 21 (for the LSPatch CLI)
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '21'
+
+            - name: Download LSPatch CLI (maintained fork; authenticated)
+              run: |
+                  mkdir -p lspatch
+                  # gh is preinstalled; GH_TOKEN avoids the API rate limit.
+                  # JingMatrix/LSPatch is the maintained fork of the archived
+                  # LSPosed/LSPatch. If the fork moves, change the --repo here.
+                  # The tag is a POSITIONAL arg to `gh release download` (not
+                  # --tag). Pattern matches only the release CLI asset
+                  # `lspatch.jar` (NOT lspatch-debug.jar) so we get exactly one.
+                  gh release download "$LSPATCH_TAG" \
+                      --repo JingMatrix/LSPatch \
+                      --pattern 'lspatch.jar' \
+                      --dir lspatch
+                  jar_count=$(find lspatch -maxdepth 1 -name '*.jar' | wc -l)
+                  if [ "$jar_count" -ne 1 ]; then
+                      echo "ERROR: expected exactly 1 LSPatch jar, found $jar_count" >&2
+                      ls -l lspatch >&2
+                      exit 1
+                  fi
+                  LSPATCH_JAR="$(find lspatch -maxdepth 1 -name '*.jar')"
+                  echo "LSPATCH_JAR=$LSPATCH_JAR" >> "$GITHUB_ENV"
+                  echo "Downloaded: $LSPATCH_JAR"
+
+            - name: LSPatch — embed the module into the victim (local mode)
+              run: |
+                  set -euo pipefail
+                  VICTIM=$(find examples/android/victim -name '*-debug.apk' | head -1)
+                  MODULE=$(find examples/android/module -name '*-debug.apk' | head -1)
+                  echo "victim=$VICTIM module=$MODULE"
+                  # Local/embedded mode bakes the module dex into the target so the
+                  # patched APK self-loads it (no manager, no root).
+                  # NOTE (first-run): confirm flags against `java -jar "$LSPATCH_JAR" --help`.
+                  # Across releases the patcher has accepted:  <apk> -m <module.apk> -o <outdir> --force [-l 2]
+                  # LSPatch needs JDK 21 (its jar is class-file 65.0); use it explicitly.
+                  "${JAVA_HOME_21_X64}/bin/java" -jar "$LSPATCH_JAR" "$VICTIM" -m "$MODULE" -o patched --force -l 2
+                  PATCHED=$(find patched -name '*.apk' | head -1)
+                  echo "patched=$PATCHED"
+                  echo "PATCHED=$PATCHED" >> "$GITHUB_ENV"
+
+            - name: Cache AVD snapshot
+              id: avd-cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.android/avd/*
+                  key: avd-34-x86_64-${{ runner.os }}
+
+            - name: Create AVD (on cache miss)
+              if: steps.avd-cache.outputs.cache-hit != 'true'
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: 34
+                  arch: x86_64
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+                  disable-animations: true
+                  script: echo "AVD created"
+
+            - name: Run on emulator (API 34) and assert the hook fired
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: 34
+                  arch: x86_64
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+                  disable-animations: true
+                  script: |
+                      # NOTE: android-emulator-runner runs this `script` under
+                      # /usr/bin/sh (dash), not bash — so no `pipefail` (a bashism
+                      # that aborts dash on line 1). POSIX `set -eu` only.
+                      set -eu
+                      # Clear logcat BEFORE install/launch so we don't pick up
+                      # stale log lines from a previous run.
+                      adb logcat -c
+                      adb install -r "$PATCHED"
+                      # MainActivity.onCreate calls formatTicket and logs the
+                      # result under tag RosettaVictim.
+                      adb shell am start -n com.example.victim/.MainActivity
+
+                      # Poll until the RosettaVictim tag appears (proves onCreate
+                      # ran) or time out. A slow cold emulator can take >8 s.
+                      echo "Waiting for RosettaVictim tag (up to 40 s) ..."
+                      deadline=$(( $(date +%s) + 40 ))
+                      while true; do
+                          if adb logcat -d -s RosettaVictim:I | grep -qF 'RosettaVictim'; then
+                              break
+                          fi
+                          if [ "$(date +%s)" -ge "$deadline" ]; then
+                              echo "TIMEOUT: RosettaVictim tag never appeared — app may have crashed." >&2
+                              echo "----- last 200 logcat lines -----" >&2
+                              adb logcat -d | tail -200 >&2
+                              exit 1
+                          fi
+                          sleep 2
+                      done
+
+                      # Cache the dump so adb logcat -d is invoked only once for
+                      # the assertion.
+                      LOGCAT_DUMP="$(adb logcat -d -s RosettaVictim:I)"
+                      echo "----- RosettaVictim logs -----"
+                      echo "$LOGCAT_DUMP"
+
+                      if echo "$LOGCAT_DUMP" | grep -qF 'HOOKED(ticket:T-123)'; then
+                          echo "E2E PASS: Rosetta-resolved hook fired (HOOKED(ticket:T-123))."
+                      else
+                          echo "E2E FAIL: HOOKED(ticket:T-123) not observed (unhooked would be 'ticket:T-123')." >&2
+                          echo "----- last 200 logcat lines -----" >&2
+                          adb logcat -d | tail -200 >&2
+                          exit 1
+                      fi
+
+            - name: Upload e2e artifacts
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: android-e2e-artifacts
+                  path: |
+                      patched/**/*.apk
+                      examples/android/**/build/outputs/apk/**/*.apk
+                  retention-days: 14
