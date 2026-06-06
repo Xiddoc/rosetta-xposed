@@ -378,4 +378,22 @@ class TargetGuardTest {
         // It was realised by our child loader, not a platform loader.
         assertTrue(loaded.classLoader === child)
     }
+
+    @Test
+    fun `platform-loaded class is hard-denied (platform loader sourced as the system parent)`() {
+        // Regression for the on-device NoSuchMethodError: TargetLoader must still
+        // flag a class realised by the PLATFORM class loader as a foreign target,
+        // while sourcing that loader as getSystemClassLoader().parent rather than
+        // the Java-9-only ClassLoader.getPlatformClassLoader() — which is absent
+        // on Android's ART, where this binding actually runs. java.sql.* is
+        // platform-loaded on the JDK, so it exercises the platform-membership
+        // branch of the loader check.
+        val map = mapFor("java.sql", "java.sql.Date")
+        // Drop the reserved-prefix denylist so the loader check (not the
+        // namespace gate) is what fires on java.sql.Date.
+        val p = TargetPolicy(denyPrefixes = emptyList(), mergeDenylist = false)
+        val r = RosettaXposed.fromMapUnverified(map, javaClass.classLoader, p)
+        val ex = assertFailsWith<TargetPolicyException> { r.useClass("com.example.RealClient").load() }
+        assertTrue(ex.reason.contains("boot/system"))
+    }
 }

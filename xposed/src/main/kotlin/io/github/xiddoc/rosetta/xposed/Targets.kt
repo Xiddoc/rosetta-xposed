@@ -142,9 +142,24 @@ internal class TargetLoader(
         return loader in platformLoaders
     }
 
-    /** The boot/system/platform loaders a non-app target would resolve through. */
+    /**
+     * The boot/system/platform loaders a non-app target would resolve through.
+     *
+     * On a desktop JVM the system loader's parent IS the platform loader
+     * (`getSystemClassLoader().parent === getPlatformClassLoader()`), so this set
+     * is exactly {system, platform} there. We deliberately source the platform
+     * loader as that parent instead of calling
+     * `ClassLoader.getPlatformClassLoader()` directly: that is a Java 9+ (JPMS)
+     * API that does NOT exist on Android's ART at any API level, and this binding
+     * runs inside the target app on-device — calling it throws NoSuchMethodError
+     * at load time, before any hook is applied. Sourcing the parent works on both
+     * runtimes (on Android it is the system loader's own parent, still a non-app
+     * loader); a null parent is dropped.
+     */
     private val platformLoaders: Set<ClassLoader> =
-        setOf(ClassLoader.getSystemClassLoader(), ClassLoader.getPlatformClassLoader())
+        ClassLoader.getSystemClassLoader().let { system ->
+            setOfNotNull(system, system.parent)
+        }
 }
 
 /** A resolved class plus the loader used to realise it. */
