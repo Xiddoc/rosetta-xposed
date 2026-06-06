@@ -48,10 +48,10 @@ jobs:
             # Authenticated gh avoids the unauthenticated API rate limit when
             # downloading the LSPatch release from another public repo.
             GH_TOKEN: ${{ github.token }}
-            # Pin the LSPatch release tag. Update together with the --pattern
-            # below, then verify CLI flags against `java -jar lspatch/*.jar --help`
-            # on the first real run.
-            LSPATCH_TAG: v0.6.2
+            # Pin the LSPatch release tag + the exact CLI asset name below.
+            # Verify CLI flags against `java -jar "$LSPATCH_JAR" --help` on the
+            # first real run. (v0.8 ships lspatch.jar + lspatch-debug.jar.)
+            LSPATCH_TAG: v0.8
 
         steps:
             - uses: actions/checkout@v4
@@ -81,12 +81,12 @@ jobs:
                   # gh is preinstalled; GH_TOKEN avoids the API rate limit.
                   # JingMatrix/LSPatch is the maintained fork of the archived
                   # LSPosed/LSPatch. If the fork moves, change the --repo here.
-                  # Use --tag (pinned via LSPATCH_TAG) and a narrow --pattern so
-                  # we always get exactly one jar; fail clearly if the count is off.
-                  gh release download \
+                  # The tag is a POSITIONAL arg to `gh release download` (not
+                  # --tag). Pattern matches only the release CLI asset
+                  # `lspatch.jar` (NOT lspatch-debug.jar) so we get exactly one.
+                  gh release download "$LSPATCH_TAG" \
                       --repo JingMatrix/LSPatch \
-                      --tag "$LSPATCH_TAG" \
-                      --pattern 'lspatch-*.jar' \
+                      --pattern 'lspatch.jar' \
                       --dir lspatch
                   jar_count=$(find lspatch -maxdepth 1 -name '*.jar' | wc -l)
                   if [ "$jar_count" -ne 1 ]; then
