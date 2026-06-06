@@ -160,6 +160,7 @@ jobs:
               run: |
                   init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
                   rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+                  echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
 
             # Pure-JVM harness: no network calls beyond Maven Central (already
             # cached by Gradle), no Android SDK, no native libs. Required check.
@@ -178,6 +179,12 @@ jobs:
         name: examples/r8 test (JDK ${{ matrix.java }})
         runs-on: ubuntu-latest
         needs: build
+        # Advisory job: examples/r8 fetches R8 from google() Maven on first
+        # run. A transient registry outage should not fail the required gate —
+        # mirroring the advisory pattern used in rosetta-frida's pipeline.yml
+        # for network-dependent jobs. An R8 failure shows amber (not a
+        # misleading green), so the signal remains visible.
+        continue-on-error: true
         env:
             DEVELOCITY_INJECTION_ENABLED: 'false'
         strategy:
@@ -203,14 +210,9 @@ jobs:
               run: |
                   init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
                   rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+                  echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
 
-            # Advisory (continue-on-error): examples/r8 fetches R8 from
-            # google() Maven on first run. Network-dependent steps are kept
-            # non-blocking so a transient registry outage does not fail the
-            # required gate — mirroring the advisory pattern used in
-            # rosetta-frida's pipeline.yml for network-dependent jobs.
             - name: Test examples/r8
-              continue-on-error: true
               run: ./gradlew -p examples/r8 test --stacktrace
 
             - name: Upload r8 test reports

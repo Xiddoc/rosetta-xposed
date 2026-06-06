@@ -38,9 +38,9 @@ Two-module Gradle (Kotlin/JVM) build:
   `FakeDexKitIndex`), `RosettaXposed` entry point, bind `Targets`, the
   `Hooker` seam, `AppIdentity`, `DeferredBinding`, and
   `ClassAvailabilityWatcher` — all logic implemented and unit-tested on
-  the JVM. What remains: on-device native wiring (exercised via the
-  committed DEX fixture in `:dexkit`; skipped when the native lib is
-  absent) and Maven publishing.
+  the JVM. What remains: end-to-end on-device native wiring (the committed
+  DEX fixture in `:dexkit` covers the adapter path, but a physical-device
+  run has not been validated) and Maven publishing.
 - **`:dexkit`** (optional module) — the thin `DexKitBackedIndex` adapter
   that wires the `DexKitIndex` seam to the real `DexKitBridge` native.
   Built and has an integration test that runs real DexKit against a

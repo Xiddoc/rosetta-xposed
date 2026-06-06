@@ -8,10 +8,12 @@
  * the result through a [DiscoverySink] as a `rosetta-runtime-discovered`
  * source.
  *
- * The discovery LOGIC ships now and is fully unit-testable on a plain JVM (a
+ * The discovery LOGIC ships here and is fully unit-testable on a plain JVM (a
  * `FakeDexKitIndex` supplies canned answers); the real DexKit-backed adapter
- * that implements [DexKitIndex] on a device is a thin, deferred follow-up
- * (DexKit stays an optional later-phase dependency).
+ * that implements [DexKitIndex] on a device lives in the optional `:dexkit`
+ * module (built and integration-tested against a committed DEX fixture; what
+ * is not yet proven is end-to-end on-device wiring with the native loaded on
+ * Android).
  *
  * STRATEGY ORDER (most stable signal first; first hit wins):
  *
