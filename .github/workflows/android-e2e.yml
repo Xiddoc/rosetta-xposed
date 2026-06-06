@@ -55,11 +55,12 @@ jobs:
             # Verify CLI flags against `java -jar "$LSPATCH_JAR" --help` on the
             # first real run. (v0.8 ships lspatch.jar + lspatch-debug.jar.)
             LSPATCH_TAG: v0.8
-            # PRs boot a lighter/faster API 30 image (victim minSdk=24, so it
-            # installs fine); nightly + on-demand runs stay on API 34. The create
-            # and run emulator steps and the AVD cache key all read these so the
-            # snapshot they share is for one identical AVD config.
-            API_LEVEL: ${{ github.event_name == 'pull_request' && '30' || '34' }}
+            # API 34 (Android 14) everywhere. LSPatch v0.8's metaloader
+            # (LSPAppComponentFactoryStub) crashes at process init on API 30
+            # (proven with a no-module control: the bare patched app also dies),
+            # but v0.8 targets modern Android and 34 is the victim's targetSdk.
+            # Snapshot caching keeps the boot fast despite the heavier image.
+            API_LEVEL: '34'
             # AOSP `default` x86_64 — lightest/fastest image. (The LSPatch
             # metaloader crash reproduces identically on google_apis, so the
             # image is not the variable; keep the fast one.)
