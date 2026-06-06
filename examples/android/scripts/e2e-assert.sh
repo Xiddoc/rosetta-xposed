@@ -18,16 +18,22 @@ set -euo pipefail
 # On any failure, surface what the LSPatch loader / Xposed bridge / the app did,
 # so a non-firing hook (vs a crash) is diagnosable straight from the job log.
 dump_diagnostics() {
-    # The full FATAL EXCEPTION + its "Caused by:" root cause (the LSPatch
-    # metaloader swallows it, so go to the source tag).
+    # Save the WHOLE buffer as an artifact — the crash happens early and scrolls
+    # out of any tail, and ART logs the real missing class as a separate
+    # verifier line (not in the swallowed "no stack trace available" exception).
+    local full="${GITHUB_WORKSPACE:-.}/e2e-logcat.txt"
+    adb logcat -d > "${full}" 2>/dev/null || true
+    echo "Saved full logcat to ${full} ($(wc -l < "${full}" 2>/dev/null || echo 0) lines)" >&2
+
+    echo "----- class-resolution / verifier failures (the real missing class) -----" >&2
+    grep -inE 'could not find class|could not find method|noclassdeffound|classnotfound|rejecting|failed to resolve|unresolved|verifyerror|incompatibleclasschange' \
+        "${full}" 2>/dev/null | tail -100 >&2 || true
+
     echo "----- AndroidRuntime (full crash + root cause) -----" >&2
-    adb logcat -d -s AndroidRuntime 2>/dev/null | tail -200 >&2 || true
+    adb logcat -d -s AndroidRuntime 2>/dev/null | tail -120 >&2 || true
+
     echo "----- LSPatch / Xposed / rosetta loader lines -----" >&2
-    adb logcat -d 2>/dev/null \
-        | grep -iE 'lspatch|lsposed|xposed|rosetta' \
-        | tail -150 >&2 || true
-    echo "----- last 120 logcat lines -----" >&2
-    adb logcat -d 2>/dev/null | tail -120 >&2 || true
+    grep -iE 'lspatch|lsposed|xposed|rosetta' "${full}" 2>/dev/null | tail -150 >&2 || true
 }
 
 cd "${GITHUB_WORKSPACE:-$(pwd)}"
