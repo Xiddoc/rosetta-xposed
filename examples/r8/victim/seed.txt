@@ -1,0 +1,5 @@
+# Deterministic obfuscation seed — pins the obfuscated names so R8 output
+# matches the committed Rosetta map (maps/100.json) byte-for-byte. Same
+# technique as tools/dex-fixture/seed.txt.
+com.example.victim.TicketService -> com.example.victim.a.b:
+    java.lang.String formatTicket(java.lang.String) -> c

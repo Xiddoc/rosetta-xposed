@@ -17,27 +17,40 @@ the translation at attach time. That is the whole value proposition, exercised.
 > `includeBuild("../..")` — the pre-Maven distribution story a real consumer
 > uses today.
 
-## Two pieces
+## On the "Android SDK" question
+
+You do **not** need the Android SDK to prove the resolution path — not even
+with real obfuscation. Obfuscating bytecode only needs the **standalone R8
+compiler**, which is an ordinary artifact on Google's Maven
+(`com.android.tools:r8`). The repo already relies on this for the dexkit
+fixture (`tools/dex-fixture`, "No Android SDK required"); the `r8/` example
+below wires the same lever straight into Gradle. The Android SDK is required
+**only** to assemble the actual `victim`/`module` APKs and run them on a device
+(the `android/` piece) — and even rosetta-frida's APK pipeline keeps that job
+[advisory / non-blocking](../../rosetta-frida/.github/workflows/pipeline.yml)
+because the Google Maven SDK hosts are routinely network-restricted in CI.
+
+## Three pieces
 
 | Dir | What | Runs where |
 | --- | ---- | ---------- |
-| [`harness/`](harness) | Pure-JVM walkthrough of the FULL static path (load map → select by `version_code` → signer guard → resolve real name → hand the obfuscated `Member` to a `Hooker`). | **Anywhere, no Android.** Verified green in CI. |
-| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side as a reference). | A device/emulator with LSPosed (or LSPatch). |
+| [`harness/`](harness) | Pure-JVM walkthrough of the full static path, **without R8** (the obf names are simulated by source spelling, so it is deterministic and needs no network). | **Anywhere, no Android.** Fast; the required gate. |
+| [`r8/`](r8) | The same flow **with real R8 obfuscation**: a victim source is compiled and run through standalone R8 (`--classfile`) at build time, and the test loads the genuinely-obfuscated bytecode. Proves Rosetta resolves across real obfuscator output *and* guards the map against drifting from what R8 emits. | **Anywhere, no Android SDK.** Needs network once to fetch R8. |
+| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side). | A device/emulator with LSPosed (Android SDK to build). |
 
-### Run the harness (no SDK needed)
+### Run the JVM tests (no SDK needed)
 
 ```bash
 # from the repo root, using the parent wrapper:
-./gradlew -p examples/harness run     # prints the resolve walkthrough
-./gradlew -p examples/harness test    # asserts real → obf resolution end-to-end
+./gradlew -p examples/harness run     # prints the resolve walkthrough (no R8)
+./gradlew -p examples/harness test    # asserts real -> obf resolution (no R8)
+./gradlew -p examples/r8 test         # asserts the same against REAL R8 output
 ```
 
-Expected `run` output:
-
-```
-real method      : formatTicket   ->   obfuscated member: c
-invocation       : formatTicket("T-123")  ->  ticket:T-123
-```
+The `r8` test fetches `com.android.tools:r8` from Google Maven on first run
+(cached/offline afterwards), compiles `r8/victim/`, applies
+`r8/victim/seed.txt` so the obfuscated names match `maps/100.json`, and loads
+the resulting jar — `formatTicket` really becomes `c` on `a.b`.
 
 ### Build + drive the Android dogfood (Android SDK + LSPosed required)
 
@@ -58,25 +71,23 @@ Open the victim, tap **Call formatTicket("T-123")**:
 
 `adb logcat | grep rosetta-example` shows the module's attach log.
 
-## LOOP #2 — real R8 obfuscation
+#### Real R8 in the Android app
 
-Loop #1 keeps R8 off so the runtime names equal what the map declares
-(deterministic, no chicken-and-egg). To dogfood *real* obfuscation without
-re-authoring the map each build, pin the obfuscated names with an input
-mapping so R8 reproduces exactly the names the committed map already uses:
+`victim/build.gradle.kts` keeps `isMinifyEnabled = false` so the runtime names
+equal the map. To dogfood real R8 in the APK too, turn minify on and feed R8 a
+fixed input mapping (same `seed.txt` idea as `r8/`) so the obfuscated names stay
+in lockstep with the committed map:
 
-1. in `victim/build.gradle.kts` set `isMinifyEnabled = true` and add
-   `proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")`;
-2. in `victim/proguard-rules.pro` add
-   `-applymapping fixed-mapping.txt` plus a `-keep` for `MainActivity`;
-3. author `victim/fixed-mapping.txt` so
-   `com.example.victim.TicketService -> com.example.victim.a.b:` and its method
-   `... formatTicket(...) -> c`.
+1. `isMinifyEnabled = true` + `proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")`;
+2. `proguard-rules.pro`: `-applymapping ../../r8/victim/seed.txt` (+ a `-keep` for `MainActivity`).
 
-Now R8 emits the same `a.b#c` the map points at, and the module keeps working
-unchanged. (The fully general path — read R8's emitted `mapping.txt` and
-*generate* the map — is the rosetta-maps authoring story; this example pins the
-mapping instead so it stays one self-contained repo.)
+## CI wiring (suggested)
+
+- `harness` test → **required** check (fast, deterministic, no network).
+- `r8` test → **required if** your CI can reach Google Maven; otherwise mark it
+  `continue-on-error` (advisory) like rosetta-frida's `pipeline.yml`, since it
+  depends on fetching R8.
+- `android` assemble → **advisory**, for the same network-restricted-SDK reason.
 
 ## Gaps this dogfood deliberately surfaces
 
