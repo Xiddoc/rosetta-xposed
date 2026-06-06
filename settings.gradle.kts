@@ -39,6 +39,13 @@ rootProject.name = "rosetta-xposed"
 include(":core")
 include(":xposed")
 
+// :xposed-android — an OPTIONAL, pure-JVM module of reusable Android-helper
+// LOGIC (bundled-map loading + signer-hash/AppIdentity assembly from
+// PackageManager primitives). It applies NO Android plugin and never compiles
+// against android.jar, so it stays in the plain-JVM build AND in the root 100%
+// coverage gate; the irreducible PackageManager read stays in the consumer.
+include(":xposed-android")
+
 // :dexkit — the REAL on-device DexKit adapter that implements the `DexKitIndex`
 // seam (RFC 0001 Decision 5 — DexKit is an OPTIONAL later-phase dependency,
 // kept out of the default :xposed build). It is the SOLE place
