@@ -23,20 +23,13 @@ android {
     }
 
     buildTypes {
-        // Minify in BOTH build types: un-minified, this module bundles the whole
-        // rosetta stack + kotlin + kotlinx.serialization into a multi-dex,
-        // multi-MB APK that LSPatch's embedded-module loader can't load. R8
-        // collapses it to the single-dex shape a real LSPosed module ships in;
-        // proguard-rules.pro keeps the entry points the framework loads by name.
-        // (CI builds :module:assembleDebug, so debug must minify too.)
-        debug {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-        release {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
+        // Keep the module un-minified so its entry-point class names (referenced
+        // from assets/xposed_init and the manifest) survive. (R8 minification was
+        // trialled to rule out the module's multi-dex shape as the LSPatch
+        // embedded-load crash cause; it made no difference, so it is reverted to
+        // keep the example simple.)
+        debug { isMinifyEnabled = false }
+        release { isMinifyEnabled = false }
     }
 
     compileOptions {
