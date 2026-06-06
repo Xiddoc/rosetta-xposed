@@ -203,51 +203,12 @@ jobs:
                   emulator-options: ${{ env.EMU_OPTIONS }} -no-snapshot-save
                   emulator-boot-timeout: 900
                   disable-animations: false
-                  script: |
-                      # NOTE: android-emulator-runner runs this `script` under
-                      # /usr/bin/sh (dash), not bash — so no `pipefail` (a bashism
-                      # that aborts dash on line 1). POSIX `set -eu` only.
-                      set -eu
-                      adb wait-for-device
-                      # Clear logcat BEFORE install/launch so we don't pick up
-                      # stale log lines from a previous run / the snapshot.
-                      adb logcat -c
-                      adb install -r "$PATCHED"
-                      # MainActivity.onCreate calls formatTicket and logs the
-                      # result under tag RosettaVictim.
-                      adb shell am start -n com.example.victim/.MainActivity
-
-                      # Poll until the RosettaVictim tag appears (proves onCreate
-                      # ran) or time out. A slow cold emulator can take >8 s.
-                      echo "Waiting for RosettaVictim tag (up to 60 s) ..."
-                      deadline=$(( $(date +%s) + 60 ))
-                      while true; do
-                          if adb logcat -d -s RosettaVictim:I | grep -qF 'RosettaVictim'; then
-                              break
-                          fi
-                          if [ "$(date +%s)" -ge "$deadline" ]; then
-                              echo "TIMEOUT: RosettaVictim tag never appeared — app may have crashed." >&2
-                              echo "----- last 200 logcat lines -----" >&2
-                              adb logcat -d | tail -200 >&2
-                              exit 1
-                          fi
-                          sleep 2
-                      done
-
-                      # Cache the dump so adb logcat -d is invoked only once for
-                      # the assertion.
-                      LOGCAT_DUMP="$(adb logcat -d -s RosettaVictim:I)"
-                      echo "----- RosettaVictim logs -----"
-                      echo "$LOGCAT_DUMP"
-
-                      if echo "$LOGCAT_DUMP" | grep -qF 'HOOKED(ticket:T-123)'; then
-                          echo "E2E PASS: Rosetta-resolved hook fired (HOOKED(ticket:T-123))."
-                      else
-                          echo "E2E FAIL: HOOKED(ticket:T-123) not observed (unhooked would be 'ticket:T-123')." >&2
-                          echo "----- last 200 logcat lines -----" >&2
-                          adb logcat -d | tail -200 >&2
-                          exit 1
-                      fi
+                  # android-emulator-runner runs `script` line-by-line as separate
+                  # `sh -c` invocations (dash), so multi-line loops/ifs and
+                  # cross-line variables don't work inline. Keep it to ONE line
+                  # that hands off to a committed bash script (full pipefail + loop
+                  # support). PATCHED is read from the environment by that script.
+                  script: bash "$GITHUB_WORKSPACE/examples/android/scripts/e2e-assert.sh"
 
             - name: Upload e2e artifacts
               if: always()
