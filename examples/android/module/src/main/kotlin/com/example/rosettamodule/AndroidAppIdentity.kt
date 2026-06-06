@@ -2,24 +2,23 @@
  * Fills a Rosetta [AppIdentity] from Android's PackageManager.
  *
  * :xposed stays Android-free on purpose (it must not compile against
- * android.jar — CLAUDE.md Decision 4), so the AppIdentity-from-PackageManager
- * code can only live in a consuming module. This is that code, promoted from
- * the doc snippet in AppIdentity's KDoc to something real and reusable:
+ * android.jar — CLAUDE.md Decision 4), so the irreducible PackageManager read
+ * — the SDK-version branch that pulls versionCode / versionName and the raw
+ * signing-certificate byte arrays — can only live in a consuming Android module.
+ * This is that thin extraction; the hashing + AppIdentity assembly is delegated
+ * to the shipping, fully-tested `io.github.xiddoc.rosetta.android.AndroidIdentities`
+ * in the optional pure-JVM `:xposed-android` module.
  *
  *   - `versionCode` is the O(1) map selection key (longVersionCode on API 28+).
- *   - `signerSha256s` is the FULL set of the app's signing-cert SHA-256 hashes;
- *     SignerGuard matches the map's single pinned hash against ANY of them.
- *
- * GAP THIS EXPOSES: like BundledMaps, there is no shipping helper for this —
- * every module re-implements the SDK-version branching and the hashing. Good
- * candidate for an optional `:xposed-android` artifact.
+ *   - the cert byte arrays become `signerSha256s`; SignerGuard matches the map's
+ *     single pinned hash against ANY of them.
  */
 package com.example.rosettamodule
 
 import android.content.pm.PackageManager
 import android.os.Build
+import io.github.xiddoc.rosetta.android.AndroidIdentities
 import io.github.xiddoc.rosetta.xposed.AppIdentity
-import java.security.MessageDigest
 
 internal object AndroidAppIdentity {
     fun of(
@@ -28,17 +27,16 @@ internal object AndroidAppIdentity {
     ): AppIdentity {
         val versionCode: Long
         val versionName: String?
-        val signers: Set<String>
+        val certs: List<ByteArray>
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
             versionCode = info.longVersionCode
             versionName = info.versionName
-            signers =
+            certs =
                 info.signingInfo
                     ?.apkContentsSigners
-                    ?.map { sha256Hex(it.toByteArray()) }
-                    ?.toSet()
+                    ?.map { it.toByteArray() }
                     .orEmpty()
         } else {
             @Suppress("DEPRECATION")
@@ -47,24 +45,18 @@ internal object AndroidAppIdentity {
             versionCode = info.versionCode.toLong()
             versionName = info.versionName
             @Suppress("DEPRECATION")
-            signers =
+            certs =
                 info.signatures
-                    ?.map { sha256Hex(it.toByteArray()) }
-                    ?.toSet()
+                    ?.map { it.toByteArray() }
                     .orEmpty()
         }
 
-        return AppIdentity(
+        // Delegate hashing + assembly to the tested :xposed-android helper.
+        return AndroidIdentities.build(
             packageName = packageName,
             versionCode = versionCode,
             versionName = versionName,
-            signerSha256s = signers,
+            signerCertsDer = certs,
         )
     }
-
-    private fun sha256Hex(bytes: ByteArray): String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString("") { "%02x".format(it) }
 }
