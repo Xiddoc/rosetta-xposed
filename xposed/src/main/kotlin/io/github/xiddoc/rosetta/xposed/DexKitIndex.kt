@@ -3,9 +3,10 @@
  * (B.1, RFC 0001 Decision 2 / 5).
  *
  * This interface is the boundary between the device-free discovery LOGIC
- * (which ships now in [DynamicResolutionBackend]) and the real, device-only
- * DexKit-backed adapter (a thin follow-up; DexKit stays an optional later-phase
- * dependency per CLAUDE.md Decision 5).
+ * (in [DynamicResolutionBackend]) and the real, device-only DexKit-backed
+ * adapter (the optional `:dexkit` module — built and integration-tested against
+ * a committed DEX fixture; on-device native wiring is not yet proven end-to-end
+ * on Android).
  *
  * DESIGN RULE — no DexKit types in these signatures. The seam speaks only
  * plain-JVM value types ([MethodQuery] / [MethodMatch]) and Strings, so:

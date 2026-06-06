@@ -28,14 +28,16 @@ from the Kotlin side and consumes the maps both clients share. See
 
 ## Status
 
-This repo is **scaffolding**. The neutral core (model, loader, resolver,
-conformance suite) and the static Xposed binding are implemented and tested
-on the JVM; the DexKit dynamic backend, deferred binding, on-device app
-identity, and Maven publishing are **planned**. See [Status](reference/status.md).
+The neutral `:core` (model, loader, resolver, conformance suite), the static
+and dynamic (self-healing) `:xposed` backends, the composite backend, deferred
+binding, and the optional `:dexkit` adapter are implemented and tested on the
+JVM. What remains is on-device / native production wiring (the committed DEX
+fixture covers the adapter path; a physical-device run is not yet validated)
+and Maven publishing. See [Status](reference/status.md).
 
 ## Next steps
 
 - [Concepts](getting-started/concepts.md) — the four-layer picture and the modules.
 - [Usage](getting-started/usage.md) — resolve a real name and hook it.
-- [Resolution backends](reference/backends.md) — static vs. dynamic.
+- [Resolution backends](reference/backends.md) — static, dynamic (self-healing), and composite.
 - [Building](reference/building.md) — toolchain and Gradle tasks.
