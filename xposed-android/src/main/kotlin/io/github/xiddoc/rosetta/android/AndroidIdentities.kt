@@ -33,7 +33,7 @@ import java.security.MessageDigest
 /** Pure-JVM signer-hash + [AppIdentity] assembly from PackageManager primitives. */
 public object AndroidIdentities {
     /** Lowercase hex SHA-256 of [bytes] (the form SignerGuard compares against). */
-    public fun sha256Hex(bytes: ByteArray): String =
+    internal fun sha256Hex(bytes: ByteArray): String =
         MessageDigest
             .getInstance("SHA-256")
             .digest(bytes)
@@ -43,7 +43,9 @@ public object AndroidIdentities {
      * Assembles an [AppIdentity] from primitives the caller already pulled from
      * `PackageManager`. Each DER-encoded signing certificate in [signerCertsDer]
      * is hashed via [sha256Hex] into the [AppIdentity.signerSha256s] set
-     * (duplicates collapse); an empty collection yields an empty set.
+     * (duplicates collapse); an empty collection yields an empty set. The
+     * incoming cert byte arrays are read (hashed) immediately and are neither
+     * retained nor mutated.
      *
      * @param packageName the Android package name (e.g. "com.example.app").
      * @param versionCode `PackageInfo.longVersionCode` (the selection key).

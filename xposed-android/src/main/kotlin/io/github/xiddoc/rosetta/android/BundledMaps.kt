@@ -33,11 +33,13 @@ public object BundledMaps {
         classLoader: ClassLoader = BundledMaps::class.java.classLoader,
     ): RosettaMap {
         val path = "maps/$fileName"
-        val stream =
-            classLoader.getResourceAsStream(path)
-                ?: error("rosetta-android: bundled map '$path' not found on the module class path")
-        val text = stream.readBytes().decodeToString()
-        stream.close()
+        // Use `.use {}` so the stream is always closed even if readBytes()/
+        // decodeToString() throws — a bare close() after the read would leak it.
+        val text =
+            (
+                classLoader.getResourceAsStream(path)
+                    ?: error("rosetta-android: bundled map '$path' not found on the module class path")
+            ).use { it.readBytes().decodeToString() }
         return MapLoader.fromJson(text)
     }
 }
