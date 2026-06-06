@@ -42,6 +42,11 @@ dependencies {
     // Resolved from the parent build via the composite includeBuild in settings.
     implementation("io.github.xiddoc.rosetta:xposed")
 
+    // Optional Android-helper LOGIC (BundledMaps + AndroidIdentities). Pure JVM;
+    // resolved via the same composite includeBuild. Keeps the module from
+    // re-implementing bundled-map loading and signer-hash/AppIdentity assembly.
+    implementation("io.github.xiddoc.rosetta:xposed-android")
+
     // Legacy Xposed API — provided by the framework at runtime, so compileOnly.
     // This is the path LegacyEntry uses and the one wired live in LOOP #1.
     compileOnly("de.robv.android.xposed:api:82")
