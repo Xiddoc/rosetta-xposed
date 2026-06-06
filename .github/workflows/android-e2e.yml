@@ -54,7 +54,12 @@ jobs:
             # Pin the LSPatch release tag + the exact CLI asset name below.
             # Verify CLI flags against `java -jar "$LSPATCH_JAR" --help` on the
             # first real run. (v0.8 ships lspatch.jar + lspatch-debug.jar.)
-            LSPATCH_TAG: v0.8
+            # v0.7 (not the newest v0.8): v0.8's embedded-module loader
+            # deterministically crashes loading this module's entry class with a
+            # stack-less NoClassDefFoundError, while the bare patched app runs —
+            # a v0.8 module-loading regression. v0.7 ships the same lspatch.jar
+            # asset + CLI flags.
+            LSPATCH_TAG: v0.7
             # API 34 (Android 14) everywhere. LSPatch v0.8's metaloader
             # (LSPAppComponentFactoryStub) crashes at process init on API 30
             # (proven with a no-module control: the bare patched app also dies),
