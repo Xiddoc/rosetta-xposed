@@ -15,10 +15,13 @@ name: Android e2e (emulator + LSPatch)
 # loader are slow and inherently flaky. It runs nightly, on demand, and when the
 # Android example (or the layers it depends on) changes.
 #
-# STATUS: authored for GitHub-hosted (KVM-enabled) ubuntu-latest. It was NOT run
-# in the authoring sandbox (no emulator/KVM there). The LSPatch CLI flags and
-# the embedded-module load are the most likely first-run adjustments — see the
-# inline NOTEs.
+# SPEED + STABILITY: the slow part is a cold emulator boot (~4 min) which also
+# races the runner's post-boot setup (the infamous `cmd: ... Broken pipe (32)`
+# on `settings put`). We adopt the documented android-emulator-runner snapshot
+# pattern: boot once on a cache miss, save a snapshot, cache it, then RESTORE it
+# (`-no-snapshot-save`) on the run step so the system is already warm — both far
+# faster and past the cold-boot binder race. PRs boot a lighter API 30 image;
+# the nightly / on-demand runs stay on API 34 for representativeness.
 
 on:
     schedule:
@@ -52,6 +55,17 @@ jobs:
             # Verify CLI flags against `java -jar "$LSPATCH_JAR" --help` on the
             # first real run. (v0.8 ships lspatch.jar + lspatch-debug.jar.)
             LSPATCH_TAG: v0.8
+            # PRs boot a lighter/faster API 30 image (victim minSdk=24, so it
+            # installs fine); nightly + on-demand runs stay on API 34. The create
+            # and run emulator steps and the AVD cache key all read these so the
+            # snapshot they share is for one identical AVD config.
+            API_LEVEL: ${{ github.event_name == 'pull_request' && '30' || '34' }}
+            AVD_TARGET: default
+            AVD_ARCH: x86_64
+            # Shared emulator flags. The create step appends nothing (so a
+            # snapshot is SAVED on exit); the run step adds `-no-snapshot-save`
+            # (LOAD the saved snapshot, don't re-save).
+            EMU_OPTIONS: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
 
         steps:
             - uses: actions/checkout@v4
@@ -84,8 +98,17 @@ jobs:
                   distribution: temurin
                   java-version: '21'
 
+            # Cache the ~11 MB LSPatch CLI so we skip the download on a cache hit.
+            - name: Cache LSPatch CLI
+              id: lspatch-cache
+              uses: actions/cache@v4
+              with:
+                  path: lspatch
+                  key: lspatch-${{ env.LSPATCH_TAG }}
+
             - name: Download LSPatch CLI (maintained fork; authenticated)
               run: |
+                  set -euo pipefail
                   mkdir -p lspatch
                   # gh is preinstalled; GH_TOKEN avoids the API rate limit.
                   # JingMatrix/LSPatch is the maintained fork of the archived
@@ -93,10 +116,13 @@ jobs:
                   # The tag is a POSITIONAL arg to `gh release download` (not
                   # --tag). Pattern matches only the release CLI asset
                   # `lspatch.jar` (NOT lspatch-debug.jar) so we get exactly one.
-                  gh release download "$LSPATCH_TAG" \
-                      --repo JingMatrix/LSPatch \
-                      --pattern 'lspatch.jar' \
-                      --dir lspatch
+                  # Skip the download when the cache already provided the jar.
+                  if [ ! -f lspatch/lspatch.jar ]; then
+                      gh release download "$LSPATCH_TAG" \
+                          --repo JingMatrix/LSPatch \
+                          --pattern 'lspatch.jar' \
+                          --dir lspatch
+                  fi
                   jar_count=$(find lspatch -maxdepth 1 -name '*.jar' | wc -l)
                   if [ "$jar_count" -ne 1 ]; then
                       echo "ERROR: expected exactly 1 LSPatch jar, found $jar_count" >&2
@@ -105,7 +131,7 @@ jobs:
                   fi
                   LSPATCH_JAR="$(find lspatch -maxdepth 1 -name '*.jar')"
                   echo "LSPATCH_JAR=$LSPATCH_JAR" >> "$GITHUB_ENV"
-                  echo "Downloaded: $LSPATCH_JAR"
+                  echo "Resolved: $LSPATCH_JAR"
 
             - name: LSPatch — embed the module into the victim (local mode)
               run: |
@@ -123,39 +149,68 @@ jobs:
                   echo "patched=$PATCHED"
                   echo "PATCHED=$PATCHED" >> "$GITHUB_ENV"
 
+            # --- Emulator: documented snapshot-caching pattern -----------------
+            # actions/cache stores the AVD + its saved snapshot. On a HIT the run
+            # step restores an already-booted system (fast, and past the flaky
+            # cold-boot binder race). On a MISS the create step boots once and
+            # saves the snapshot; that same on-disk snapshot is reused by the run
+            # step in this very job, and the cache seeds future runs.
+            - name: Enable KVM
+              run: |
+                  echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                      | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+                  sudo udevadm control --reload-rules
+                  sudo udevadm trigger --name-match=kvm
+
             - name: Cache AVD snapshot
               id: avd-cache
               uses: actions/cache@v4
               with:
-                  path: ~/.android/avd/*
-                  key: avd-34-x86_64-${{ runner.os }}
+                  path: |
+                      ~/.android/avd/*
+                      ~/.android/adb*
+                  key: avd-v2-${{ env.API_LEVEL }}-${{ env.AVD_TARGET }}-${{ env.AVD_ARCH }}
 
-            - name: Create AVD (on cache miss)
+            - name: Create AVD + save snapshot (on cache miss)
               if: steps.avd-cache.outputs.cache-hit != 'true'
-              uses: reactivecircus/android-emulator-runner@v2
+              uses: reactivecircus/android-emulator-runner@v2.37.0
               with:
-                  api-level: 34
-                  arch: x86_64
+                  api-level: ${{ env.API_LEVEL }}
+                  target: ${{ env.AVD_TARGET }}
+                  arch: ${{ env.AVD_ARCH }}
+                  cores: 2
+                  ram-size: 4096M
                   force-avd-creation: false
-                  emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-                  disable-animations: true
-                  script: echo "AVD created"
+                  # NOTE: no `-no-snapshot` here, so a snapshot is saved on exit.
+                  emulator-options: ${{ env.EMU_OPTIONS }}
+                  emulator-boot-timeout: 900
+                  # The post-boot animation/`settings put` step is the source of
+                  # the `Broken pipe (32)` flake and is irrelevant to a headless
+                  # logcat assertion — skip it.
+                  disable-animations: false
+                  script: echo "Generated AVD snapshot for caching."
 
-            - name: Run on emulator (API 34) and assert the hook fired
-              uses: reactivecircus/android-emulator-runner@v2
+            - name: Run on emulator and assert the hook fired
+              uses: reactivecircus/android-emulator-runner@v2.37.0
               with:
-                  api-level: 34
-                  arch: x86_64
+                  api-level: ${{ env.API_LEVEL }}
+                  target: ${{ env.AVD_TARGET }}
+                  arch: ${{ env.AVD_ARCH }}
+                  cores: 2
+                  ram-size: 4096M
                   force-avd-creation: false
-                  emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-                  disable-animations: true
+                  # `-no-snapshot-save`: LOAD the cached snapshot, don't re-save.
+                  emulator-options: ${{ env.EMU_OPTIONS }} -no-snapshot-save
+                  emulator-boot-timeout: 900
+                  disable-animations: false
                   script: |
                       # NOTE: android-emulator-runner runs this `script` under
                       # /usr/bin/sh (dash), not bash — so no `pipefail` (a bashism
                       # that aborts dash on line 1). POSIX `set -eu` only.
                       set -eu
+                      adb wait-for-device
                       # Clear logcat BEFORE install/launch so we don't pick up
-                      # stale log lines from a previous run.
+                      # stale log lines from a previous run / the snapshot.
                       adb logcat -c
                       adb install -r "$PATCHED"
                       # MainActivity.onCreate calls formatTicket and logs the
@@ -164,8 +219,8 @@ jobs:
 
                       # Poll until the RosettaVictim tag appears (proves onCreate
                       # ran) or time out. A slow cold emulator can take >8 s.
-                      echo "Waiting for RosettaVictim tag (up to 40 s) ..."
-                      deadline=$(( $(date +%s) + 40 ))
+                      echo "Waiting for RosettaVictim tag (up to 60 s) ..."
+                      deadline=$(( $(date +%s) + 60 ))
                       while true; do
                           if adb logcat -d -s RosettaVictim:I | grep -qF 'RosettaVictim'; then
                               break
