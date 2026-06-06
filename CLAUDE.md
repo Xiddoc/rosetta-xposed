@@ -114,6 +114,28 @@ the shared conformance fixtures (`core/src/test/resources/conformance/`) —
 those are owned by the cross-repo parity agent that keeps the TS and
 Kotlin resolvers in lockstep.
 
+## Building the Android example (Android SDK)
+
+The library and the JVM example builds need **no Android SDK** — `:core`,
+`:xposed`, `:xposed-android`, and `examples/{harness,r8}` all build/test on a
+plain JVM (R8 in `examples/r8` is just the `com.android.tools:r8` Maven jar
+with `--classfile`). Only the **APKs** under `examples/android` (the victim app
++ the LSPosed module) need the Android SDK / Android Gradle Plugin.
+
+Cloud / web agent sessions start **without** an SDK. To build the APKs:
+
+```bash
+./scripts/setup-android-sdk.sh                 # idempotent; installs into ~/android-sdk
+export ANDROID_HOME="$HOME/android-sdk" ANDROID_SDK_ROOT="$HOME/android-sdk"
+./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug
+```
+
+`dl.google.com` (command-line tools) and Google Maven (AGP) must be reachable —
+they are under the default network policy. GitHub-hosted `ubuntu-latest` runners
+ship the SDK preinstalled, so CI does **not** run the script. What the SDK does
+**not** give you here is a way to *run* the module: that needs a device/emulator
+with LSPosed (or an LSPatch-patched APK) — see `examples/README.md`.
+
 ## Anti-scope
 
 - **Not a hook framework.** It doesn't define what a hook is; it makes the

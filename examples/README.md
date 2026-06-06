@@ -86,14 +86,39 @@ lockstep with the committed map:
 
 ## CI
 
-Wired in `.github/workflows/ci.yml`:
+In `.github/workflows/ci.yml`:
 
 - `examples-harness` (`./gradlew -p examples/harness test`) → **required** —
   pure-JVM, no network beyond cached Maven Central.
 - `examples-r8` (`./gradlew -p examples/r8 test`) → **advisory** (job-level
-  `continue-on-error`), because it fetches R8 from Google Maven; a transient
-  registry outage shows amber, never blocks the required gate.
-- `examples/android` is intentionally excluded (needs the Android SDK).
+  `continue-on-error`), because it fetches R8 from Google Maven.
+- `examples-android-build` (`assembleDebug` of victim + module) → **advisory** —
+  needs the Android SDK (preinstalled on `ubuntu-latest`) and reaches
+  google()/api.xposed.info. Catches compile/manifest/dex/registration
+  regressions the pure-JVM jobs can't (e.g. the `@hide AndroidAppHelper`
+  compile error a real build surfaced).
+
+In `.github/workflows/android-e2e.yml` (nightly + on-demand + on `examples/android`
+changes), **advisory**:
+
+- `android-e2e` boots an emulator, uses **LSPatch** (non-root) to embed the
+  module into the victim APK, launches it, and asserts via logcat that the
+  victim's startup log reads `HOOKED(ticket:T-123)` (the headless hook signal —
+  `MainActivity.onCreate` logs the `formatTicket` result under tag
+  `RosettaVictim`). This is the only test that exercises the full on-device path.
+  LSPosed-with-root isn't CI-feasible; LSPatch is. The workflow is authored for
+  GitHub's KVM runners and may need first-run tuning of the LSPatch flags.
+
+### Building the Android APKs locally
+
+Cloud/agent sessions start without an SDK; install one with the repo script
+(see `CLAUDE.md` → "Building the Android example"):
+
+```bash
+./scripts/setup-android-sdk.sh
+export ANDROID_HOME="$HOME/android-sdk" ANDROID_SDK_ROOT="$HOME/android-sdk"
+./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug
+```
 
 ## The `:xposed-android` helper module
 

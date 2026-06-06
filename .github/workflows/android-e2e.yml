@@ -1,0 +1,134 @@
+name: Android e2e (emulator + LSPatch)
+
+# The ONLY test that exercises the full on-device path: it boots an emulator,
+# uses LSPatch (non-root) to embed the rosetta example module into the victim
+# APK, installs + launches it, and asserts via logcat that the Rosetta-resolved
+# hook fired. The victim's MainActivity.onCreate logs the formatTicket result
+# under tag `RosettaVictim`; with the module active that line reads
+# `HOOKED(ticket:T-123)` instead of `ticket:T-123`.
+#
+# Why LSPatch and not LSPosed: running LSPosed in CI needs Magisk root + a
+# Zygisk module on the AVD (no turnkey action, very flaky). LSPatch patches the
+# target APK to self-load the module — no root, vanilla emulator.
+#
+# This job is ADVISORY (never a required gate): emulator boot + the LSPatch
+# loader are slow and inherently flaky. It runs nightly, on demand, and when the
+# Android example (or the layers it depends on) changes.
+#
+# STATUS: authored for GitHub-hosted (KVM-enabled) ubuntu-latest. It was NOT run
+# in the authoring sandbox (no emulator/KVM there). The LSPatch CLI flags and
+# the embedded-module load are the most likely first-run adjustments — see the
+# inline NOTEs.
+
+on:
+    schedule:
+        - cron: '0 4 * * *' # nightly 04:00 UTC
+    workflow_dispatch: {}
+    pull_request:
+        paths:
+            - 'examples/android/**'
+            - 'xposed/**'
+            - 'xposed-android/**'
+            - 'core/**'
+            - '.github/workflows/android-e2e.yml'
+
+permissions:
+    contents: read
+
+concurrency:
+    group: android-e2e-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    e2e:
+        name: emulator + LSPatch hook assertion (advisory)
+        runs-on: ubuntu-latest
+        # Advisory — never block a merge on emulator/LSPatch flakiness.
+        continue-on-error: true
+        env:
+            DEVELOCITY_INJECTION_ENABLED: 'false'
+            # Authenticated gh avoids the unauthenticated API rate limit when
+            # downloading the LSPatch release from another public repo.
+            GH_TOKEN: ${{ github.token }}
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up JDK 17
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '17'
+
+            - name: Set up Gradle (with build cache)
+              uses: gradle/actions/setup-gradle@v4
+              with:
+                  develocity-injection-enabled: false
+
+            - name: Remove Develocity auto-injection init script
+              run: |
+                  init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+                  rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+
+            - name: Assemble victim + module APKs
+              run: ./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug --stacktrace
+
+            - name: Download LSPatch CLI (maintained fork; authenticated)
+              run: |
+                  mkdir -p lspatch
+                  # gh is preinstalled; GH_TOKEN avoids the API rate limit.
+                  # JingMatrix/LSPatch is the maintained fork of the archived
+                  # LSPosed/LSPatch. If the fork moves, change the --repo here.
+                  gh release download --repo JingMatrix/LSPatch --pattern '*.jar' --dir lspatch
+                  ls -l lspatch
+
+            - name: LSPatch — embed the module into the victim (local mode)
+              run: |
+                  set -euo pipefail
+                  VICTIM=$(find examples/android/victim -name '*-debug.apk' | head -1)
+                  MODULE=$(find examples/android/module -name '*-debug.apk' | head -1)
+                  echo "victim=$VICTIM module=$MODULE"
+                  # Local/embedded mode bakes the module dex into the target so the
+                  # patched APK self-loads it (no manager, no root).
+                  # NOTE (first-run): confirm flags against `java -jar lspatch/*.jar --help`.
+                  # Across releases the patcher has accepted:  <apk> -m <module.apk> -o <outdir> --force [-l 2]
+                  java -jar lspatch/*.jar "$VICTIM" -m "$MODULE" -o patched --force -l 2
+                  PATCHED=$(find patched -name '*.apk' | head -1)
+                  echo "patched=$PATCHED"
+                  echo "PATCHED=$PATCHED" >> "$GITHUB_ENV"
+
+            - name: Run on emulator (API 34) and assert the hook fired
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: 34
+                  arch: x86_64
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+                  disable-animations: true
+                  script: |
+                      set -euo pipefail
+                      adb install -r "$PATCHED"
+                      adb logcat -c
+                      # MainActivity.onCreate calls formatTicket and logs the
+                      # result under tag RosettaVictim.
+                      adb shell am start -n com.example.victim/.MainActivity
+                      sleep 8
+                      echo "----- RosettaVictim logs -----"
+                      adb logcat -d -s RosettaVictim:I || true
+                      if adb logcat -d -s RosettaVictim:I | grep -q 'HOOKED(ticket:T-123)'; then
+                          echo "E2E PASS: Rosetta-resolved hook fired (HOOKED(ticket:T-123))."
+                      else
+                          echo "E2E FAIL: HOOKED(ticket:T-123) not observed (unhooked would be 'ticket:T-123')." >&2
+                          adb logcat -d | tail -200 >&2
+                          exit 1
+                      fi
+
+            - name: Upload e2e artifacts
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: android-e2e-artifacts
+                  path: |
+                      patched/**/*.apk
+                      examples/android/**/build/outputs/apk/**/*.apk
+                  retention-days: 14
