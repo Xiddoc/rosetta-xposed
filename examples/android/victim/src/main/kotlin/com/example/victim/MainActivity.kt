@@ -6,7 +6,7 @@
  *
  * For headless CI (the emulator + LSPatch e2e workflow), onCreate also calls
  * formatTicket once and Log.i's the result under TAG. The e2e job greps logcat
- * for `HOOKED(ticket:` to assert the Rosetta-resolved hook fired — no UI
+ * for `HOOKED(ticket:T-123)` to assert the Rosetta-resolved hook fired — no UI
  * automation needed.
  */
 package com.example.victim

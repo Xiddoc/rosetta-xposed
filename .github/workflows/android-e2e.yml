@@ -27,9 +27,7 @@ on:
     pull_request:
         paths:
             - 'examples/android/**'
-            - 'xposed/**'
             - 'xposed-android/**'
-            - 'core/**'
             - '.github/workflows/android-e2e.yml'
 
 permissions:
@@ -50,6 +48,10 @@ jobs:
             # Authenticated gh avoids the unauthenticated API rate limit when
             # downloading the LSPatch release from another public repo.
             GH_TOKEN: ${{ github.token }}
+            # Pin the LSPatch release tag. Update together with the --pattern
+            # below, then verify CLI flags against `java -jar lspatch/*.jar --help`
+            # on the first real run.
+            LSPATCH_TAG: v0.6.2
 
         steps:
             - uses: actions/checkout@v4
@@ -79,8 +81,22 @@ jobs:
                   # gh is preinstalled; GH_TOKEN avoids the API rate limit.
                   # JingMatrix/LSPatch is the maintained fork of the archived
                   # LSPosed/LSPatch. If the fork moves, change the --repo here.
-                  gh release download --repo JingMatrix/LSPatch --pattern '*.jar' --dir lspatch
-                  ls -l lspatch
+                  # Use --tag (pinned via LSPATCH_TAG) and a narrow --pattern so
+                  # we always get exactly one jar; fail clearly if the count is off.
+                  gh release download \
+                      --repo JingMatrix/LSPatch \
+                      --tag "$LSPATCH_TAG" \
+                      --pattern 'lspatch-*.jar' \
+                      --dir lspatch
+                  jar_count=$(find lspatch -maxdepth 1 -name '*.jar' | wc -l)
+                  if [ "$jar_count" -ne 1 ]; then
+                      echo "ERROR: expected exactly 1 LSPatch jar, found $jar_count" >&2
+                      ls -l lspatch >&2
+                      exit 1
+                  fi
+                  LSPATCH_JAR="$(find lspatch -maxdepth 1 -name '*.jar')"
+                  echo "LSPATCH_JAR=$LSPATCH_JAR" >> "$GITHUB_ENV"
+                  echo "Downloaded: $LSPATCH_JAR"
 
             - name: LSPatch — embed the module into the victim (local mode)
               run: |
@@ -90,12 +106,30 @@ jobs:
                   echo "victim=$VICTIM module=$MODULE"
                   # Local/embedded mode bakes the module dex into the target so the
                   # patched APK self-loads it (no manager, no root).
-                  # NOTE (first-run): confirm flags against `java -jar lspatch/*.jar --help`.
+                  # NOTE (first-run): confirm flags against `java -jar "$LSPATCH_JAR" --help`.
                   # Across releases the patcher has accepted:  <apk> -m <module.apk> -o <outdir> --force [-l 2]
-                  java -jar lspatch/*.jar "$VICTIM" -m "$MODULE" -o patched --force -l 2
+                  java -jar "$LSPATCH_JAR" "$VICTIM" -m "$MODULE" -o patched --force -l 2
                   PATCHED=$(find patched -name '*.apk' | head -1)
                   echo "patched=$PATCHED"
                   echo "PATCHED=$PATCHED" >> "$GITHUB_ENV"
+
+            - name: Cache AVD snapshot
+              id: avd-cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.android/avd/*
+                  key: avd-34-x86_64-${{ runner.os }}
+
+            - name: Create AVD (on cache miss)
+              if: steps.avd-cache.outputs.cache-hit != 'true'
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: 34
+                  arch: x86_64
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+                  disable-animations: true
+                  script: echo "AVD created"
 
             - name: Run on emulator (API 34) and assert the hook fired
               uses: reactivecircus/android-emulator-runner@v2
@@ -107,18 +141,42 @@ jobs:
                   disable-animations: true
                   script: |
                       set -euo pipefail
-                      adb install -r "$PATCHED"
+                      # Clear logcat BEFORE install/launch so we don't pick up
+                      # stale log lines from a previous run.
                       adb logcat -c
+                      adb install -r "$PATCHED"
                       # MainActivity.onCreate calls formatTicket and logs the
                       # result under tag RosettaVictim.
                       adb shell am start -n com.example.victim/.MainActivity
-                      sleep 8
+
+                      # Poll until the RosettaVictim tag appears (proves onCreate
+                      # ran) or time out. A slow cold emulator can take >8 s.
+                      echo "Waiting for RosettaVictim tag (up to 40 s) ..."
+                      deadline=$(( $(date +%s) + 40 ))
+                      while true; do
+                          if adb logcat -d -s RosettaVictim:I | grep -qF 'RosettaVictim'; then
+                              break
+                          fi
+                          if [ "$(date +%s)" -ge "$deadline" ]; then
+                              echo "TIMEOUT: RosettaVictim tag never appeared — app may have crashed." >&2
+                              echo "----- last 200 logcat lines -----" >&2
+                              adb logcat -d | tail -200 >&2
+                              exit 1
+                          fi
+                          sleep 2
+                      done
+
+                      # Cache the dump so adb logcat -d is invoked only once for
+                      # the assertion.
+                      LOGCAT_DUMP="$(adb logcat -d -s RosettaVictim:I)"
                       echo "----- RosettaVictim logs -----"
-                      adb logcat -d -s RosettaVictim:I || true
-                      if adb logcat -d -s RosettaVictim:I | grep -q 'HOOKED(ticket:T-123)'; then
+                      echo "$LOGCAT_DUMP"
+
+                      if echo "$LOGCAT_DUMP" | grep -qF 'HOOKED(ticket:T-123)'; then
                           echo "E2E PASS: Rosetta-resolved hook fired (HOOKED(ticket:T-123))."
                       else
                           echo "E2E FAIL: HOOKED(ticket:T-123) not observed (unhooked would be 'ticket:T-123')." >&2
+                          echo "----- last 200 logcat lines -----" >&2
                           adb logcat -d | tail -200 >&2
                           exit 1
                       fi

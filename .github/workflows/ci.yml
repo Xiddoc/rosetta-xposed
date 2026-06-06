@@ -260,7 +260,9 @@ jobs:
                   echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
 
             # ubuntu-latest ships the Android SDK preinstalled (ANDROID_HOME set),
-            # so no setup-android step is needed. On a bare environment, run
+            # so no setup-android step is needed here. NOTE: there is no pinned
+            # SDK version — this relies on whatever version the runner image
+            # provides. On a bare environment (no preinstalled SDK), run
             # scripts/setup-android-sdk.sh first (see CLAUDE.md).
             - name: Assemble victim + module APKs
               run: ./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug --stacktrace
