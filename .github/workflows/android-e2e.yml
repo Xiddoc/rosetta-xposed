@@ -150,7 +150,10 @@ jobs:
                   emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
                   disable-animations: true
                   script: |
-                      set -euo pipefail
+                      # NOTE: android-emulator-runner runs this `script` under
+                      # /usr/bin/sh (dash), not bash — so no `pipefail` (a bashism
+                      # that aborts dash on line 1). POSIX `set -eu` only.
+                      set -eu
                       # Clear logcat BEFORE install/launch so we don't pick up
                       # stale log lines from a previous run.
                       adb logcat -c
