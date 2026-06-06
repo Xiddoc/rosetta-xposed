@@ -35,6 +35,7 @@ import io.github.xiddoc.rosetta.core.MalformedSignerException
 import io.github.xiddoc.rosetta.core.MissingSignerException
 import io.github.xiddoc.rosetta.core.SignerMismatchException
 import io.github.xiddoc.rosetta.core.MapLoader
+import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.xposed.AppIdentity
 import io.github.xiddoc.rosetta.xposed.RosettaXposed
 import io.github.xiddoc.rosetta.xposed.TargetPolicy
@@ -56,6 +57,10 @@ public data class SignerWalkthroughResult(
     val malformed: MalformedSignerException,
     /** True when the normalised uppercase+colon form matched the lowercase form. */
     val normalizationMatched: Boolean,
+    /** True when the multi-signer identity (containing extra hashes) matched. */
+    val multiSignerMatched: Boolean,
+    /** True when the fromRegistry path bound and resolved the real name. */
+    val registryMatched: Boolean,
 )
 
 public object SignerWalkthrough {
@@ -79,7 +84,7 @@ public object SignerWalkthrough {
      * Compute the lowercase 64-hex SHA-256 of [bytes], the same way a real
      * module computes a signing-certificate hash from PackageManager.
      */
-    public fun sha256Hex(bytes: ByteArray): String {
+    internal fun sha256Hex(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
         return digest.joinToString("") { "%02x".format(it) }
     }
@@ -135,8 +140,7 @@ public object SignerWalkthrough {
             versionName = VERSION,
             signerSha256s = setOf(certHash),
         )
-        val matchRosetta = RosettaXposed.fromMap(matchMap, Thread.currentThread().contextClassLoader
-            ?: SignerWalkthrough::class.java.classLoader!!, matchIdentity, policy)
+        val matchRosetta = RosettaXposed.fromMap(matchMap, SignerWalkthrough::class.java.classLoader!!, matchIdentity, policy)
 
         // Resolve the real name to prove the guard did not block the binding.
         val method = matchRosetta.method(REAL_CLASS, REAL_METHOD).member() as java.lang.reflect.Method
@@ -149,7 +153,21 @@ public object SignerWalkthrough {
             versionCode = VERSION_CODE,
             signerSha256s = setOf("a".repeat(64), certHash, "b".repeat(64)),
         )
-        RosettaXposed.fromMap(matchMap, SignerWalkthrough::class.java.classLoader!!, multiSetIdentity, policy)
+        val multiSignerMatched: Boolean = try {
+            RosettaXposed.fromMap(matchMap, SignerWalkthrough::class.java.classLoader!!, multiSetIdentity, policy)
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+        // ------------------------------------------------------------------ //
+        // MATCH-via-registry: fromRegistry path enforces the signer guard too //
+        // ------------------------------------------------------------------ //
+        val registry = MapRegistry.of(matchMap)
+        val registryRosetta = RosettaXposed.fromRegistry(registry, matchIdentity, SignerWalkthrough::class.java.classLoader!!, policy)
+            ?: error("fromRegistry returned null — map not indexed by version_code $VERSION_CODE")
+        val registryResolved = registryRosetta.method(REAL_CLASS, REAL_METHOD).member() as java.lang.reflect.Method
+        val registryMatched = registryResolved.name == method.name
 
         // ------------------------------------------------------------------ //
         // MISMATCH: identity present but contains a WRONG hash                //
@@ -208,7 +226,7 @@ public object SignerWalkthrough {
         val normalizationMatched: Boolean = try {
             RosettaXposed.fromMap(normMap, SignerWalkthrough::class.java.classLoader!!, normIdentity, policy)
             true
-        } catch (_: Exception) {
+        } catch (_: SignerMismatchException) {
             false
         }
 
@@ -220,6 +238,8 @@ public object SignerWalkthrough {
             missing = missing,
             malformed = malformed,
             normalizationMatched = normalizationMatched,
+            multiSignerMatched = multiSignerMatched,
+            registryMatched = registryMatched,
         )
     }
 }
@@ -231,6 +251,8 @@ public fun signerMain() {
     println("cert SHA-256 : ${r.computedHash}")
     println()
     println("MATCH        : resolved ${r.matchedMemberName}, invoked -> \"${r.matchedInvocation}\" (guard passed)")
+    println("MULTI-SIGNER : extra hashes in identity set, still matched = ${r.multiSignerMatched}")
+    println("REGISTRY     : fromRegistry path bound and resolved = ${r.registryMatched}")
     println("MISMATCH     : ${r.mismatch.message}")
     println("MISSING      : ${r.missing.message}")
     println("MALFORMED    : ${r.malformed.message}")

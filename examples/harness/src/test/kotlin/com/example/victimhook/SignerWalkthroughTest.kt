@@ -71,11 +71,9 @@ class SignerWalkthroughTest {
 
     @Test
     fun `MISMATCH - exception actual field contains the wrong hash that was presented`() {
-        // The wrong hash is 64 a's; it should appear in the actual field.
-        assertTrue(
-            result.mismatch.actual.contains("a".repeat(64)),
-            "actual field should contain the wrong hash: ${result.mismatch.actual}",
-        )
+        // The wrong hash is 64 a's; it is the only hash in the set so it is
+        // rendered as the exact form [aaa...aaa] (sorted, bracketed).
+        assertEquals("[" + "a".repeat(64) + "]", result.mismatch.actual)
     }
 
     // ---- MISSING ---------------------------------------------------------- //
@@ -109,6 +107,39 @@ class SignerWalkthroughTest {
         assertTrue(
             result.normalizationMatched,
             "SignerGuard must normalize colons and case before comparing hashes",
+        )
+    }
+
+    // ---- MULTI-SIGNER ----------------------------------------------------- //
+
+    @Test
+    fun `MULTI-SIGNER - identity set with extra hashes still matches when the right hash is present`() {
+        assertTrue(
+            result.multiSignerMatched,
+            "fromMap must succeed when the correct hash is present alongside other hashes",
+        )
+    }
+
+    // ---- REGISTRY --------------------------------------------------------- //
+
+    @Test
+    fun `REGISTRY - fromRegistry path binds and resolves the real name`() {
+        assertTrue(
+            result.registryMatched,
+            "fromRegistry must bind successfully and resolve to the same obfuscated member as fromMap",
+        )
+    }
+
+    // ---- sha256Hex unit tests --------------------------------------------- //
+
+    @Test
+    fun `sha256Hex - negative byte input 0xff produces correct 64-char lowercase hex without sign extension`() {
+        // SHA-256(0xff) is a known value that includes multiple digest bytes
+        // >= 0x80 (negative as Kotlin Byte), exercising the high-byte formatting
+        // path and confirming %02x does not sign-extend them.
+        assertEquals(
+            "a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89",
+            SignerWalkthrough.sha256Hex(byteArrayOf(-1)),
         )
     }
 }

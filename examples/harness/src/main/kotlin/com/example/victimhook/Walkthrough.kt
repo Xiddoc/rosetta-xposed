@@ -110,4 +110,8 @@ public fun main() {
     println("real method      : formatTicket   ->   obfuscated member: ${r.memberName}")
     println("invocation       : formatTicket(\"T-123\")  ->  ${r.invoked}")
     println("OK — resolved a human name to its obfuscated Member with no hard-coded obf strings.")
+    println()
+    println("--- signer guard walkthrough ---")
+    println()
+    signerMain()
 }
