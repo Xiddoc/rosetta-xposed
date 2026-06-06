@@ -24,7 +24,11 @@ android {
 
     buildTypes {
         // Keep the module un-minified so its entry-point class names (referenced
-        // from assets/xposed_init and the manifest) survive.
+        // from assets/xposed_init and the manifest) survive. (R8 minification was
+        // trialled to rule out the module's multi-dex shape as the LSPatch
+        // embedded-load crash cause; it made no difference, so it is reverted to
+        // keep the example simple.)
+        debug { isMinifyEnabled = false }
         release { isMinifyEnabled = false }
     }
 
