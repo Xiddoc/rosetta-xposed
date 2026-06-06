@@ -32,7 +32,21 @@ class LegacyEntry : IXposedHookLoadPackage {
     @SuppressLint("PrivateApi")
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != TARGET_PACKAGE) return
+        // TEMP (e2e diagnosis): LSPatch swallows any throwable from module load
+        // as a stack-less NoClassDefFoundError, hiding the real cause. Log the
+        // actual exception to logcat (tag RosettaErr) before letting it
+        // propagate, so the e2e job can name the failing class/member.
+        try {
+            hookFormatTicket(lpparam)
+        } catch (t: Throwable) {
+            android.util.Log.e("RosettaErr", "rosetta module load failed", t)
+            XposedBridge.log(t)
+            throw t
+        }
+    }
 
+    @SuppressLint("PrivateApi")
+    private fun hookFormatTicket(lpparam: XC_LoadPackage.LoadPackageParam) {
         val map = BundledMaps.load("$TARGET_VERSION_CODE.json")
 
         // Identity: read it properly from PackageManager when we can reach a
