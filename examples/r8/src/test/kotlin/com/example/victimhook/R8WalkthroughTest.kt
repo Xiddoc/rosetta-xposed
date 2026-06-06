@@ -1,7 +1,7 @@
 /*
  * The WITH-R8 counterpart to the harness Walkthrough: identical Rosetta flow,
  * but the victim class is loaded from a jar that REAL R8 obfuscated at build
- * time (see build.gradle.kts `obfuscate`). If R8 ever emitted names other than
+ * time (see build.gradle.kts `obfuscateV100`). If R8 ever emitted names other than
  * what maps/100.json declares, `member()` would throw and this test would fail
  * — so it doubles as a guard that the committed map matches real obfuscator
  * output.
@@ -31,7 +31,7 @@ class R8WalkthroughTest {
     fun `resolves real names against real R8-obfuscated bytecode`() {
         val obfJar =
             System.getProperty("rosetta.r8.obfJar")?.let(::File)
-                ?: error("rosetta.r8.obfJar system property not set (the obfuscate task should set it)")
+                ?: error("rosetta.r8.obfJar system property not set (the obfuscateV100 task should set it)")
         require(obfJar.isFile) { "obfuscated jar not found at $obfJar — did the obfuscate task run?" }
 
         // Load the obfuscated victim like the app would: a child loader under
