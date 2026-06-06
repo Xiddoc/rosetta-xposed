@@ -41,6 +41,17 @@ echo "Using patched APK: ${PATCHED}"
 
 adb wait-for-device
 
+# The API 34 emulator enforces the hidden-API blacklist
+# (dex2oat runs with -Xhidden-api-policy:enabled). Modules loaded by LSPatch
+# touch non-SDK framework members during class init, and a blocked access
+# surfaces as the misleading "NoClassDefFoundError: Class not found using the
+# boot class loader" (ART hides the class rather than throwing access-denied).
+# Relax the policy device-wide — this is a throwaway test emulator, and it is
+# the on-device equivalent of what an LSPosed/Magisk host would grant a module.
+adb shell settings put global hidden_api_policy 1 || true
+adb shell settings put global hidden_api_policy_pre_p_apps 1 || true
+adb shell settings put global hidden_api_policy_p_apps 1 || true
+
 # Wait up to ${2:-60}s for the RosettaVictim tag to appear; print it. Returns
 # 0 if seen, 1 on timeout. $1 is a human label for logging.
 await_rosetta_tag() {
