@@ -18,12 +18,16 @@ set -euo pipefail
 # On any failure, surface what the LSPatch loader / Xposed bridge / the app did,
 # so a non-firing hook (vs a crash) is diagnosable straight from the job log.
 dump_diagnostics() {
+    # The full FATAL EXCEPTION + its "Caused by:" root cause (the LSPatch
+    # metaloader swallows it, so go to the source tag).
+    echo "----- AndroidRuntime (full crash + root cause) -----" >&2
+    adb logcat -d -s AndroidRuntime 2>/dev/null | tail -200 >&2 || true
     echo "----- LSPatch / Xposed / rosetta loader lines -----" >&2
     adb logcat -d 2>/dev/null \
         | grep -iE 'lspatch|lsposed|xposed|rosetta' \
-        | tail -120 >&2 || true
-    echo "----- last 200 logcat lines -----" >&2
-    adb logcat -d 2>/dev/null | tail -200 >&2 || true
+        | tail -150 >&2 || true
+    echo "----- last 120 logcat lines -----" >&2
+    adb logcat -d 2>/dev/null | tail -120 >&2 || true
 }
 
 cd "${GITHUB_WORKSPACE:-$(pwd)}"

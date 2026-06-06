@@ -60,7 +60,11 @@ jobs:
             # and run emulator steps and the AVD cache key all read these so the
             # snapshot they share is for one identical AVD config.
             API_LEVEL: ${{ github.event_name == 'pull_request' && '30' || '34' }}
-            AVD_TARGET: default
+            # google_apis (not bare AOSP `default`): the LSPatch metaloader's
+            # appComponentFactory bootstrap throws NoClassDefFoundError on the
+            # stripped-down `default` image; the Google-APIs image mirrors a real
+            # device and loads the patched app cleanly.
+            AVD_TARGET: google_apis
             AVD_ARCH: x86_64
             # Shared emulator flags. The create step appends nothing (so a
             # snapshot is SAVED on exit); the run step adds `-no-snapshot-save`
