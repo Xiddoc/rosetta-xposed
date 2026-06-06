@@ -5,7 +5,7 @@
  * resolves the human names to the obfuscated members R8 actually emitted.
  *
  * Two versions are produced:
- *   v100 — TicketService -> a.b, formatTicket -> c  (seed-v100.txt / rules.pro)
+ *   v100 — TicketService -> a.b, formatTicket -> c  (seed-v100.txt / rules-v100.pro)
  *   v101 — TicketService -> x.y, formatTicket -> q  (seed-v101.txt / rules-v101.pro)
  *
  * The VersionRotationTest proves that ONE real-name hook (same class + method
@@ -55,17 +55,22 @@ val compileVictim by tasks.registering(Exec::class) {
 //     -applymapping seed-v100.txt pins the obfuscated names so they EXACTLY
 //     match the committed map (maps/100.json) — which means this test also
 //     guards the map against drifting from what R8 really produces.
-val obfuscate by tasks.registering(JavaExec::class) {
+//
+// NOTE: workingDir = victimDir is READ-ONLY for both obfuscateV100 and obfuscateV101
+// (R8 only reads from it — it never writes). The tasks are therefore parallel-safe.
+// Any future -printmapping / -printseeds output MUST be directed to a task-private
+// path under layout.buildDirectory, never into victimDir.
+val obfuscateV100 by tasks.registering(JavaExec::class) {
     dependsOn(compileVictim)
     classpath = configurations["r8"]
     mainClass.set("com.android.tools.r8.R8")
 
-    val rules = victimDir.file("rules.pro").asFile
+    val rules = victimDir.file("rules-v100.pro").asFile
     val seed = victimDir.file("seed-v100.txt").asFile
     val inClass = victimClasses.get().file("com/example/victim/TicketService.class").asFile
     val out = obfJar.get().asFile
 
-    inputs.dir(victimClasses)
+    inputs.file(inClass)
     inputs.file(rules)
     inputs.file(seed)
     outputs.file(obfJar)
@@ -98,7 +103,7 @@ val obfuscateV101 by tasks.registering(JavaExec::class) {
     val inClass = victimClasses.get().file("com/example/victim/TicketService.class").asFile
     val out = obfJarV101.get().asFile
 
-    inputs.dir(victimClasses)
+    inputs.file(inClass)
     inputs.file(rules)
     inputs.file(seed)
     outputs.file(obfJarV101)
@@ -119,7 +124,7 @@ val obfuscateV101 by tasks.registering(JavaExec::class) {
 }
 
 tasks.test {
-    dependsOn(obfuscate, obfuscateV101)
+    dependsOn(obfuscateV100, obfuscateV101)
     useJUnitPlatform()
     // Hand both obfuscated jars to the tests so they can load them via child loaders.
     systemProperty("rosetta.r8.obfJar", obfJar.get().asFile.path)

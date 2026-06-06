@@ -30,7 +30,9 @@ import java.net.URLClassLoader
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import org.junit.jupiter.api.TestInstance
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class VersionRotationTest {
 
     /**
@@ -57,32 +59,33 @@ class VersionRotationTest {
                 ?: error("rosetta.r8.obfJar not set")
         require(obfJar.isFile) { "v100 obfuscated jar not found at $obfJar" }
 
-        val appLoader = URLClassLoader(arrayOf(obfJar.toURI().toURL()), javaClass.classLoader)
-        val identity = AppIdentity(packageName = "com.example.victim", versionCode = 100, versionName = "1.0.0")
+        URLClassLoader(arrayOf(obfJar.toURI().toURL()), javaClass.classLoader).use { appLoader ->
+            val identity = AppIdentity(packageName = "com.example.victim", versionCode = 100, versionName = "1.0.0")
 
-        val rosetta =
-            RosettaXposed.fromRegistry(registry, identity, appLoader)
-                ?: error("no map for version_code 100 in registry")
+            val rosetta =
+                RosettaXposed.fromRegistry(registry, identity, appLoader)
+                    ?: error("no map for version_code 100 in registry")
 
-        var captured: Method? = null
-        rosetta
-            .method("com.example.victim.TicketService", "formatTicket")
-            .hook(Hooker { member ->
-                captured = member as Method
-                Unhook { }
-            })
+            var captured: Method? = null
+            rosetta
+                .method("com.example.victim.TicketService", "formatTicket")
+                .hook(Hooker { member ->
+                    captured = member as Method
+                    Unhook { }
+                })
 
-        val member = assertNotNull(captured, "Hooker never received a member for v100")
-        assertEquals("c", member.name, "v100: expected obfuscated method name 'c'")
-        assertEquals(
-            "com.example.victim.a.b",
-            member.declaringClass.name,
-            "v100: expected obfuscated class 'com.example.victim.a.b'",
-        )
+            val member = assertNotNull(captured, "Hooker never received a member for v100")
+            assertEquals("c", member.name, "v100: expected obfuscated method name 'c'")
+            assertEquals(
+                "com.example.victim.a.b",
+                member.declaringClass.name,
+                "v100: expected obfuscated class 'com.example.victim.a.b'",
+            )
 
-        // Verify the method body runs correctly through the obfuscated bytecode.
-        val instance = appLoader.loadClass("com.example.victim.a.b").getDeclaredConstructor().newInstance()
-        assertEquals("ticket:v100", member.invoke(instance, "v100"))
+            // Verify the method body runs correctly through the obfuscated bytecode.
+            val instance = appLoader.loadClass("com.example.victim.a.b").getDeclaredConstructor().newInstance()
+            assertEquals("ticket:v100", member.invoke(instance, "v100"))
+        }
     }
 
     @Test
@@ -92,32 +95,33 @@ class VersionRotationTest {
                 ?: error("rosetta.r8.obfJarV101 not set")
         require(obfJarV101.isFile) { "v101 obfuscated jar not found at $obfJarV101" }
 
-        val appLoader = URLClassLoader(arrayOf(obfJarV101.toURI().toURL()), javaClass.classLoader)
-        val identity = AppIdentity(packageName = "com.example.victim", versionCode = 101, versionName = "1.0.1")
+        URLClassLoader(arrayOf(obfJarV101.toURI().toURL()), javaClass.classLoader).use { appLoader ->
+            val identity = AppIdentity(packageName = "com.example.victim", versionCode = 101, versionName = "1.0.1")
 
-        val rosetta =
-            RosettaXposed.fromRegistry(registry, identity, appLoader)
-                ?: error("no map for version_code 101 in registry")
+            val rosetta =
+                RosettaXposed.fromRegistry(registry, identity, appLoader)
+                    ?: error("no map for version_code 101 in registry")
 
-        var captured: Method? = null
-        rosetta
-            .method("com.example.victim.TicketService", "formatTicket")
-            .hook(Hooker { member ->
-                captured = member as Method
-                Unhook { }
-            })
+            var captured: Method? = null
+            rosetta
+                .method("com.example.victim.TicketService", "formatTicket")
+                .hook(Hooker { member ->
+                    captured = member as Method
+                    Unhook { }
+                })
 
-        val member = assertNotNull(captured, "Hooker never received a member for v101")
-        assertEquals("q", member.name, "v101: expected obfuscated method name 'q'")
-        assertEquals(
-            "com.example.victim.x.y",
-            member.declaringClass.name,
-            "v101: expected obfuscated class 'com.example.victim.x.y'",
-        )
+            val member = assertNotNull(captured, "Hooker never received a member for v101")
+            assertEquals("q", member.name, "v101: expected obfuscated method name 'q'")
+            assertEquals(
+                "com.example.victim.x.y",
+                member.declaringClass.name,
+                "v101: expected obfuscated class 'com.example.victim.x.y'",
+            )
 
-        // Verify the method body runs correctly through the rotated obfuscated bytecode.
-        val instance = appLoader.loadClass("com.example.victim.x.y").getDeclaredConstructor().newInstance()
-        assertEquals("ticket:v101", member.invoke(instance, "v101"))
+            // Verify the method body runs correctly through the rotated obfuscated bytecode.
+            val instance = appLoader.loadClass("com.example.victim.x.y").getDeclaredConstructor().newInstance()
+            assertEquals("ticket:v101", member.invoke(instance, "v101"))
+        }
     }
 
     @Test
