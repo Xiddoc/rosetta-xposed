@@ -75,6 +75,15 @@ jobs:
             - name: Assemble victim + module APKs
               run: ./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug --stacktrace
 
+            # LSPatch's jar is compiled for JDK 21 (class file 65.0); the Gradle
+            # build above needs JDK 17. Install 21 too and invoke LSPatch with it
+            # explicitly (via $JAVA_HOME_21_X64) so the JDK-17 build is untouched.
+            - name: Set up JDK 21 (for the LSPatch CLI)
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '21'
+
             - name: Download LSPatch CLI (maintained fork; authenticated)
               run: |
                   mkdir -p lspatch
@@ -108,7 +117,8 @@ jobs:
                   # patched APK self-loads it (no manager, no root).
                   # NOTE (first-run): confirm flags against `java -jar "$LSPATCH_JAR" --help`.
                   # Across releases the patcher has accepted:  <apk> -m <module.apk> -o <outdir> --force [-l 2]
-                  java -jar "$LSPATCH_JAR" "$VICTIM" -m "$MODULE" -o patched --force -l 2
+                  # LSPatch needs JDK 21 (its jar is class-file 65.0); use it explicitly.
+                  "${JAVA_HOME_21_X64}/bin/java" -jar "$LSPATCH_JAR" "$VICTIM" -m "$MODULE" -o patched --force -l 2
                   PATCHED=$(find patched -name '*.apk' | head -1)
                   echo "patched=$PATCHED"
                   echo "PATCHED=$PATCHED" >> "$GITHUB_ENV"
