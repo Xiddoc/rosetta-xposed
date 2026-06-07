@@ -1,6 +1,6 @@
 # Building
 
-The project is a two-module Gradle (Kotlin/JVM) build. It builds and tests
+The project is a four-module Gradle (Kotlin/JVM) build (`:core`, `:xposed`, `:xposed-android`, `:dexkit`). It builds and tests
 on a plain JVM — no Android SDK or emulator required.
 
 ```sh

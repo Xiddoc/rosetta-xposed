@@ -3,7 +3,7 @@
  *
  * Today the existing Walkthrough uses a map without `signer_sha256`, which
  * makes the SignerGuard a no-op. This walkthrough exercises EVERY branch of
- * the guard defined in RFC 0001 Decision 4 and SignerGuard.kt:
+ * the guard defined in RFC 0001 Decision 3 and SignerGuard.kt:
  *
  *   MATCH    — map + identity agree on the hash → binding succeeds; real name
  *              resolved to prove the translation still works.

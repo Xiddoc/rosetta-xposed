@@ -3,15 +3,15 @@
  *
  * The Kotlin JVM + kotlinx-serialization plugins are declared here with
  * `apply false`; each module applies what it needs. Versions are pinned
- * centrally so the two modules never drift.
+ * centrally so the four modules never drift.
  *
  * Quality tooling — the Kotlin equivalents of the rosetta-frida Node stack
  * (Prettier + ESLint + 100%-coverage + husky):
  *   - Spotless (ktlint) → formatting gate (`spotlessCheck` / `spotlessApply`)
  *   - detekt            → static analysis (`detekt`)
- *   - Kover             → coverage, aggregated across both modules, gated at
+ *   - Kover             → coverage, aggregated across the modules, gated at
  *                         100% line + branch (`koverVerify`)
- * Both modules and every `*.gradle.kts` script are formatted uniformly so
+ * All modules and every `*.gradle.kts` script are formatted uniformly so
  * the gate never depends on which directory a file lives in.
  *
  * Kotlin 2.0.x is paired with Gradle 8.7 (see
@@ -77,7 +77,7 @@ subprojects {
 
     configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
         // One shared config at the repo root keeps the rule set identical
-        // across both modules. `buildUponDefaultConfig` layers our overrides
+        // across all modules. `buildUponDefaultConfig` layers our overrides
         // on top of detekt's sensible defaults rather than replacing them.
         buildUponDefaultConfig = true
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
@@ -86,9 +86,10 @@ subprojects {
     }
 }
 
-// Aggregate both modules' coverage into the root project. Kover merges the
-// `:core` and `:xposed` measurements so a single `./gradlew koverVerify`
-// gates the whole codebase (rosetta-frida's "100% or the build fails" rule).
+// Aggregate all modules' coverage into the root project. Kover merges the
+// `:core`, `:xposed`, and `:xposed-android` measurements so a single
+// `./gradlew koverVerify` gates the whole codebase (rosetta-frida's "100% or
+// the build fails" rule).
 dependencies {
     kover(project(":core"))
     kover(project(":xposed"))
@@ -107,7 +108,7 @@ kover {
         // gate measures real behaviour, not a filtered subset.
 
         // Verification rule: the build fails below 100% on BOTH line and
-        // branch coverage, aggregated across both modules. This is the hard
+        // branch coverage, aggregated across all modules. This is the hard
         // gate `koverVerify` enforces.
         verify {
             rule("100% line + branch coverage (aggregated)") {

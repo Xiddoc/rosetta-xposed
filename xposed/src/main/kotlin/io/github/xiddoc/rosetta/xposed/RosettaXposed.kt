@@ -16,9 +16,9 @@
  *        rosetta.method("com.example.app.RemoteServiceClient", "requestTicket")
  *            .hook { member -> XposedBridge.hookMethod(member, myHook) }
  *
- * Map selection by version_code and the (planned) DexKit self-healing
- * fallback live behind [ResolutionBackend]; this class only binds resolved
- * names to concrete members and stays framework-agnostic.
+ * Map selection by version_code and the DexKit-backed self-healing fallback
+ * live behind [ResolutionBackend]; this class only binds resolved names to
+ * concrete members and stays framework-agnostic.
  */
 package io.github.xiddoc.rosetta.xposed
 
