@@ -3,6 +3,7 @@ package io.github.xiddoc.rosetta.android
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AndroidIdentitiesTest {
     @Test
@@ -117,6 +118,16 @@ class AndroidIdentitiesTest {
     }
 
     @Test
+    fun `longVersionCode with a negative major half yields a negative result`() {
+        // The major half is NOT masked, so a negative versionCodeMajor shifts its
+        // sign bit into bit 63 and produces a NEGATIVE longVersionCode — not a
+        // valid selection key; MapLoader rejects it downstream.
+        val result = AndroidIdentities.longVersionCode(versionCode = 1, versionCodeMajor = -1)
+        assertEquals((-1L shl 32) or 1L, result)
+        assertTrue(result < 0L)
+    }
+
+    @Test
     fun `fromPackageManagerPrimitives composes the version code and hashes certs`() {
         val identity =
             AndroidIdentities.fromPackageManagerPrimitives(
@@ -144,6 +155,7 @@ class AndroidIdentitiesTest {
                 versionCode = 42,
             )
 
+        assertEquals("com.example.app", identity.packageName)
         assertEquals(42L, identity.versionCode)
         assertNull(identity.versionName)
         assertEquals(emptySet(), identity.signerSha256s)

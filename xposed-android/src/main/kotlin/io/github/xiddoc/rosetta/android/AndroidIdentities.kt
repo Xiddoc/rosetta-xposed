@@ -84,6 +84,12 @@ public object AndroidIdentities {
      * `MapLoader.MAX_VERSION_CODE` for realistic inputs but is NOT bounds-checked
      * here — that is the map loader's job; this is pure bit composition.
      *
+     * The major half, by contrast, is NOT masked: a negative [versionCodeMajor]
+     * shifts its sign bit into bit 63 and yields a NEGATIVE result, which is not
+     * a valid `longVersionCode` and which `MapLoader` rejects with a validation
+     * error — a negative major is a caller bug, surfaced downstream rather than
+     * silently coerced here.
+     *
      * @param versionCode the low 32 bits (manifest `android:versionCode`).
      * @param versionCodeMajor the high 32 bits (manifest `android:versionCodeMajor`,
      *   `0` when unset / on API < 28). Defaults to `0`.
