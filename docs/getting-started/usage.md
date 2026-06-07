@@ -81,6 +81,41 @@ performs **no** signer check — use it only when no `PackageManager` /
 `AppIdentity` is available; prefer the identity-bearing `fromMap`, or
 `fromRegistry`, in production modules.
 
+## Attach-time health check
+
+Before the first hook you can run a structured sanity pass over the loaded
+map against the running app's identity:
+
+```kotlin
+import io.github.xiddoc.rosetta.xposed.RosettaXposed
+
+val report = RosettaXposed.healthCheck(map, identity)
+if (!report.ok) {
+    // report.hardFailures: APP_MISMATCH / VERSION_MISMATCH / SIGNER —
+    // each carries a human-readable message and, where one exists, the
+    // canonical core exception as `cause` (rethrow to fail loudly).
+    report.hardFailures.forEach { log("rosetta health: ${it.kind} — ${it.message}") }
+    return  // wrong/broken map — do not hook
+}
+// report.warnings (EMPTY_MAP / BLANK_OBFUSCATED_NAME) are non-blocking:
+// the map is usable, but worth surfacing.
+report.warnings.forEach { log("rosetta health (warn): ${it.message}") }
+```
+
+`healthCheck` never throws — it returns a `HealthCheckReport` whose `ok`
+flag is **derived** from `hardFailures` (true iff that list is empty), so
+it can never disagree with the failures it reports. The checks are the
+runtime-independent subset (right app, right `version_code`, signer guard,
+map sanity); the actual reflective load stays the consuming module's step.
+
+> **Parity asymmetry with Frida (intentional).** The Frida client runs its
+> health check **automatically** inside `rosetta.session()` (opt-out),
+> whereas rosetta-xposed makes it **opt-in** by design: consistent with the
+> thin-resolver stance, the construction factories (`fromMap`,
+> `fromRegistry`, …) deliberately do **not** auto-run `healthCheck`. They
+> already enforce the signer guard fail-closed; a module pays for the extra
+> sanity pass only when it explicitly asks for one.
+
 ## Resolving classes and fields
 
 Beyond methods, the entry point exposes:
