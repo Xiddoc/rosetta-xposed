@@ -66,9 +66,11 @@ kotlin {
 }
 
 // Animal-sniffer (xposed#16): police only OUR `main` byte-code against the
-// android-api-level-24 contract. RE2J (`implementation`) is a third-party dep
-// whose byte-code we don't own; ignoring dependencies keeps the gate on the
-// code that actually runs on ART inside the app.
+// android-api-level-24 contract. The plugin checks only this module's compiled
+// classes — it does NOT police the byte-code of `implementation` dependencies
+// like RE2J — so the gate is inherently confined to the code that actually runs
+// on ART inside the app. (The 1.7.1 extension exposes no `ignoreDependencies`
+// knob; that confinement is the plugin's built-in behaviour, not a setting.)
 animalsniffer {
     ignore("java.time.*")
 }

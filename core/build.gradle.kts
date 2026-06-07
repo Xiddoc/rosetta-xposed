@@ -39,9 +39,11 @@ dependencies {
 }
 
 // Animal-sniffer (xposed#16): check only `main` (production code that ships
-// on-device), not tests. kotlinx-serialization-json is an `implementation`
-// dependency whose own byte-code we don't police — `ignoreDependencies` keeps
-// the gate focused on OUR code, which is what runs on ART.
+// on-device), not tests. The plugin checks only THIS module's compiled classes
+// against the signature — it never policies the byte-code of `implementation`
+// dependencies like kotlinx-serialization-json — so the gate is inherently
+// focused on OUR code, which is what runs on ART. (The 1.7.1 extension exposes
+// no `ignoreDependencies` knob; that focus is the plugin's built-in behaviour.)
 animalsniffer {
     // java.time.* is reached only via Android's core-library desugaring on
     // older API levels; it is not in the api-24 signature. We don't currently
