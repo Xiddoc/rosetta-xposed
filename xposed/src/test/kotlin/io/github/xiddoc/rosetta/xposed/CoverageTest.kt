@@ -187,7 +187,10 @@ class CoverageTest {
         // The translator the dynamic discovery backend borrows for real-name
         // argTypes (see RosettaXposed.fromMapWithDiscovery): a mapped real name
         // → its obf short name; an unmapped framework type passes through.
-        val backend = StaticResolutionBackend(map)
+        // translateType's MAPPED output is now C1-guarded (xposed#13 parity with
+        // Frida resolver.ts:438,443), so the out-of-namespace fixture obf must be
+        // allowlisted — exactly as the resolveMethod backend test above does.
+        val backend = StaticResolutionBackend(map, TargetPolicy(allow = listOf(obf)))
         assertEquals(obf, backend.translateType("com.example.RealClient"))
         assertEquals("java.lang.String", backend.translateType("java.lang.String"))
     }

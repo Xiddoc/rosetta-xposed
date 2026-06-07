@@ -34,11 +34,23 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * THREAD SAFETY (xposed#10). An Xposed module runs inside the app JVM and hooks
  * dispatch on arbitrary threads, so a single [Resolver] is shared across
- * threads. All caches and indices are [ConcurrentHashMap]s populated via
- * [ConcurrentHashMap.computeIfAbsent]: resolution is idempotent, so a benign
- * last-writer-wins on a race produces an equal value (no torn reads, no
- * `HashMap` resize corruption). [override] (the self-healing write path) takes a
- * short lock so its multi-map mutation is atomic with respect to readers.
+ * threads. All caches and indices are [ConcurrentHashMap]s: resolution is
+ * idempotent, so a benign last-writer-wins on a race produces an equal value (no
+ * torn reads, no `HashMap` resize corruption). [override] / [invalidate] (the
+ * self-healing write path) take a short lock so the multi-map re-point is atomic
+ * with respect to readers.
+ *
+ * CACHE COHERENCE ACROSS [override] (xposed#13). The 4-map re-point being atomic
+ * is not enough on its own: a reader that read the OLD [entryFor] snapshot
+ * OUTSIDE the lock could `put` its now-stale resolution AFTER a concurrent
+ * [override]→[invalidate] cleared the cache, re-inserting a superseded value
+ * (lost invalidation). To close that race the caches are gated by a [generation]
+ * counter bumped under [overrideLock] on every [override]/[invalidate]: a reader
+ * captures the generation BEFORE reading the entry and its guarded put
+ * ([putIfCurrent]) is DROPPED when that captured generation is stale, so no
+ * resolution computed against a superseded map ever survives in the cache. The
+ * reader still RETURNS its computed value (best-effort self-healing); only the
+ * caching is suppressed, and the next lookup recomputes against the live map.
  *
  * SECURITY — TARGET NAMESPACE GUARD (xposed#11, RFC 0001 C1). Every resolve
  * path that produces a target FQN (the obfuscated name a layer-4 binding would
@@ -69,8 +81,22 @@ public class Resolver(
     private val methodCache = ConcurrentHashMap<String, ResolvedMethod>()
     private val fieldCache = ConcurrentHashMap<String, ResolvedField>()
 
-    /** Guards the multi-map mutation in [override] so a reader never sees a half-applied re-point. */
+    /** Guards the multi-map mutation in [override]/[invalidate] so a reader never sees a half-applied re-point. */
     private val overrideLock = Any()
+
+    /**
+     * Cache-coherence generation (xposed#13). Bumped under [overrideLock] on
+     * every [override]/[invalidate]. A reader captures it BEFORE computing a
+     * resolution and a guarded put ([putIfCurrent]) is suppressed when the
+     * captured value is stale, so a snapshot read before a concurrent
+     * [override] can never re-insert its superseded resolution. Read lock-free
+     * (volatile) when capturing; only mutated under the lock.
+     */
+    @Volatile
+    private var generation: Long = 0L
+
+    /** The cache-coherence gate ([overrideLock] + a live-[generation] reader) shared by every guarded put. */
+    private val cacheGate = CacheGate(overrideLock) { generation }
 
     /**
      * Reverse index: obfuscated class short name → real FQN, for tier-3
@@ -111,27 +137,30 @@ public class Resolver(
     public fun resolveClass(
         realName: String,
         prefetched: ClassEntry? = null,
-    ): ResolvedClass =
-        // computeIfAbsent keeps the cache populate atomic + idempotent under
-        // concurrent callers (xposed#10). The mapping function runs the C1
-        // guard, which THROWS for a denied target — computeIfAbsent propagates
-        // that and stores nothing, so a forbidden target is never cached
+    ): ResolvedClass {
+        classCache[realName]?.let { return it }
+        // Capture the generation BEFORE reading the entry (xposed#13): a put
+        // computed from this snapshot is suppressed if a concurrent
+        // override/invalidate has since bumped the generation.
+        val gen = generation
+        val entry = prefetched ?: entryFor(realName)
+        // (C1) Guard the target FQN BEFORE caching — a denied target must throw
+        // before any downstream Class.forName / Java.use, and stores nothing
         // (no cache poisoning), exactly as the Frida resolver does.
-        classCache.computeIfAbsent(realName) {
-            val entry = prefetched ?: entryFor(realName)
-            // (C1) Guard the target FQN BEFORE caching — a denied target must
-            // throw before any downstream Class.forName / Java.use.
-            TargetGuard.assertAllowed(realName, entry.obfuscated, appPrefix, policy)
-            // `extends` is carried THROUGH UNTRANSLATED (xposed#12 decision).
-            // The shared conformance fixture pins `extends` to the raw map value
-            // and the Frida twin does the same, so translating it here would
-            // diverge the two clients. The inherited-member walk that #12 needs
-            // is done in the `:xposed` binding off the LOADED runtime superclass
-            // chain (`Class.superclass`), which is robust even when the map omits
-            // the `extends` edge — so the resolver does not need a translated
-            // parent name. See `Targets.MethodTarget.member` / `FieldTarget.field`.
-            ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
-        }
+        TargetGuard.assertAllowed(realName, entry.obfuscated, appPrefix, policy)
+        // `extends` is carried THROUGH UNTRANSLATED (xposed#12 decision). The
+        // shared conformance fixture pins `extends` to the raw map value and the
+        // Frida twin does the same, so translating it here would diverge the two
+        // clients. The inherited-member walk that #12 needs is done in the
+        // `:xposed` binding off the LOADED runtime superclass chain
+        // (`Class.superclass`), which is robust even when the map omits the
+        // `extends` edge — so the resolver does not need a translated parent
+        // name. See `Targets.MethodTarget.member` / `FieldTarget.field`.
+        val value = ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
+        // Resolution is idempotent, so reuse an entry a racing reader already
+        // installed (keeps reference identity stable) rather than clobbering it.
+        return putIfCurrentGen(cacheGate, classCache, realName, value, gen)
+    }
 
     /**
      * The backing [ClassEntry] for [realName] (override-first), or throw a
@@ -166,6 +195,10 @@ public class Resolver(
         val key = "$className#$methodName$argsKey"
         methodCache[key]?.let { return it }
 
+        // Capture the generation BEFORE the entry snapshot (xposed#13) so a put
+        // built from a pre-override entry is suppressed if a concurrent
+        // override/invalidate bumped the generation.
+        val gen = generation
         // One entry lookup (override-first); warm the class cache from it rather
         // than re-running the lookup inside resolveClass.
         val entry = entryFor(className)
@@ -225,8 +258,7 @@ public class Resolver(
                 isConstructor = picked.isConstructor,
                 allOverloads = ordered,
             )
-        methodCache[key] = value
-        return value
+        return putIfCurrentGen(cacheGate, methodCache, key, value, gen)
     }
 
     /** Resolve a field by real names. */
@@ -237,6 +269,8 @@ public class Resolver(
         val key = "$className.$fieldName"
         fieldCache[key]?.let { return it }
 
+        // Capture the generation BEFORE the entry snapshot (xposed#13).
+        val gen = generation
         // One entry lookup (override-first); warm the class cache from it.
         val classEntry = entryFor(className)
         val cls = resolveClass(className, classEntry)
@@ -258,26 +292,50 @@ public class Resolver(
                 type = entry.type,
                 static = entry.static,
             )
-        fieldCache[key] = value
-        return value
+        return putIfCurrentGen(cacheGate, fieldCache, key, value, gen)
     }
 
     /**
      * Translate a single type name: a real name in the map → its obf short
      * name; a primitive or unmapped framework type passes through.
+     *
+     * SECONDARY C1 VECTOR (RFC 0001 C1, parity with the Frida twin
+     * `src/resolver/resolver.ts:438,443`). The arg-type → obf path also yields
+     * a MAP-CONTROLLED target FQN that flows into a downstream
+     * `Class.forName` / `Java.use` (via overload descriptors). So BOTH mapped
+     * branches (override + map entry) run [TargetGuard.assertAllowed] on the
+     * translated output before returning it — a denied-namespace translation
+     * throws here, exactly as Frida does. The unmapped passthrough is the
+     * caller's OWN input (not a map-controlled target), so it is left untouched.
      */
     public fun translateType(typeName: String): String {
-        overrides[typeName]?.let { return it.obfuscated }
-        map.classes[typeName]?.let { return it.obfuscated }
+        overrides[typeName]?.let {
+            TargetGuard.assertAllowed(typeName, it.obfuscated, appPrefix, policy)
+            return it.obfuscated
+        }
+        map.classes[typeName]?.let {
+            TargetGuard.assertAllowed(typeName, it.obfuscated, appPrefix, policy)
+            return it.obfuscated
+        }
         return typeName
     }
 
-    /** Forcibly invalidate any cached resolution scoped to [realName]. */
-    public fun invalidate(realName: String) {
-        classCache.remove(realName)
-        methodCache.keys.filter { it.startsWith("$realName#") }.forEach { methodCache.remove(it) }
-        fieldCache.keys.filter { it.startsWith("$realName.") }.forEach { fieldCache.remove(it) }
-    }
+    /**
+     * Forcibly invalidate any cached resolution scoped to [realName].
+     *
+     * Taken under [overrideLock] and bumps the [generation] (xposed#13) so the
+     * clear is linearizable with a concurrent reader's guarded put: a reader
+     * that snapshotted the pre-invalidate generation has its put dropped by
+     * [putIfCurrent], closing the lost-invalidation race. Reentrant — [override]
+     * calls this while already holding the lock.
+     */
+    public fun invalidate(realName: String): Unit =
+        synchronized(overrideLock) {
+            generation += 1
+            classCache.remove(realName)
+            methodCache.keys.filter { it.startsWith("$realName#") }.forEach { methodCache.remove(it) }
+            fieldCache.keys.filter { it.startsWith("$realName.") }.forEach { fieldCache.remove(it) }
+        }
 
     /**
      * Register a runtime override from a typed [DiscoveredClass] write-back
@@ -312,6 +370,9 @@ public class Resolver(
             // first-write-wins build policy.
             reverseClassIndex[entry.obfuscated] = discovered.realName
             forwardObfIndex[discovered.realName] = entry.obfuscated
+            // Bumps the generation (xposed#13) and clears stale caches, both
+            // under this same (reentrant) lock — so a reader holding a pre-
+            // override snapshot cannot re-insert a superseded resolution.
             invalidate(discovered.realName)
         }
 
@@ -323,6 +384,42 @@ public class Resolver(
         name: String,
     ): String = "rosetta-xposed: no ${target.name.lowercase()} mapping for '$name' in map for ${map.app}@${map.version}."
 }
+
+/**
+ * The cache-coherence gate (xposed#13): the lock that serialises the resolver's
+ * `override`/`invalidate` against cache installs, plus a reader for the live
+ * generation. Bundled into one value so [putIfCurrentGen] stays under the
+ * parameter budget and the gate's two halves can never be passed mismatched.
+ */
+private class CacheGate(
+    val lock: Any,
+    val currentGen: () -> Long,
+)
+
+/**
+ * Generation-gated cache install (xposed#13). Under [gate].lock (so it is
+ * linearizable with the resolver's `override`/`invalidate` generation bump +
+ * cache clear, which run under the same lock), install [value] for [key] in
+ * [cache] ONLY when the captured [gen] still equals the live generation
+ * ([gate].currentGen); otherwise DROP the put and return [value] uncached — so a
+ * resolution computed against a now-superseded map snapshot never survives in
+ * the cache (the lost-invalidation race). `putIfAbsent` preserves a value a
+ * racing reader already installed under the same generation (resolution is
+ * idempotent, so this keeps a stable reference identity).
+ *
+ * File-private (the gate is passed in) so it does not count against
+ * [Resolver]'s method budget.
+ */
+private inline fun <V : Any> putIfCurrentGen(
+    gate: CacheGate,
+    cache: ConcurrentHashMap<String, V>,
+    key: String,
+    value: V,
+    gen: Long,
+): V =
+    synchronized(gate.lock) {
+        if (gen != gate.currentGen()) value else cache.putIfAbsent(key, value) ?: value
+    }
 
 /** The (className, methodName, app, version) context for an overload-miss message. */
 private data class OverloadMiss(
