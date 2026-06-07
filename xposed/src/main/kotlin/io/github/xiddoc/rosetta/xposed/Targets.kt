@@ -128,6 +128,36 @@ internal class TargetLoader(
             false
         }
 
+    /**
+     * C1 gate for a superclass reached by the inherited-member walk
+     * ([findInHierarchy]). Only the start class was vetted by
+     * [loadGuardedClass]; a superclass may be a FRAMEWORK type (a real
+     * `IRemoteService$Stub extends android.os.Binder`, an app
+     * `extends android.app.Service`), and a short obfuscated member name
+     * (`c`/`e`/`f`) plus a colliding descriptor could otherwise let the walk
+     * reach + `setAccessible(true)` a framework superclass member — defeating
+     * C1. So each superclass is re-checked against the SAME chokepoint the
+     * start class passed: the namespace guard ([TargetGuard.isAllowed]) AND the
+     * defense-in-depth boot/system/platform-loader deny (a non-allowlisted
+     * platform-loaded class is foreign). A class that fails either is not
+     * searched, so its members are never made accessible.
+     *
+     * Reuses [TargetGuard]/[TargetPolicy] and [loadedByPlatformLoader] — the
+     * exact predicates [loadGuardedClass] enforces — rather than a parallel
+     * check, so the walk and the start-class load share one C1 definition.
+     *
+     * @return `true` when [cls] is the app's own type (allowed namespace and
+     *   not a foreign platform-loaded target) and may be searched.
+     */
+    fun isSearchableHierarchyClass(cls: Class<*>): Boolean {
+        val fqn = cls.name
+        if (!TargetGuard.isAllowed(fqn = fqn, appPrefix = appPrefix, policy = policy)) return false
+        // Defense-in-depth: a non-allowlisted platform/boot-loaded class is a
+        // foreign target even if its FQN slipped the namespace rules.
+        if (!policy.allow.contains(normalizedElement(fqn)) && loadedByPlatformLoader(cls)) return false
+        return true
+    }
+
     /** The normalized element FQN, matching the form [TargetPolicy.allow] holds. */
     private fun normalizedElement(fqn: String): String = fqn.replace('/', '.')
 
@@ -205,7 +235,7 @@ public class MethodTarget internal constructor(
                 )
         }
 
-        return findInHierarchy(cls) { c ->
+        return findInHierarchy(cls, loader::isSearchableHierarchyClass) { c ->
             c.declaredMethods.firstOrNull {
                 it.name == resolved.obfName && JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs
             }
@@ -235,8 +265,9 @@ public class FieldTarget internal constructor(
      */
     public fun field(): Field {
         val cls = loader.loadGuardedClass(resolved.realName, resolved.className)
-        return findInHierarchy(cls) { c -> c.declaredFields.firstOrNull { it.name == resolved.obfName } }
-            ?.also { it.isAccessible = true }
+        return findInHierarchy(cls, loader::isSearchableHierarchyClass) { c ->
+            c.declaredFields.firstOrNull { it.name == resolved.obfName }
+        }?.also { it.isAccessible = true }
             ?: throw BindException(
                 "rosetta-xposed: no field '${resolved.obfName}' on '${resolved.className}' " +
                     "or any superclass (excluding java.lang.Object).",
@@ -249,23 +280,33 @@ public class FieldTarget internal constructor(
  * `java.lang.Object`, returning the first non-null [select] result (the member
  * found on the nearest class that declares it) or `null` if none does.
  *
- * The walk EXCLUDES `java.lang.Object` deliberately: a map should never point a
- * hook at `Object`'s members (`hashCode`/`equals`/…), and stopping short of it
- * keeps the C1 spirit — only the app's own class hierarchy is searched. The
- * obfuscated classes in the chain were already realised through the C1-guarded
- * [TargetLoader] for [start]; their superclasses are part of the same app type
- * graph (the binding never makes a member of a denied class accessible because
- * the only `setAccessible` is on the member this returns, which lives on a class
- * reachable from the guarded [start]).
+ * SECURITY — C1 PER-CLASS GATE (xposed#12 fix). [start] was vetted by
+ * [TargetLoader.loadGuardedClass], but a SUPERCLASS is NOT (a real AIDL
+ * `IRemoteService$Stub extends android.os.Binder`, an app
+ * `extends android.app.Service`). Without re-checking, a short obfuscated
+ * member name (`c`/`e`/`f`) plus a colliding descriptor could let the walk
+ * reach + `setAccessible(true)` a FRAMEWORK superclass member — defeating C1.
+ * So [searchable] (the SAME namespace-guard + boot/system-loader predicate
+ * [TargetLoader.loadGuardedClass] uses) gates EACH class: the walk
+ * `takeWhile` stops at the first class that fails the gate, so a denied/foreign
+ * superclass is never searched and none of its members are ever made
+ * accessible. Only the app's own type hierarchy is walked.
+ *
+ * The walk also EXCLUDES `java.lang.Object` deliberately: a map should never
+ * point a hook at `Object`'s members (`hashCode`/`equals`/…). (`Object` is also
+ * caught by the C1 gate, but the explicit stop keeps the intent legible.)
  */
 private inline fun <T : Member> findInHierarchy(
     start: Class<*>,
+    crossinline searchable: (Class<*>) -> Boolean,
     select: (Class<*>) -> T?,
 ): T? {
-    // generateSequence stops at the first null superclass; takeWhile excludes
-    // java.lang.Object. firstNotNullOfOrNull walks nearest-class-first and
-    // returns the first member a class in the chain declares.
+    // generateSequence stops at the first null superclass; takeWhile stops at
+    // java.lang.Object AND at the first class that fails the C1 gate (a
+    // denied-namespace / foreign platform-loaded superclass is never searched).
+    // firstNotNullOfOrNull walks nearest-class-first and returns the first
+    // member a (searchable) class in the chain declares.
     return generateSequence(start) { it.superclass }
-        .takeWhile { it != Any::class.java }
+        .takeWhile { it != Any::class.java && searchable(it) }
         .firstNotNullOfOrNull(select)
 }

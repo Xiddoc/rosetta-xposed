@@ -22,3 +22,16 @@ class ObfChild : ObfParent() {
     // still finds a member that IS on the child (nearest-class-wins).
     fun f(n: Long): Long = n + 1
 }
+
+/**
+ * xposed#12 SECURITY negative fixture. An app class whose parent is a FRAMEWORK
+ * type in a DENIED namespace (`java.util.Random`, boot-loaded). `Random` is
+ * non-generic, so the Kotlin subclass synthesises NO bridge members of its own
+ * — the only `nextInt()I` method and `seed` field reachable are the ones
+ * DECLARED on the denied parent. A map that names such an obfuscated member
+ * would, WITHOUT the C1 per-class walk gate, let the inherited-member walk reach
+ * + `setAccessible` a framework member. The fix must STOP the walk at the first
+ * denied / platform-loaded ancestor so that member is never bound.
+ */
+@Suppress("unused")
+class ObfFrameworkChild : java.util.Random()
