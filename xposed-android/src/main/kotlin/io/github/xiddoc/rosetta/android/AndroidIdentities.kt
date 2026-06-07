@@ -32,7 +32,15 @@ import java.security.MessageDigest
 
 /** Pure-JVM signer-hash + [AppIdentity] assembly from PackageManager primitives. */
 public object AndroidIdentities {
-    /** Lowercase hex SHA-256 of [bytes] (the form SignerGuard compares against). */
+    /**
+     * Lowercase hex SHA-256 of [bytes] (the form SignerGuard compares against).
+     *
+     * `internal` (not `private`) only so the co-located unit test can pin the
+     * exact hash format SignerGuard expects directly; it is NOT part of the
+     * public API. Under `explicitApi()` a future refactor must keep this
+     * `internal` rather than promoting it to `public` — callers go through
+     * [build] / [fromPackageManagerPrimitives].
+     */
     internal fun sha256Hex(bytes: ByteArray): String =
         MessageDigest
             .getInstance("SHA-256")
