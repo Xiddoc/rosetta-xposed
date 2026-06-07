@@ -118,11 +118,32 @@ public class RosettaXposed internal constructor(
     internal fun resolveObfName(realClass: String): String = backend.resolveClass(realClass).obfName
 
     public companion object {
+        /*
+         * SECURITY-POSTURE MATRIX for the four construction factories
+         * (xposed#14 M5). Each names a different point on the
+         * authenticity-vs-availability trade-off; pick by what you can supply:
+         *
+         * | factory               | signer guard                                                                                   | use when |
+         * |-----------------------|------------------------------------------------------------------------------------------------|----------|
+         * | fromMap               | ENFORCED fail-closed (identity required)                                                       | you have an AppIdentity and a (maybe) signed map — the default, recommended path |
+         * | fromRegistry          | ENFORCED fail-closed (identity required)                                                       | you select by version_code from a registry and have an AppIdentity |
+         * | fromMapWithDiscovery  | ENFORCED when identity != null; a signed map with NO identity needs explicit allowUnverified   | self-healing discovery; the unverified path is opt-in, not silent |
+         * | fromMapUnverified     | NOT checked (no identity)                                                                      | no PackageManager/AppIdentity is reachable at all — the explicitly-named escape hatch |
+         *
+         * The single rule across all four: a map's `signer_sha256` is NEVER
+         * silently skipped. It is either verified, or the caller has explicitly
+         * named an unverified path (fromMapUnverified) or opted into one
+         * (fromMapWithDiscovery's allowUnverified).
+         */
+
         /**
          * Build over a single static map, enforcing the map's
          * `signer_sha256` authenticity guard against [identity] first
          * (fail-closed — see [SignerGuard.verify]). This is the bare, safe,
          * recommended construction path.
+         *
+         * SECURITY POSTURE: signer guard ENFORCED fail-closed. See the
+         * posture matrix on this companion.
          *
          * @throws io.github.xiddoc.rosetta.core.MalformedSignerException if
          *   the map's `signer_sha256` is not 64 hex chars after normalization.
@@ -144,6 +165,9 @@ public class RosettaXposed internal constructor(
         /**
          * Build over a single static map performing **NO** signer check.
          *
+         * SECURITY POSTURE: signer guard NOT checked — the explicitly-named
+         * escape hatch in the posture matrix on this companion.
+         *
          * Use this ONLY when no `PackageManager` / [AppIdentity] is available
          * to verify against; a map's `signer_sha256` guard (if any) is *not*
          * enforced on this path. Prefer the identity-bearing [fromMap] (or
@@ -162,6 +186,9 @@ public class RosettaXposed internal constructor(
          * (fail-closed — see [SignerGuard.verify]). Returns `null` if no map
          * matches the version_code (the point at which a real module would
          * fall back to the dynamic DexKit backend).
+         *
+         * SECURITY POSTURE: signer guard ENFORCED fail-closed. See the
+         * posture matrix on this companion.
          *
          * @param allowFuzzyMatch opt-in fuzzy `versionName` fallback (RFC 0001
          *   Decision 3): when `true` and no exact version_code / label match is
@@ -199,12 +226,17 @@ public class RosettaXposed internal constructor(
          * static miss it discovers the obfuscated names live via [index]
          * (writing each discovery back so the next lookup is O(1) static).
          *
-         * SECURITY — discovery runs AFTER the signer guard, and discovered
-         * names are guarded by C1. When [identity] is supplied the map's
-         * `signer_sha256` guard is enforced fail-closed FIRST (so only a
-         * trusted process ever reaches discovery); pass `null` only when no
-         * `AppIdentity` is available (the unverified path, mirroring
-         * [fromMapUnverified]). Either way, a discovered obfuscated FQN is NOT
+         * SECURITY POSTURE: signer guard ENFORCED when [identity] != null. A
+         * map that CARRIES a `signer_sha256` but is built with NO [identity]
+         * requires [allowUnverified] = true, otherwise this throws
+         * [UnverifiedDiscoveryException] — the fail-open path is now an EXPLICIT
+         * opt-in, not a silent skip (xposed#14 M5). See the posture matrix on
+         * this companion.
+         *
+         * Discovery runs AFTER the signer guard, and discovered names are
+         * guarded by C1. When [identity] is supplied the map's `signer_sha256`
+         * guard is enforced fail-closed FIRST (so only a trusted process ever
+         * reaches discovery). Either way, a discovered obfuscated FQN is NOT
          * trusted blindly: every target — discovered or static — is realised
          * through the SAME [TargetLoader.loadGuardedClass] chokepoint, so the
          * C1 namespace guard rejects a discovery result that lands on a
@@ -214,10 +246,19 @@ public class RosettaXposed internal constructor(
          * @param index the device-side discovery seam (faked in tests).
          * @param classLoader the app class loader targets are realised through.
          * @param identity when non-null, enforces the map's signer guard before
-         *   wiring discovery; when null, skips the signer check (unverified).
+         *   wiring discovery; when null, the signer check is skipped (see
+         *   [allowUnverified] for the signed-map case).
          * @param discovery the contributor discovery recipes + provenance sink.
          * @param policy the C1 target namespace policy applied to every target
          *   (discovered or static).
+         * @param allowUnverified opt-in to the unverified path: only consulted
+         *   when [identity] is null AND [map] carries a `signer_sha256`. Leave
+         *   `false` (the default) and such a map fails closed with
+         *   [UnverifiedDiscoveryException]; set `true` to deliberately accept an
+         *   authenticated map without checking it (e.g. early bring-up before an
+         *   `AppIdentity` is wired). An unsigned map needs no opt-in.
+         * @throws UnverifiedDiscoveryException if [identity] is null, [map]
+         *   demands a signer, and [allowUnverified] is false.
          */
         public fun fromMapWithDiscovery(
             map: RosettaMap,
@@ -226,8 +267,21 @@ public class RosettaXposed internal constructor(
             identity: AppIdentity? = null,
             discovery: DiscoveryConfig = DiscoveryConfig(),
             policy: TargetPolicy = TargetPolicy(),
+            allowUnverified: Boolean = false,
         ): RosettaXposed {
-            if (identity != null) SignerGuard.verify(map, identity)
+            if (identity != null) {
+                SignerGuard.verify(map, identity)
+            } else if (map.signerSha256 != null && !allowUnverified) {
+                // The map demands authentication but the caller supplied no
+                // identity and did not opt into the unverified path: fail closed
+                // rather than silently skip the guard (xposed#14 M5).
+                throw UnverifiedDiscoveryException(
+                    "rosetta-xposed: map for ${map.app}@${map.version} (version_code=${map.versionCode}) " +
+                        "carries a signer_sha256 but fromMapWithDiscovery was called without an AppIdentity. " +
+                        "Pass an identity to verify it, or set allowUnverified=true to deliberately skip the " +
+                        "signer guard (or use fromMapUnverified).",
+                )
+            }
             val static = StaticResolutionBackend(map, policy)
             val composite =
                 CompositeResolutionBackend(
