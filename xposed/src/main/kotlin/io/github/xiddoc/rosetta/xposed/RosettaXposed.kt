@@ -119,6 +119,24 @@ public class RosettaXposed internal constructor(
     internal fun resolveObfName(realClass: String): String = backend.resolveClass(realClass).obfName
 
     public companion object {
+        /**
+         * Opt-in attach-time health check (xposed#14 M8): verify [map] against
+         * the running app's [identity] BEFORE the first hook and return a
+         * structured [HealthCheckReport] (right app, right version_code, signer
+         * guard, map sanity). This never throws — the caller inspects
+         * [HealthCheckReport.ok] / [HealthCheckReport.hardFailures] /
+         * [HealthCheckReport.warnings] and decides whether to proceed.
+         *
+         * It is a thin forward to [HealthCheck.run]; it is deliberately NOT run
+         * implicitly by the construction factories (those already enforce the
+         * signer guard fail-closed), so a module pays for the extra sanity pass
+         * only when it asks for one.
+         */
+        public fun healthCheck(
+            map: RosettaMap,
+            identity: AppIdentity,
+        ): HealthCheckReport = HealthCheck.run(map, identity)
+
         /*
          * SECURITY-POSTURE MATRIX for the four construction factories
          * (xposed#14 M5). Each names a different point on the
