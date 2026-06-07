@@ -171,4 +171,89 @@ class RosettaXposedTest {
         assertNotNull(bound)
         assertEquals(obf, bound.useClass("com.example.RealClient").load().name)
     }
+
+    // ---- xposed#12: inherited (superclass) member binding --------------------
+
+    private val childObf = "io.github.xiddoc.rosetta.xposed.fixtures.ObfChild"
+    private val parentObf = "io.github.xiddoc.rosetta.xposed.fixtures.ObfParent"
+
+    // `RemoteServiceClient extends AbstractServiceClient`: the hooked method `e`
+    // and field `p` are declared on the PARENT (ObfParent); the obfuscated class
+    // the map points at is the CHILD (ObfChild). The `extends` edge is recorded.
+    private val inheritanceMap =
+        MapLoader.fromJson(
+            """
+            {
+              "schema_version": 2,
+              "app": "com.example.app",
+              "version": "1.0.0",
+              "version_code": 100,
+              "classes": {
+                "com.example.RemoteServiceClient": {
+                  "obfuscated": "$childObf",
+                  "extends": "$parentObf",
+                  "methods": {
+                    "inherited": { "obfuscated": "e", "signature": "(Ljava/lang/String;)Ljava/lang/String;" },
+                    "own": { "obfuscated": "f", "signature": "(J)J" }
+                  },
+                  "fields": { "inheritedField": { "obfuscated": "p", "type": "Ljava/lang/String;" } }
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+
+    private val inheritancePolicy = TargetPolicy(allow = listOf(childObf, parentObf))
+
+    private val inherited =
+        RosettaXposed.fromMapUnverified(inheritanceMap, javaClass.classLoader, inheritancePolicy)
+
+    @Test
+    fun `binds a method declared on a parent class`() {
+        val member =
+            inherited.method("com.example.RemoteServiceClient", "inherited").member()
+                as java.lang.reflect.Method
+        assertEquals("e", member.name)
+        // The method is genuinely declared on the PARENT, not the child.
+        assertEquals(parentObf, member.declaringClass.name)
+    }
+
+    @Test
+    fun `still binds a method declared on the child itself`() {
+        val member =
+            inherited.method("com.example.RemoteServiceClient", "own").member()
+                as java.lang.reflect.Method
+        assertEquals("f", member.name)
+        assertEquals(childObf, member.declaringClass.name)
+    }
+
+    @Test
+    fun `binds a field declared on a parent class`() {
+        val field = inherited.field("com.example.RemoteServiceClient", "inheritedField").field()
+        assertEquals("p", field.name)
+        assertEquals(parentObf, field.declaringClass.name)
+    }
+
+    @Test
+    fun `a method absent on the whole chain still throws BindException`() {
+        val absentMap =
+            MapLoader.fromJson(
+                """
+                {
+                  "schema_version": 2,
+                  "app": "com.example.app",
+                  "version": "1.0.0",
+                  "version_code": 100,
+                  "classes": {
+                    "com.example.RemoteServiceClient": {
+                      "obfuscated": "$childObf",
+                      "methods": { "ghost": { "obfuscated": "noSuchMethod", "signature": "()V" } }
+                    }
+                  }
+                }
+                """.trimIndent(),
+            )
+        val r = RosettaXposed.fromMapUnverified(absentMap, javaClass.classLoader, inheritancePolicy)
+        assertFailsWith<BindException> { r.method("com.example.RemoteServiceClient", "ghost").member() }
+    }
 }

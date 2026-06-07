@@ -177,7 +177,19 @@ public class MethodTarget internal constructor(
     public val resolved: ResolvedMethod,
     private val loader: TargetLoader,
 ) {
-    /** Find the concrete [Member] (Method or Constructor) on the loaded class. */
+    /**
+     * Find the concrete [Member] (Method or Constructor) on the loaded class.
+     *
+     * INHERITED MEMBERS (xposed#12). The lookup walks the declared methods of
+     * the loaded class AND its superclasses (stopping at — and excluding —
+     * `java.lang.Object`), so a method declared on a PARENT class (e.g.
+     * `RemoteServiceClient extends AbstractServiceClient`, where the obfuscated
+     * method lives on the parent) binds successfully. `declaredMethods` alone
+     * excludes inherited members; `getMethod(...)` would only see public ones,
+     * so the walk + `declaredMethods` is what reaches a non-public inherited
+     * method. Constructors are NOT inherited, so the constructor branch stays on
+     * the declared class only.
+     */
     public fun member(): Member {
         val cls = loader.loadGuardedClass(resolved.realName, resolved.className)
         val wantArgs = parseSignatureArgs(resolved.signature)
@@ -193,13 +205,14 @@ public class MethodTarget internal constructor(
                 )
         }
 
-        return cls.declaredMethods
-            .firstOrNull {
+        return findInHierarchy(cls) { c ->
+            c.declaredMethods.firstOrNull {
                 it.name == resolved.obfName && JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs
-            }?.also { it.isAccessible = true }
+            }
+        }?.also { it.isAccessible = true }
             ?: throw BindException(
                 "rosetta-xposed: no method '${resolved.obfName}${resolved.signature}' on " +
-                    "'${resolved.className}'.",
+                    "'${resolved.className}' or any superclass (excluding java.lang.Object).",
             )
     }
 
@@ -212,14 +225,47 @@ public class FieldTarget internal constructor(
     public val resolved: ResolvedField,
     private val loader: TargetLoader,
 ) {
-    /** Find the concrete [Field] on the loaded class. */
+    /**
+     * Find the concrete [Field] on the loaded class.
+     *
+     * INHERITED FIELDS (xposed#12). Like [MethodTarget.member], the lookup walks
+     * the declared fields of the loaded class AND its superclasses (stopping at
+     * — and excluding — `java.lang.Object`), so a field declared on a PARENT
+     * class binds. `declaredFields` alone excludes inherited fields.
+     */
     public fun field(): Field {
         val cls = loader.loadGuardedClass(resolved.realName, resolved.className)
-        return cls.declaredFields
-            .firstOrNull { it.name == resolved.obfName }
+        return findInHierarchy(cls) { c -> c.declaredFields.firstOrNull { it.name == resolved.obfName } }
             ?.also { it.isAccessible = true }
             ?: throw BindException(
-                "rosetta-xposed: no field '${resolved.obfName}' on '${resolved.className}'.",
+                "rosetta-xposed: no field '${resolved.obfName}' on '${resolved.className}' " +
+                    "or any superclass (excluding java.lang.Object).",
             )
     }
+}
+
+/**
+ * Walk [start] and its superclass chain, stopping at (and excluding)
+ * `java.lang.Object`, returning the first non-null [select] result (the member
+ * found on the nearest class that declares it) or `null` if none does.
+ *
+ * The walk EXCLUDES `java.lang.Object` deliberately: a map should never point a
+ * hook at `Object`'s members (`hashCode`/`equals`/…), and stopping short of it
+ * keeps the C1 spirit — only the app's own class hierarchy is searched. The
+ * obfuscated classes in the chain were already realised through the C1-guarded
+ * [TargetLoader] for [start]; their superclasses are part of the same app type
+ * graph (the binding never makes a member of a denied class accessible because
+ * the only `setAccessible` is on the member this returns, which lives on a class
+ * reachable from the guarded [start]).
+ */
+private inline fun <T : Member> findInHierarchy(
+    start: Class<*>,
+    select: (Class<*>) -> T?,
+): T? {
+    // generateSequence stops at the first null superclass; takeWhile excludes
+    // java.lang.Object. firstNotNullOfOrNull walks nearest-class-first and
+    // returns the first member a class in the chain declares.
+    return generateSequence(start) { it.superclass }
+        .takeWhile { it != Any::class.java }
+        .firstNotNullOfOrNull(select)
 }
