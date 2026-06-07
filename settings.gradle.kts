@@ -3,16 +3,22 @@
  * layer-4 binding for the Rosetta cross-framework architecture
  * (RFC 0001 in the rosetta-frida repo).
  *
- * Two modules:
- *   :core   — pure-JVM Kotlin. The framework-neutral layers (map model,
- *             loader/validator, resolver) — a faithful Kotlin twin of
- *             rosetta-frida's TypeScript core, kept honest by a shared
- *             conformance suite. Builds and tests on any JVM; no Android
- *             SDK, no Xposed API.
- *   :xposed  — the layer-4 binding skeleton. Turns a resolved real → obf
- *             name into a hookable `Member` and hands it to the
- *             developer's chosen hook API (libxposed or legacy
- *             XposedHelpers). It does NOT own the hook call.
+ * Four modules:
+ *   :core         — pure-JVM Kotlin. The framework-neutral layers (map model,
+ *                   loader/validator, resolver) — a faithful Kotlin twin of
+ *                   rosetta-frida's TypeScript core, kept honest by a shared
+ *                   conformance suite. Builds and tests on any JVM; no Android
+ *                   SDK, no Xposed API.
+ *   :xposed       — the layer-4 binding. Turns a resolved real → obf name into
+ *                   a hookable `Member` and hands it to the developer's chosen
+ *                   hook API (libxposed or legacy XposedHelpers). Does NOT own
+ *                   the hook call.
+ *   :xposed-android — pure-JVM Android-helper logic (bundled-map loading and
+ *                   AppIdentity assembly from PackageManager primitives). No
+ *                   Android plugin; builds and tests on any JVM.
+ *   :dexkit       — OPTIONAL. The thin DexKitBackedIndex adapter wiring the
+ *                   DexKitIndex seam to the real DexKitBridge native. Kept out
+ *                   of the default :xposed build.
  */
 pluginManagement {
     repositories {

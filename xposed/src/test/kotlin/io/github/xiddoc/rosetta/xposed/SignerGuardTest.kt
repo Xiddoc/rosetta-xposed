@@ -1,5 +1,5 @@
 /*
- * Signer-guard enforcement tests (RFC 0001 Decision 4: version_code selects,
+ * Signer-guard enforcement tests (RFC 0001 Decision 3: version_code selects,
  * signer_sha256 guards). These exercise every fail-closed branch on a plain
  * JVM — no Android, no device — by driving SignerGuard / RosettaXposed with
  * synthetic AppIdentity values:

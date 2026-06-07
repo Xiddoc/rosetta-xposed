@@ -27,7 +27,7 @@ client that tracks it. See [Related repos](../reference/related.md).
 
 ## Modules
 
-The build is a two-module Gradle (Kotlin/JVM) project.
+The build is a four-module Gradle (Kotlin/JVM) project.
 
 ### `:core`
 
