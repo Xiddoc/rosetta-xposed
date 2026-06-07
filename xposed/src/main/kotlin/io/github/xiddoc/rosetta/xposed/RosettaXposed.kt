@@ -22,6 +22,7 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.VersionMatch

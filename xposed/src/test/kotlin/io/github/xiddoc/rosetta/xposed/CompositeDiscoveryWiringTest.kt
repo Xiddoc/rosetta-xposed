@@ -12,7 +12,9 @@
 package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.MapLoader
+import io.github.xiddoc.rosetta.core.RosettaException
 import io.github.xiddoc.rosetta.core.TargetPolicyException
+import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -444,5 +446,13 @@ class CompositeDiscoveryWiringTest {
         // M5: the construction-time security refusal must NOT be swallowed by a
         // module's per-target binding-failure catch clause.
         assertTrue(UnverifiedDiscoveryException("x") !is XposedBindingFailure)
+    }
+
+    @Test
+    fun `UnverifiedDiscoveryException is a RosettaException (signer-guard sibling)`() {
+        // Item 8: it is semantically a signer-guard refusal, so it is part of the
+        // core RosettaException taxonomy (like SignerMismatchException), NOT a bare
+        // RuntimeException — while staying distinct from XposedBindingFailure.
+        assertTrue(UnverifiedDiscoveryException("x") is RosettaException)
     }
 }

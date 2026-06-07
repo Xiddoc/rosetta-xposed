@@ -29,17 +29,10 @@ public class DiscoveryException(
 ) : RuntimeException(message, cause),
     XposedBindingFailure
 
-/**
- * A self-healing binding was constructed over a map that DEMANDS a
- * `signer_sha256` without supplying an [AppIdentity] to verify it, and without
- * the explicit `allowUnverified` opt-in (xposed#14 M5). This is a
- * CONSTRUCTION-time security refusal, not a per-target binding failure, so it
- * is a plain `RuntimeException` and is deliberately NOT an
- * [XposedBindingFailure] (a module's hook-loop catch clause should not swallow
- * it). Thrown only by [RosettaXposed.fromMapWithDiscovery]; the fix is to pass
- * an identity, set `allowUnverified=true`, or use
- * [RosettaXposed.fromMapUnverified].
- */
-public class UnverifiedDiscoveryException(
-    message: String,
-) : RuntimeException(message)
+// NOTE: UnverifiedDiscoveryException is a signer-guard refusal, so it lives in
+// `:core` alongside the other signer exceptions (SignerMismatchException etc.)
+// as a `RosettaException` subtype — see RosettaErrors.kt. It is still NOT an
+// [XposedBindingFailure] (a module's per-target catch must not swallow it), and
+// is still thrown only by [RosettaXposed.fromMapWithDiscovery]. The core base is
+// `sealed`, which a `:xposed`-local class could not extend, so the type moved to
+// core rather than the hierarchy being widened.

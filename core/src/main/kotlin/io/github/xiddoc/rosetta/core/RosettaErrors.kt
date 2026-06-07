@@ -148,6 +148,22 @@ public class MissingSignerException(
 ) : RosettaException(message)
 
 /**
+ * A self-healing binding was constructed over a map that DEMANDS a
+ * `signer_sha256` without supplying an `AppIdentity` to verify it, and without
+ * the explicit `allowUnverified` opt-in (xposed#14 M5). This is a
+ * CONSTRUCTION-time signer-guard REFUSAL — semantically a sibling of
+ * [SignerMismatchException] / [MissingSignerException], so it is a
+ * [RosettaException] (the core base) and lives here with the other signer
+ * errors. It is deliberately NOT an `XposedBindingFailure` (the layer-4 marker),
+ * so a module's per-target hook-loop catch clause must not swallow it. Thrown
+ * only by `RosettaXposed.fromMapWithDiscovery`; the fix is to pass an identity,
+ * set `allowUnverified=true`, or use `RosettaXposed.fromMapUnverified`.
+ */
+public class UnverifiedDiscoveryException(
+    message: String,
+) : RosettaException(message)
+
+/**
  * A `signer_sha256` hash is not well-formed. After normalization
  * (lowercase, with `:` separators and surrounding whitespace stripped) a
  * signer hash must be exactly 64 lowercase hex characters (a SHA-256
