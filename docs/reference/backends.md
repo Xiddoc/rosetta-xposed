@@ -82,8 +82,44 @@ A successful discovery is handed to a `DiscoverySink`. The in-memory
 `MapDiscoverySink` records each entry and renders a
 `MapSource(tool = "rosetta-runtime-discovered", confidence = LOW, …)` so a
 discovered name is never mistaken for a vetted, high-confidence static
-mapping — the same provenance the Frida side emits. (A persistent/on-device
-cache and an upstream-contribution path are interface-only for now.)
+mapping — the same provenance the Frida side emits. (An upstream-contribution
+path is interface-only for now.)
+
+### Persistence (`DiscoveryCache`)
+
+The dynamic backend's in-memory memo only lives for one process, so without a
+durable store every app restart re-runs the DexKit scan from scratch. The
+`DiscoveryCache` seam (rosetta-xposed#19) lets a discovered
+`realName → ClassEntry` survive restarts: the backend consults it on the first
+miss for a real name (a hit short-circuits the scan and is promoted into the
+in-memory memo) and writes to it after a successful discovery. A cache hit is
+**not** re-emitted to the `DiscoverySink` — the sink records only what *this*
+run freshly discovered.
+
+The seam is pure-JVM and tiny (`get` / `put` by real name), so `:core` and
+`:xposed` stay `android.jar`-free and fully covered. The default is
+`DiscoveryCache.NOOP` (today's behaviour); `InMemoryDiscoveryCache` is a
+non-persistent reference impl. The on-device, `SharedPreferences`-backed
+`PersistentDiscoveryCache` lives at the Android edge in `:xposed-android`,
+where it is stamped with a `(app, version_code, signer)` fingerprint at
+construction and **drops every cached entry when that fingerprint changes**
+(an app update, a signer change, or a first run) — so a stale mapping can't
+survive an update. The irreducible `SharedPreferences` object stays in the
+consumer behind a ~3-line `KeyValueStore` adapter (see the example module's
+`SharedPreferencesStore`), exactly like `AppIdentity` keeps the `PackageManager`
+read at the edge. A restored FQN is still routed through the same C1 target
+guard as a static name, so a tampered store cannot widen the trust surface.
+
+Wire one in through `DiscoveryConfig.cache`:
+
+```kotlin
+val prefs = context.getSharedPreferences("rosetta_disc_cache", Context.MODE_PRIVATE)
+val cache = PersistentDiscoveryCache.create(SharedPreferencesStore(prefs), identity)
+val rosetta = RosettaXposed.fromMapWithDiscovery(
+    map, index, lpparam.classLoader, identity,
+    discovery = DiscoveryConfig(hints = hints, cache = cache),
+)
+```
 
 ## Composite (static-first, dynamic-on-miss)
 

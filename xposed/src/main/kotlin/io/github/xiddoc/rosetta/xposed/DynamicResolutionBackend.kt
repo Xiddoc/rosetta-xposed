@@ -98,10 +98,14 @@ public data class DiscoveryHints(
  *
  * @property hints the per-real-class discovery recipes (contributor input).
  * @property sink where discovered entries are recorded (default: NOOP).
+ * @property cache the persistence seam consulted before scanning and written
+ *   after a successful discovery, so a discovery survives a process restart
+ *   (default: NOOP — no persistence, rosetta-xposed#19).
  */
 public data class DiscoveryConfig(
     val hints: Map<String, DiscoveryHints> = emptyMap(),
     val sink: DiscoverySink = DiscoverySink.NOOP,
+    val cache: DiscoveryCache = DiscoveryCache.NOOP,
 )
 
 /**
@@ -120,12 +124,17 @@ public data class DiscoveryConfig(
  *   already carries the obfuscated ref. Defaults to identity (no map context),
  *   which is correct only when callers pass framework types / raw descriptors;
  *   [RosettaXposed.fromMapWithDiscovery] wires the static map's translator in.
+ * @property cache the cross-restart persistence seam (rosetta-xposed#19),
+ *   consulted on the first miss for a real name and written after a successful
+ *   discovery. Defaults to [DiscoveryCache.NOOP] (no persistence); the
+ *   in-process memo still serves repeats within one run.
  */
 public class DynamicResolutionBackend(
     private val index: DexKitIndex,
     private val hints: Map<String, DiscoveryHints>,
     private val sink: DiscoverySink = DiscoverySink.NOOP,
     private val translateType: (String) -> String = { it },
+    private val cache: DiscoveryCache = DiscoveryCache.NOOP,
 ) : DiscoveringBackend {
     /** Memoized discovered class entries, so we scan a real name at most once. */
     private val discovered = mutableMapOf<String, ClassEntry>()
@@ -247,6 +256,18 @@ public class DynamicResolutionBackend(
     private fun discoverClassEntry(realClass: String): ClassEntry {
         discovered[realClass]?.let { return it }
 
+        // A discovery persisted by a prior process short-circuits the expensive
+        // DexKit scan (rosetta-xposed#19). Promote the cache hit into the
+        // in-process memo so later lookups this run are O(1) too; the cache is
+        // therefore consulted at most once per real name per process. A cache
+        // hit is NOT re-emitted to the [sink]: the sink records what THIS run
+        // freshly discovered (for upstream contribution), and a restored entry
+        // was discovered in an earlier run.
+        cache.get(realClass)?.let { cached ->
+            discovered[realClass] = cached
+            return cached
+        }
+
         val hint =
             hints[realClass]
                 ?: throw DiscoveryException(
@@ -278,9 +299,12 @@ public class DynamicResolutionBackend(
                 confidence = Confidence.LOW,
             )
 
-        // Memoize + record only AFTER the full entry resolved successfully, so
-        // a partial discovery (handled by the throws above) never lands here.
+        // Memoize + persist + record only AFTER the full entry resolved
+        // successfully, so a partial discovery (handled by the throws above)
+        // never lands here — the persistent cache is never poisoned with a half
+        // entry, exactly like the in-process memo.
         discovered[realClass] = entry
+        cache.put(realClass, entry)
         sink.record(realClass, entry)
         return entry
     }
