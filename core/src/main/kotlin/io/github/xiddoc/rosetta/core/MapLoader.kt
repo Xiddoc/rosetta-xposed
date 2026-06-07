@@ -234,10 +234,11 @@ public object MapLoader {
             if (map.versionCode < 0) {
                 issues += ValidationIssue("version_code", "must be a non-negative integer")
             } else if (map.versionCode > MAX_VERSION_CODE) {
-                issues += ValidationIssue(
-                    "version_code",
-                    "must be at most $MAX_VERSION_CODE (2^53 - 1, Number.MAX_SAFE_INTEGER)",
-                )
+                issues +=
+                    ValidationIssue(
+                        "version_code",
+                        "must be at most $MAX_VERSION_CODE (2^53 - 1, Number.MAX_SAFE_INTEGER)",
+                    )
             }
             free("captured_at", map.capturedAt)
             free("frida_min_version", map.fridaMinVersion)
