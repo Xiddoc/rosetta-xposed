@@ -13,8 +13,20 @@
  */
 package io.github.xiddoc.rosetta.core.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /**
  * The current map schema version — the single source of truth on the
@@ -146,13 +158,65 @@ public data class ClassEntry(
  * rosetta-frida's `ClientHints`. Frida reads the `frida_min_version` /
  * `frida_max_version` range; other clients (this one) ignore it.
  */
-@Serializable
+@Serializable(with = ClientHintsSerializer::class)
 public data class ClientHints(
     /** Minimum Frida version this map is known to work with (Frida-only hint). */
-    @SerialName("frida_min_version") val fridaMinVersion: String? = null,
+    val fridaMinVersion: String? = null,
     /** Maximum Frida version this map is known to work with (Frida-only hint). */
-    @SerialName("frida_max_version") val fridaMaxVersion: String? = null,
+    val fridaMaxVersion: String? = null,
 )
+
+/**
+ * Hand-rolled JSON serializer for [ClientHints], mirroring the project's
+ * [MethodOverloadsSerializer] pattern. An auto-generated `@Serializable` on an
+ * all-optional data class emits a defensive generated branch that no public
+ * decoder can reach (a known kotlinx-serialization / coverage interaction), so
+ * we serialize the two optional hint fields by hand instead — every branch here
+ * is our own code and reachable by tests.
+ *
+ * STRICT: an unknown key inside `client_hints` is rejected (the canonical
+ * schema's `additionalProperties: false`), keeping a map that loads on one
+ * client loading on all.
+ */
+public object ClientHintsSerializer : KSerializer<ClientHints> {
+    private const val MIN_KEY = "frida_min_version"
+    private const val MAX_KEY = "frida_max_version"
+
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ClientHints")
+
+    override fun deserialize(decoder: Decoder): ClientHints {
+        val jsonDecoder =
+            decoder as? JsonDecoder
+                ?: error("ClientHints can only be read from JSON")
+        val obj =
+            jsonDecoder.decodeJsonElement() as? JsonObject
+                ?: error("client_hints must be a JSON object")
+        for (key in obj.keys) {
+            if (key != MIN_KEY && key != MAX_KEY) {
+                throw kotlinx.serialization.SerializationException("Unknown key in client_hints: '$key'")
+            }
+        }
+        return ClientHints(
+            fridaMinVersion = obj[MIN_KEY]?.let { it.jsonPrimitive.content },
+            fridaMaxVersion = obj[MAX_KEY]?.let { it.jsonPrimitive.content },
+        )
+    }
+
+    override fun serialize(
+        encoder: Encoder,
+        value: ClientHints,
+    ) {
+        val jsonEncoder =
+            encoder as? JsonEncoder
+                ?: error("ClientHints can only be written to JSON")
+        val element =
+            buildJsonObject {
+                value.fridaMinVersion?.let { put(MIN_KEY, JsonPrimitive(it)) }
+                value.fridaMaxVersion?.let { put(MAX_KEY, JsonPrimitive(it)) }
+            }
+        jsonEncoder.encodeJsonElement(element)
+    }
+}
 
 /** The top-level mapping file — one per `(app, version_code)`. */
 @Serializable

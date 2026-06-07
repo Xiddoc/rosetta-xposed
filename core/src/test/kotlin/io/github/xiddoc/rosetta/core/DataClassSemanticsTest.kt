@@ -486,12 +486,61 @@ class DataClassSemanticsTest {
     }
 
     @Test
-    fun `ClientHints write$Self covers both arms of every optional`() {
-        assertWriteSelfBranches(
-            ClientHints.serializer(),
-            allDefaults = ClientHints(),
-            allSet = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
+    fun `ClientHintsSerializer round-trips every field-presence combination`() {
+        // ClientHints uses a hand-rolled serializer (the auto-generated all-optional
+        // serializer carries a branch no public decoder can reach). Round-trip all
+        // four (min, max) presence combos so every per-field emit/skip arm of both
+        // serialize and deserialize is exercised; absent keys are omitted on emit.
+        val cases =
+            mapOf(
+                ClientHints() to "{}",
+                ClientHints(fridaMinVersion = "16.0.0") to """{"frida_min_version":"16.0.0"}""",
+                ClientHints(fridaMaxVersion = "17.0.0") to """{"frida_max_version":"17.0.0"}""",
+                ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0") to
+                    """{"frida_min_version":"16.0.0","frida_max_version":"17.0.0"}""",
+            )
+        for ((value, expectedJson) in cases) {
+            assertEquals(expectedJson, json.encodeToString(ClientHints.serializer(), value))
+            assertEquals(value, json.decodeFromString(ClientHints.serializer(), expectedJson))
+        }
+        // Reordered keys decode the same (the serializer is name-keyed, not
+        // positional), exercising both lookups with both keys present.
+        assertEquals(
+            ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
+            json.decodeFromString(
+                ClientHints.serializer(),
+                """{"frida_max_version":"17.0.0","frida_min_version":"16.0.0"}""",
+            ),
         )
+    }
+
+    @Test
+    fun `ClientHintsSerializer rejects an unknown key and a non-object`() {
+        // Strict (additionalProperties: false): an unknown key inside client_hints
+        // is rejected, matching the canonical schema and the Frida twin.
+        assertFailsWith<kotlinx.serialization.SerializationException> {
+            json.decodeFromString(ClientHints.serializer(), """{"frida_min_version":"16.0.0","mystery":true}""")
+        }
+        // A non-object client_hints value is rejected.
+        assertFailsWith<IllegalStateException> {
+            json.decodeFromString(ClientHints.serializer(), "\"not-an-object\"")
+        }
+    }
+
+    @Test
+    fun `ClientHintsSerializer rejects a non-JSON encoder and decoder`() {
+        // The serializer is JSON-only (like MethodOverloadsSerializer); Properties
+        // is a non-JSON format, so both the encode and decode guards fire.
+        assertFailsWith<IllegalStateException> {
+            kotlinx.serialization.properties.Properties.encodeToMap(
+                ClientHints.serializer(),
+                ClientHints(fridaMinVersion = "16.0.0"),
+            )
+        }
+        assertFailsWith<IllegalStateException> {
+            kotlinx.serialization.properties.Properties
+                .decodeFromMap(ClientHints.serializer(), emptyMap())
+        }
     }
 
     // ---- Generated deserialization-constructor missing-required-field branch.
