@@ -108,7 +108,10 @@ public class UnknownArgTypeException(
 public class AmbiguousOverloadException(
     message: String,
     public val methodName: String,
-    public val className: String,
+    // `classScope` (not `className`) for parity with rosetta-frida's
+    // AmbiguousOverloadError in src/errors.ts — the field names match so the
+    // two clients' error shapes stay diffable.
+    public val classScope: String,
     public val overloadCount: Int,
 ) : RosettaException(message)
 

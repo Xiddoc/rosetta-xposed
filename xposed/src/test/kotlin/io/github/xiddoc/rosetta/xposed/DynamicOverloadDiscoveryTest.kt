@@ -83,6 +83,10 @@ class DynamicOverloadDiscoveryTest {
         // silently returning the first.
         val ex = assertFailsWith<AmbiguousOverloadException> { threeOverloadBackend().resolveMethod(real, "d") }
         assertEquals(3, ex.overloadCount)
+        assertEquals("d", ex.methodName)
+        // `classScope` (the Frida-parity field name, renamed from `className`)
+        // carries the owning class scope.
+        assertEquals(real, ex.classScope)
     }
 
     @Test
