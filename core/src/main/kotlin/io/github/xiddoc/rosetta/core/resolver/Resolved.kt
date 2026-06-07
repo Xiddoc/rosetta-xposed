@@ -30,7 +30,18 @@ public data class ResolvedClass(
     val realName: String,
     /** Obfuscated short name. */
     val obfName: String,
-    /** Parent class (real or obfuscated name), if the entry declared one. */
+    /**
+     * Parent class (real or obfuscated name), if the entry declared one.
+     *
+     * NOT load-bearing on the resolve→bind path. The `:xposed` inherited-member
+     * walk ([io.github.xiddoc.rosetta.core.resolver] consumers in
+     * `Targets.MethodTarget.member` / `FieldTarget.field`) traverses the RUNTIME
+     * superclass chain (`Class.superclass`), not this field — so it is robust
+     * even when a map omits the `extends` edge, and is carried THROUGH
+     * UNTRANSLATED (the Frida twin does the same; translating it would diverge
+     * the conformance fixture). Treat it as introspection metadata only; do not
+     * assume the bind path reads it.
+     */
     val extends: String? = null,
 )
 
