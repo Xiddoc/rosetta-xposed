@@ -11,6 +11,7 @@
 package io.github.xiddoc.rosetta.core
 
 import io.github.xiddoc.rosetta.core.model.ClassEntry
+import io.github.xiddoc.rosetta.core.model.ClientHints
 import io.github.xiddoc.rosetta.core.model.FieldEntry
 import io.github.xiddoc.rosetta.core.model.MapSource
 import io.github.xiddoc.rosetta.core.model.MethodEntry
@@ -41,8 +42,7 @@ class SchemaBoundsTest {
         val map =
             base.copy(
                 capturedAt = "2026-01-01",
-                fridaMinVersion = "16.0.0",
-                fridaMaxVersion = "17.0.0",
+                clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
                 sources = listOf(MapSource("sigmatcher", config = "cfg", notes = "ok")),
                 classes =
                     mapOf(
@@ -357,14 +357,13 @@ class SchemaBoundsTest {
         val map =
             base.copy(
                 capturedAt = long,
-                fridaMinVersion = long,
-                fridaMaxVersion = long,
+                clientHints = ClientHints(fridaMinVersion = long, fridaMaxVersion = long),
                 sources = listOf(MapSource(tool = long, config = long, notes = long)),
             )
         val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
         assertTrue(ex.issues.any { it.path == "captured_at" })
-        assertTrue(ex.issues.any { it.path == "frida_min_version" })
-        assertTrue(ex.issues.any { it.path == "frida_max_version" })
+        assertTrue(ex.issues.any { it.path == "client_hints.frida_min_version" })
+        assertTrue(ex.issues.any { it.path == "client_hints.frida_max_version" })
         assertTrue(ex.issues.any { it.path == "sources[0].tool" })
         assertTrue(ex.issues.any { it.path == "sources[0].config" })
         assertTrue(ex.issues.any { it.path == "sources[0].notes" })
@@ -415,6 +414,79 @@ class SchemaBoundsTest {
         // Underscores and digits within segments are allowed.
         val map = base.copy(app = "com.example_2.app3")
         assertSame(map, MapLoader.validate(map))
+    }
+
+    @Test
+    fun `rejects a digit-leading dotted segment but accepts a letter-leading one`() {
+        // Parity with the canonical schema + Frida Zod twin: EACH dotted
+        // segment must start with a letter, so a digit-leading segment after a
+        // dot (`com.1app`) is rejected, while `com.example.app` is accepted.
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(base.copy(app = "com.1app")) }
+        assertTrue(ex.issues.any { it.path == "app" && it.message.contains("dotted") })
+        val ok = base.copy(app = "com.example.app")
+        assertSame(ok, MapLoader.validate(ok))
+    }
+
+    @Test
+    fun `rejects a whitespace-only version`() {
+        // Kotlin uses isBlank(); pin that a whitespace-only label is empty.
+        val ex = assertFailsWith<MapValidationException> { MapLoader.validate(base.copy(version = "  ")) }
+        assertTrue(ex.issues.any { it.path == "version" && it.message.contains("empty") })
+    }
+
+    // ---- client_hints sub-object (canonical schema + Frida twin) ------------
+
+    @Test
+    fun `a map with a well-formed client_hints sub-object loads`() {
+        // BLOCKER 1: the canonical schema nests frida_min/max_version under
+        // `client_hints`; a well-formed sub-object must load under strict parsing.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+             "client_hints":{"frida_min_version":"16.0.0","frida_max_version":"17.0.0"},"classes":{}}
+            """.trimIndent()
+        val loaded = MapLoader.fromJson(json)
+        assertEquals("16.0.0", loaded.clientHints?.fridaMinVersion)
+        assertEquals("17.0.0", loaded.clientHints?.fridaMaxVersion)
+    }
+
+    @Test
+    fun `rejects top-level frida_min_version (moved into client_hints)`() {
+        // The fields moved into `client_hints`; a top-level `frida_min_version`
+        // is now an unknown key and must be rejected under strict parsing.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+             "frida_min_version":"16.0.0","classes":{}}
+            """.trimIndent()
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
+    }
+
+    @Test
+    fun `rejects an unknown key inside client_hints under strict parsing`() {
+        // `client_hints` carries its own additionalProperties:false; a stray key
+        // inside it is a hard parse failure, matching the Frida twin.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+             "client_hints":{"frida_min_version":"16.0.0","mystery":true},"classes":{}}
+            """.trimIndent()
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
+    }
+
+    @Test
+    fun `byte-length guard does not wrongly reject a short emoji-bearing version`() {
+        // utf8ByteLength conservatively OVERCOUNTS supplementary characters
+        // (3 bytes per surrogate, 6 per pair vs the real 4); a short emoji
+        // string is nowhere near the cap, so the guard must not reject it.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0-😀","version_code":100,"classes":{}}
+            """.trimIndent()
+        val loaded = MapLoader.fromJson(json)
+        assertEquals("1.0-😀", loaded.version)
     }
 
     // ---- Reserved-key rejection (M1) ---------------------------------------

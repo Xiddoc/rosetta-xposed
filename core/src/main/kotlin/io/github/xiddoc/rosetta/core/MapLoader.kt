@@ -112,8 +112,13 @@ public object MapLoader {
      */
     private val RESERVED_KEYS: Set<String> = setOf("__proto__", "constructor", "prototype")
 
-    /** The Android package-name shape required of `app`. */
-    private val APP_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
+    /**
+     * The Android package-name shape required of `app`: EACH dotted segment
+     * must start with a letter (not a digit), matching the canonical
+     * rosetta-maps JSON Schema + the rosetta-frida Zod twin. A digit-leading
+     * segment after a dot (e.g. `com.1app`) is rejected.
+     */
+    private val APP_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
     /** Highest code point encoded as 1 UTF-8 byte (U+007F). See [utf8ByteLength]. */
     private const val UTF8_1BYTE_MAX = 0x7F
@@ -289,8 +294,8 @@ public object MapLoader {
                     )
             }
             free("captured_at", map.capturedAt)
-            free("frida_min_version", map.fridaMinVersion)
-            free("frida_max_version", map.fridaMaxVersion)
+            free("client_hints.frida_min_version", map.clientHints?.fridaMinVersion)
+            free("client_hints.frida_max_version", map.clientHints?.fridaMaxVersion)
             checkSources()
             checkClasses()
             return issues

@@ -30,6 +30,7 @@ package io.github.xiddoc.rosetta.core
 
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassKind
+import io.github.xiddoc.rosetta.core.model.ClientHints
 import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.FieldEntry
 import io.github.xiddoc.rosetta.core.model.MapSource
@@ -155,6 +156,21 @@ class DataClassSemanticsTest {
     }
 
     @Test
+    fun `ClientHints has value semantics across every field`() {
+        val base = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0")
+        assertValueSemantics(
+            base = base,
+            identical = ClientHints("16.0.0", "17.0.0"),
+            variants =
+                listOf(
+                    base.copy(fridaMinVersion = "15.0.0"),
+                    base.copy(fridaMaxVersion = "18.0.0"),
+                ),
+        )
+        assertEquals("15.0.0", base.copy(fridaMinVersion = "15.0.0").fridaMinVersion)
+    }
+
+    @Test
     fun `MethodOverloads has value semantics`() {
         val base = MethodOverloads(listOf(MethodEntry("a", "()V"), MethodEntry("b", "(I)V")))
         assertValueSemantics(
@@ -222,8 +238,7 @@ class DataClassSemanticsTest {
                 versionCode = 100,
                 capturedAt = "2026-01-01",
                 signerSha256 = "deadbeef",
-                fridaMinVersion = "16.0.0",
-                fridaMaxVersion = "17.0.0",
+                clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
                 sources = listOf(MapSource("sigmatcher")),
                 classes = mapOf("com.example.Foo" to ClassEntry("a")),
             )
@@ -237,8 +252,7 @@ class DataClassSemanticsTest {
                     versionCode = 100,
                     capturedAt = "2026-01-01",
                     signerSha256 = "deadbeef",
-                    fridaMinVersion = "16.0.0",
-                    fridaMaxVersion = "17.0.0",
+                    clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
                     sources = listOf(MapSource("sigmatcher")),
                     classes = mapOf("com.example.Foo" to ClassEntry("a")),
                 ),
@@ -250,8 +264,8 @@ class DataClassSemanticsTest {
                     base.copy(versionCode = 200),
                     base.copy(capturedAt = "2026-02-02"),
                     base.copy(signerSha256 = "beefdead"),
-                    base.copy(fridaMinVersion = "15.0.0"),
-                    base.copy(fridaMaxVersion = "18.0.0"),
+                    base.copy(clientHints = ClientHints(fridaMinVersion = "15.0.0")),
+                    base.copy(clientHints = ClientHints(fridaMaxVersion = "18.0.0")),
                     base.copy(sources = listOf(MapSource("hand-authored"))),
                     base.copy(classes = mapOf("com.example.Bar" to ClassEntry("b"))),
                 ),
@@ -464,11 +478,19 @@ class DataClassSemanticsTest {
                     versionCode = 100,
                     capturedAt = "2026-01-01",
                     signerSha256 = "deadbeef",
-                    fridaMinVersion = "16.0.0",
-                    fridaMaxVersion = "17.0.0",
+                    clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
                     sources = listOf(MapSource("sigmatcher")),
                     classes = mapOf("com.example.Foo" to ClassEntry("a")),
                 ),
+        )
+    }
+
+    @Test
+    fun `ClientHints write$Self covers both arms of every optional`() {
+        assertWriteSelfBranches(
+            ClientHints.serializer(),
+            allDefaults = ClientHints(),
+            allSet = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
         )
     }
 

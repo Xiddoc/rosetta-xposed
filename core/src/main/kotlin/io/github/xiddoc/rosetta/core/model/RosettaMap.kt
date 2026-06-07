@@ -138,6 +138,22 @@ public data class ClassEntry(
     val confidence: Confidence? = null,
 )
 
+/**
+ * Optional, client-specific hints nested under a map's `client_hints`
+ * sub-object. The canonical schema groups per-client metadata here (with its
+ * own `additionalProperties: false`) rather than at the top level, so an
+ * unknown hint key fails loudly on both clients. The Kotlin twin of
+ * rosetta-frida's `ClientHints`. Frida reads the `frida_min_version` /
+ * `frida_max_version` range; other clients (this one) ignore it.
+ */
+@Serializable
+public data class ClientHints(
+    /** Minimum Frida version this map is known to work with (Frida-only hint). */
+    @SerialName("frida_min_version") val fridaMinVersion: String? = null,
+    /** Maximum Frida version this map is known to work with (Frida-only hint). */
+    @SerialName("frida_max_version") val fridaMaxVersion: String? = null,
+)
+
 /** The top-level mapping file — one per `(app, version_code)`. */
 @Serializable
 public data class RosettaMap(
@@ -164,10 +180,12 @@ public data class RosettaMap(
      * certificate (not the APK bytes). Cheap to verify on-device.
      */
     @SerialName("signer_sha256") val signerSha256: String? = null,
-    /** Minimum Frida version this map is known to work with (Frida-only hint). */
-    @SerialName("frida_min_version") val fridaMinVersion: String? = null,
-    /** Maximum Frida version this map is known to work with (Frida-only hint). */
-    @SerialName("frida_max_version") val fridaMaxVersion: String? = null,
+    /**
+     * Optional, advisory per-client hints (e.g. Frida version range). NOT used
+     * by the core resolver; nested under `client_hints` to keep the top-level
+     * identity keys clean. Matches the canonical schema + rosetta-frida twin.
+     */
+    @SerialName("client_hints") val clientHints: ClientHints? = null,
     /** Provenance — which tools produced which subsets. */
     val sources: List<MapSource>? = null,
     /** The classes themselves, keyed by real fully-qualified name. */
