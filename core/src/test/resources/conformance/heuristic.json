@@ -1,0 +1,113 @@
+{
+    "description": "Cross-client parity for the `unknownArgTypeOrNull` / `isClassNameForm` arg-type heuristic (xposed#10 / the maps#10 KEEP-IN-SYNC banner). The heuristic is duplicated by VALUE in both clients (frida `src/resolver/resolver.ts`, xposed `core/.../resolver/Resolver.kt`); a one-sided edit would make the two raise DIFFERENT errors for the same input. These cases pin the exclusion classification for a representative descriptor set by driving each arg type through method-overload resolution and asserting the resulting error taxonomy: an arg type the heuristic treats as a CLASS-NAME FORM that the map does not know yields the precise UnknownArgType; any descriptor / primitive / lone-letter / array form the heuristic EXCLUDES is passed verbatim and (matching no overload) yields the generic Resolve miss instead. The single method `m` has exactly one overload whose only arg is the mapped class `com.example.app.Known` (descriptor `Lkkkk;`), so only that exact type resolves. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.Sink": {
+                "obfuscated": "aaaa",
+                "methods": {
+                    "m": {
+                        "obfuscated": "a",
+                        "signature": "(Lkkkk;)V"
+                    }
+                }
+            },
+            "com.example.app.Known": {
+                "obfuscated": "kkkk"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "known mapped class arg resolves (baseline, not flagged)",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["com.example.app.Known"],
+            "expectObf": "a"
+        },
+        {
+            "name": "dotted unmapped class name -> UnknownArgType (class-name form)",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["com.example.app.Missing"],
+            "expectError": "UnknownArgType"
+        },
+        {
+            "name": "bare capitalized unmapped name -> UnknownArgType (class-name form)",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["Missing"],
+            "expectError": "UnknownArgType"
+        },
+        {
+            "name": "interface-style IFoo unmapped name -> UnknownArgType (class-name form)",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["IMissing"],
+            "expectError": "UnknownArgType"
+        },
+        {
+            "name": "raw object descriptor L...; is EXCLUDED -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["Lcom/example/app/Missing;"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "raw array descriptor [... is EXCLUDED -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["[I"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "source-style array Foo[] is EXCLUDED -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["Missing[]"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "named primitive int is EXCLUDED -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["int"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "named primitive boolean is EXCLUDED -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["boolean"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "lone descriptor letter I is EXCLUDED (length 1) -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["I"],
+            "expectError": "Resolve"
+        },
+        {
+            "name": "lone descriptor letter Z is EXCLUDED (length 1) -> generic Resolve miss",
+            "kind": "method",
+            "class": "com.example.app.Sink",
+            "method": "m",
+            "argTypes": ["Z"],
+            "expectError": "Resolve"
+        }
+    ]
+}

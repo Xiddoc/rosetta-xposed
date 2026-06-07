@@ -151,9 +151,10 @@ public data class RosettaMap(
      */
     val version: String,
     /**
-     * Authoritative app-identity key — Android `PackageInfo.versionCode`
-     * (or the low 32 bits of `longVersionCode`). The primary, O(1) key
-     * the runtime selects maps by. See RFC 0001 Decision 3.
+     * Authoritative app-identity key — the full Android `longVersionCode`
+     * (`(versionCodeMajor shl 32) or versionCode`), never masked to its low
+     * 32 bits. The primary, O(1) key the runtime selects maps by. Bounded to
+     * `[0, MapLoader.MAX_VERSION_CODE]` (2^53 − 1). See RFC 0001 Decision 3.
      */
     @SerialName("version_code") val versionCode: Long,
     /** ISO date when the map was captured. */

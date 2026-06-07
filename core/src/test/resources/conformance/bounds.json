@@ -1,0 +1,17 @@
+{
+    "description": "Cross-client parity for the DoS/cardinality BOUND VALUES (maps#10). These numeric caps are triplicated by value across the canonical rosetta-maps JSON Schema, the frida Zod validator (`src/validate/schema.ts`), and the xposed Kotlin `MapLoader` BoundsChecker — a one-sided edit would let a map that loads on one client be rejected by another. Each `bound` case names a shared constant and pins its exact value; BOTH client conformance runners read the constant from their OWN validator and assert it equals `value`, so any drift fails CI on both sides. Only the bounds BOTH clients enforce are listed: the Kotlin-only pre-parse guards (MAX_INPUT_BYTES, MAX_NESTING_DEPTH — they bound kotlinx's recursive decoder, which the Frida JSON.parse path has no analogue for) are intentionally omitted. Provider-neutral; see README.md.",
+    "cases": [
+        { "name": "MAX_CLASSES", "kind": "bound", "bound": "MAX_CLASSES", "value": 50000 },
+        { "name": "MAX_METHODS_PER_CLASS", "kind": "bound", "bound": "MAX_METHODS_PER_CLASS", "value": 5000 },
+        { "name": "MAX_FIELDS_PER_CLASS", "kind": "bound", "bound": "MAX_FIELDS_PER_CLASS", "value": 5000 },
+        { "name": "MAX_METHOD_OVERLOADS", "kind": "bound", "bound": "MAX_METHOD_OVERLOADS", "value": 200 },
+        { "name": "MAX_ANCHORS", "kind": "bound", "bound": "MAX_ANCHORS", "value": 1000 },
+        { "name": "MAX_SOURCES", "kind": "bound", "bound": "MAX_SOURCES", "value": 100 },
+        { "name": "MAX_SHORT_NAME_LEN", "kind": "bound", "bound": "MAX_SHORT_NAME_LEN", "value": 512 },
+        { "name": "MAX_SIGNATURE_LEN", "kind": "bound", "bound": "MAX_SIGNATURE_LEN", "value": 4096 },
+        { "name": "MAX_APP_LEN", "kind": "bound", "bound": "MAX_APP_LEN", "value": 256 },
+        { "name": "MAX_VERSION_LEN", "kind": "bound", "bound": "MAX_VERSION_LEN", "value": 256 },
+        { "name": "MAX_FREE_STRING_LEN", "kind": "bound", "bound": "MAX_FREE_STRING_LEN", "value": 4096 },
+        { "name": "MAX_VERSION_CODE", "kind": "bound", "bound": "MAX_VERSION_CODE", "value": 9007199254740991 }
+    ]
+}

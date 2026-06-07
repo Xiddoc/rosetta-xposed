@@ -5,6 +5,7 @@
 package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.policy.TargetPolicy
 import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedClass
 import io.github.xiddoc.rosetta.core.resolver.ResolvedField
@@ -13,8 +14,16 @@ import io.github.xiddoc.rosetta.core.resolver.Resolver
 
 public class StaticResolutionBackend(
     public val map: RosettaMap,
+    /**
+     * The C1 target namespace [policy] (xposed#11). It MUST match the policy the
+     * `:xposed` [TargetLoader] enforces, because the `:core` [Resolver] now runs
+     * the namespace guard at the single resolve chokepoint — a custom
+     * `allow`-list / `appNamespaceLabels` set here keeps the two layers in sync,
+     * so a target the binding would allow is not pre-emptively denied by `:core`.
+     */
+    policy: TargetPolicy = TargetPolicy(),
 ) : OverridableBackend {
-    private val resolver = Resolver(map)
+    private val resolver = Resolver(map, policy)
 
     override fun canResolve(realClass: String): Boolean = resolver.hasClass(realClass)
 

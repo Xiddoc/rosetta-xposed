@@ -1,5 +1,5 @@
 {
-    "description": "VALIDATION-semantics parity cases (not resolution): each case carries its own inline `inputMap` that the client validates, asserting the schema-enforced constraints both clients must agree on. This closes the systemic gap that let resolution divergences through unnoticed — previously the oracle only exercised resolution. Currently pins the non-empty (`minLength: 1`) rule on `obfuscated`, plus a known-good baseline. Provider-neutral; see README.md.",
+    "description": "VALIDATION-semantics parity cases (not resolution): each case carries its own inline `inputMap` that the client runs through its map validator (Frida `validateMap` / Xposed `:core` `MapLoader.validate`), asserting the schema-enforced constraints BOTH clients agree on. This closes the systemic gap that let resolution divergences through unnoticed. Pins, in both accept/reject directions, every constraint both core validators enforce: `schema_version` (const 2 hard gate), non-empty (`minLength: 1`) `obfuscated` (class/method/field), non-empty `version`, `app` dotted-package pattern, `version_code` width (accept 2^32 = 4294967296, reject 2^53 = 9007199254740992 — xposed#8/f8 boundary), and reserved record keys (`__proto__`). NOTE: `signer_sha256`'s `^[0-9a-f]{64}$` regex is NOT pinned here because the Xposed `:core` `MapLoader.validate` does not check it (only the full schema and the Frida Zod / Xposed `SignerGuard` paths do); it is pinned by the rosetta-maps `schema/samples/{valid,invalid}/*signer*` instead. Provider-neutral; see README.md.",
     "cases": [
         {
             "name": "a well-formed minimal map validates (baseline)",
@@ -87,6 +87,86 @@
                 "version_code": 100,
                 "classes": {
                     "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a 2^32 version_code validates (longVersionCode, not int32-masked: xposed#8/f8 accept)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 4294967296,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectValid": true
+        },
+        {
+            "name": "a 2^53 version_code is rejected (over Number.MAX_SAFE_INTEGER: xposed#8/f8 reject)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 9007199254740992,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "an empty version label is rejected (minLength:1)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a non-dotted app id is rejected (package-name pattern)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "not a package name",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a reserved __proto__ class key is rejected (prototype-pollution guard)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "__proto__": {
                         "obfuscated": "aaaa"
                     }
                 }

@@ -68,10 +68,18 @@ public object MapLoader {
     public const val MAX_VERSION_LEN: Int = 256
 
     /**
-     * Maximum value of `version_code` (Android Int32 max, matching
-     * `maximum: 2147483647` in the canonical rosetta-maps JSON Schema).
+     * Maximum value of `version_code` — the full Android `longVersionCode`
+     * (`(versionCodeMajor shl 32) or versionCode`), capped at 2^53 − 1
+     * (`Number.MAX_SAFE_INTEGER`), matching `maximum: 9007199254740991` in
+     * the canonical rosetta-maps JSON Schema and rosetta-frida's Zod
+     * `MAX_VERSION_CODE`. Apps that set `versionCodeMajor` legitimately
+     * exceed the old int32 cap; the value is NOT masked to its low 32 bits
+     * (that would alias distinct releases). The bound is 2^53 − 1 (not the
+     * full `Long` range) so the three clients accept/reject identical
+     * values — the Frida client reads this through a JS `Number`, exact only
+     * up to `Number.MAX_SAFE_INTEGER`.
      */
-    public const val MAX_VERSION_CODE: Long = 2_147_483_647L
+    public const val MAX_VERSION_CODE: Long = 9_007_199_254_740_991L
 
     /** Maximum length of any other free-form string. */
     public const val MAX_FREE_STRING_LEN: Int = 4_096
@@ -226,7 +234,11 @@ public object MapLoader {
             if (map.versionCode < 0) {
                 issues += ValidationIssue("version_code", "must be a non-negative integer")
             } else if (map.versionCode > MAX_VERSION_CODE) {
-                issues += ValidationIssue("version_code", "must be at most $MAX_VERSION_CODE (Int32 max)")
+                issues +=
+                    ValidationIssue(
+                        "version_code",
+                        "must be at most $MAX_VERSION_CODE (2^53 - 1, Number.MAX_SAFE_INTEGER)",
+                    )
             }
             free("captured_at", map.capturedAt)
             free("frida_min_version", map.fridaMinVersion)

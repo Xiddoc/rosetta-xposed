@@ -20,6 +20,9 @@ import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.core.resolver.Resolver
 import io.github.xiddoc.rosetta.core.resolver.parseSignatureArgs
 import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
+import io.github.xiddoc.rosetta.core.version.MapRegistry
+import io.github.xiddoc.rosetta.core.version.MatchedBy
+import io.github.xiddoc.rosetta.core.version.VersionMatch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -31,6 +34,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import kotlin.test.assertEquals
@@ -60,6 +64,36 @@ class ConformanceTest {
             "/conformance/introspection.json",
             "/conformance/errors.json",
             "/conformance/validation.json",
+            "/conformance/heuristic.json",
+            "/conformance/bounds.json",
+            "/conformance/target-policy.json",
+            "/conformance/version-select.json",
+        )
+
+    /**
+     * This client's copy of each shared numeric bound, keyed by the name the
+     * `bounds.json` fixture uses. Each `bound` case asserts the fixture's
+     * `value` equals the constant READ FROM THE REAL [MapLoader] — so a
+     * one-sided edit to either client's constant (or the canonical schema)
+     * fails this gate on both sides. The frida `BOUNDS` map is the twin.
+     * Kotlin-only pre-parse guards (MAX_INPUT_BYTES / MAX_NESTING_DEPTH) are
+     * intentionally absent: the Frida JSON.parse path has no analogue, so they
+     * are not part of the shared bound set.
+     */
+    private val boundsTable: Map<String, Long> =
+        mapOf(
+            "MAX_CLASSES" to MapLoader.MAX_CLASSES.toLong(),
+            "MAX_METHODS_PER_CLASS" to MapLoader.MAX_METHODS_PER_CLASS.toLong(),
+            "MAX_FIELDS_PER_CLASS" to MapLoader.MAX_FIELDS_PER_CLASS.toLong(),
+            "MAX_METHOD_OVERLOADS" to MapLoader.MAX_OVERLOADS_PER_METHOD.toLong(),
+            "MAX_ANCHORS" to MapLoader.MAX_ANCHORS_PER_CLASS.toLong(),
+            "MAX_SOURCES" to MapLoader.MAX_SOURCES.toLong(),
+            "MAX_SHORT_NAME_LEN" to MapLoader.MAX_SHORT_NAME_LEN.toLong(),
+            "MAX_SIGNATURE_LEN" to MapLoader.MAX_SIGNATURE_LEN.toLong(),
+            "MAX_APP_LEN" to MapLoader.MAX_APP_LEN.toLong(),
+            "MAX_VERSION_LEN" to MapLoader.MAX_VERSION_LEN.toLong(),
+            "MAX_FREE_STRING_LEN" to MapLoader.MAX_FREE_STRING_LEN.toLong(),
+            "MAX_VERSION_CODE" to MapLoader.MAX_VERSION_CODE,
         )
 
     @TestFactory
@@ -101,6 +135,19 @@ class ConformanceTest {
         // touches the shared resolver.
         if (kind == "validate") {
             runValidateCase(case, expectError)
+            return
+        }
+
+        // `bound` / `fuzzySelect` are SELF-CONTAINED parity cases (maps#10 /
+        // xposed#13): a `bound` case pins a shared numeric constant value; a
+        // `fuzzySelect` case pins registry version selection. Neither uses the
+        // shared resolver, so they short-circuit before the resolver dispatch.
+        if (kind == "bound") {
+            runBoundCase(case)
+            return
+        }
+        if (kind == "fuzzySelect") {
+            runFuzzySelectCase(case)
             return
         }
 
@@ -231,8 +278,60 @@ class ConformanceTest {
                 )
             }
             "IllegalArgument" -> assertFailsWith<IllegalArgumentException> { block() }
+            // The target-namespace guard (target-policy.json / xposed#11): a
+            // forbidden obfuscated target is rejected at the resolver chokepoint
+            // before any Class.forName. Frida twin: TargetPolicyError.
+            "TargetPolicy" -> assertFailsWith<TargetPolicyException> { block() }
             else -> error("unknown expectError '$expectError'")
         }
+    }
+
+    /**
+     * Run a `bound`-kind case (bounds.json): assert the fixture's `value`
+     * equals the shared numeric constant read from the REAL [MapLoader] (looked
+     * up in [boundsTable]). Any drift between the canonical schema, this
+     * Kotlin BoundsChecker, and the frida Zod validator fails on both sides.
+     */
+    private fun runBoundCase(case: JsonObject) {
+        val name = case.str("bound")
+        val actual = requireNotNull(boundsTable[name]) { "unknown bound '$name'" }
+        assertEquals(case["value"]!!.jsonPrimitive.long, actual, "bound $name drifted")
+    }
+
+    /**
+     * Run a `fuzzySelect`-kind case (version-select.json / xposed#13): build a
+     * [MapRegistry] from the case's `versions` (each backed by a throwaway map
+     * whose `version` label IS the key) and assert the opt-in fuzzy selector
+     * picks `expectSelected`. The frida twin runs `pickMapForVersion` with
+     * `versionMatch: 'fuzzy'`; here it is [VersionMatch.select] with
+     * `allowFuzzyMatch = true`. The detected `versionCode`/exact-label paths are
+     * deliberately bypassed (the target label has no exact entry) so only the
+     * fuzzy ranking decides.
+     */
+    private fun runFuzzySelectCase(case: JsonObject) {
+        val versions = case.strList("versions")
+        val maps =
+            versions.mapIndexed { i, label ->
+                // version_code must be unique so the registry's authoritative
+                // index never collapses two labels; the codes are otherwise
+                // irrelevant (fuzzy ranks on the version LABEL, not the code).
+                RosettaMap(
+                    schemaVersion = 2,
+                    app = "com.example.app",
+                    version = label,
+                    versionCode = (i + 1).toLong(),
+                    classes = emptyMap(),
+                )
+            }
+        val registry = MapRegistry.fromCollection(maps)
+        val selected =
+            VersionMatch.select(
+                registry = registry,
+                versionLabel = case.str("target"),
+                allowFuzzyMatch = true,
+            )
+        assertEquals(MatchedBy.FUZZY_LABEL, selected?.matchedBy, "expected a fuzzy pick")
+        assertEquals(case.str("expectSelected"), selected?.map?.version)
     }
 
     private fun invoke(

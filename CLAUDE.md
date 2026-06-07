@@ -25,7 +25,7 @@ mirror of rosetta-frida's "just makes `Java.use` smarter" stance.
 
 ## Layout
 
-Two-module Gradle (Kotlin/JVM) build:
+Four-module Gradle (Kotlin/JVM) build:
 
 - **`:core`** — pure-JVM Kotlin, the framework-neutral layers (RFC 0001
   layers 2–3): the `schema_version: 2` map model
@@ -41,6 +41,12 @@ Two-module Gradle (Kotlin/JVM) build:
   the JVM. What remains: end-to-end on-device native wiring (the committed
   DEX fixture in `:dexkit` covers the adapter path, but a physical-device
   run has not been validated) and Maven publishing.
+- **`:xposed-android`** — pure-JVM Android-helper logic (bundled-map
+  loading and signer-hash / `AppIdentity` assembly from `PackageManager`
+  primitives). Applies no Android plugin and never compiles against
+  `android.jar`, so it builds and tests on a plain JVM and joins the root
+  100% coverage gate; the irreducible `PackageManager` read stays in the
+  consuming module.
 - **`:dexkit`** (optional module) — the thin `DexKitBackedIndex` adapter
   that wires the `DexKitIndex` seam to the real `DexKitBridge` native.
   Built and has an integration test that runs real DexKit against a

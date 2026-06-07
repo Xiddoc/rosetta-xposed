@@ -16,9 +16,9 @@
  *        rosetta.method("com.example.app.RemoteServiceClient", "requestTicket")
  *            .hook { member -> XposedBridge.hookMethod(member, myHook) }
  *
- * Map selection by version_code and the (planned) DexKit self-healing
- * fallback live behind [ResolutionBackend]; this class only binds resolved
- * names to concrete members and stays framework-agnostic.
+ * Map selection by version_code and the DexKit-backed self-healing fallback
+ * live behind [ResolutionBackend]; this class only binds resolved names to
+ * concrete members and stays framework-agnostic.
  */
 package io.github.xiddoc.rosetta.xposed
 
@@ -138,7 +138,7 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed {
             SignerGuard.verify(map, identity)
-            return RosettaXposed(StaticResolutionBackend(map), classLoader, map.app, policy)
+            return RosettaXposed(StaticResolutionBackend(map, policy), classLoader, map.app, policy)
         }
 
         /**
@@ -154,7 +154,7 @@ public class RosettaXposed internal constructor(
             map: RosettaMap,
             classLoader: ClassLoader,
             policy: TargetPolicy = TargetPolicy(),
-        ): RosettaXposed = RosettaXposed(StaticResolutionBackend(map), classLoader, map.app, policy)
+        ): RosettaXposed = RosettaXposed(StaticResolutionBackend(map, policy), classLoader, map.app, policy)
 
         /**
          * Select a map from a registry by the running app's identity, then
@@ -163,6 +163,11 @@ public class RosettaXposed internal constructor(
          * matches the version_code (the point at which a real module would
          * fall back to the dynamic DexKit backend).
          *
+         * @param allowFuzzyMatch opt-in fuzzy `versionName` fallback (RFC 0001
+         *   Decision 3): when `true` and no exact version_code / label match is
+         *   found, the closest registered label is selected. Off by default so a
+         *   missing exact map fails loudly rather than silently binding a
+         *   wrong-version map. Forwarded to [VersionMatch.select].
          * @throws io.github.xiddoc.rosetta.core.MalformedSignerException if
          *   the selected map's `signer_sha256` is malformed.
          * @throws io.github.xiddoc.rosetta.core.MissingSignerException if the
@@ -176,10 +181,15 @@ public class RosettaXposed internal constructor(
             identity: AppIdentity,
             classLoader: ClassLoader,
             policy: TargetPolicy = TargetPolicy(),
+            allowFuzzyMatch: Boolean = false,
         ): RosettaXposed? {
             val selected =
-                VersionMatch.select(registry, identity.versionCode, identity.versionName)
-                    ?: return null
+                VersionMatch.select(
+                    registry,
+                    identity.versionCode,
+                    identity.versionName,
+                    allowFuzzyMatch,
+                ) ?: return null
             return fromMap(selected.map, classLoader, identity, policy)
         }
 
@@ -218,7 +228,7 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed {
             if (identity != null) SignerGuard.verify(map, identity)
-            val static = StaticResolutionBackend(map)
+            val static = StaticResolutionBackend(map, policy)
             val composite =
                 CompositeResolutionBackend(
                     static = static,
