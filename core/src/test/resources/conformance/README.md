@@ -53,6 +53,8 @@ Every case has:
 | `toJvmDescriptor`    | `type`                              | `expectResult` (string descriptor)                   |
 | `parseSignatureArgs` | `signature`                         | `expectList` (array of descriptor strings)           |
 | `validate`           | `inputMap`                          | `expectValid: true`, **or** `expectError: "MapValidation"` |
+| `bound`              | `bound`, `value`                    | the shared numeric constant `bound` equals `value`   |
+| `fuzzySelect`        | `versions`, `target`                | `expectSelected` (the fuzzy-picked version label)    |
 
 Notes on inputs:
 
@@ -85,7 +87,29 @@ Notes on inputs:
   oracle covers VALIDATION semantics (the schema/bounds gate) in addition to
   resolution semantics. A `validate` case asserts either `expectValid: true`
   (the map must pass) or `expectError: "MapValidation"` (the map must be
-  rejected — e.g. an empty `obfuscated`, violating `minLength: 1`).
+  rejected — e.g. an empty `obfuscated`, violating `minLength: 1`). NOTE: the
+  shared `validate` cases pin only the constraints BOTH clients' map
+  validators enforce — `signer_sha256`'s `^[0-9a-f]{64}$` regex is NOT among
+  them (the Xposed `:core` `MapLoader.validate` does not check it), so it is
+  pinned by the rosetta-maps `schema/samples/*signer*` instead.
+- **`bound`** / **`value`** — for the `bound` kind ONLY (`bounds.json`):
+  `bound` names a shared DoS/cardinality constant (e.g. `MAX_CLASSES`,
+  `MAX_VERSION_CODE`) and `value` is its required exact value. Each client
+  reads the constant from its OWN validator (TS: the `MAX_*` exports of
+  `src/validate/schema.ts`; Kotlin: `MapLoader.MAX_*`) and asserts it equals
+  `value`, so a one-sided edit to either client's constant (or the canonical
+  schema) fails on both sides. Only bounds BOTH clients enforce are listed
+  (the Kotlin-only `MAX_INPUT_BYTES` / `MAX_NESTING_DEPTH` pre-parse guards
+  have no Frida analogue and are omitted).
+- **`versions`** / **`target`** — for the `fuzzySelect` kind ONLY
+  (`version-select.json`): `versions` is the list of registered version
+  LABELS (each backed by a throwaway map whose `version` is that label), and
+  `target` is the detected label with no exact match. Each client builds a
+  registry and runs its OPT-IN fuzzy selector (TS: `pickMapForVersion` with
+  `versionMatch: 'fuzzy'`; Kotlin: `VersionMatch.select` with
+  `allowFuzzyMatch = true`) and asserts the picked label equals
+  `expectSelected` — pinning the component-wise lexicographic distance
+  ranking across both clients (xposed#13 / f13).
 
 ### Expectation fields
 
@@ -121,6 +145,10 @@ Notes on inputs:
 - **`expectValid`** (boolean) — for the `validate` kind: `true` asserts the
   `inputMap` passes validation. (Rejection is asserted via `expectError:
   "MapValidation"` instead.)
+- **`value`** (number) — for the `bound` kind: the required exact value of
+  the named shared constant.
+- **`expectSelected`** (string) — for the `fuzzySelect` kind: the version
+  label the fuzzy selector must pick from `versions` for `target`.
 
 Any `expect*` field that is **absent** is simply not asserted, so a case
 can assert as little or as much as it wants. A field present with value
@@ -135,6 +163,7 @@ can assert as little or as much as it wants. A field present with value
 | `AmbiguousOverload` | a method has several overloads and no `argTypes` were supplied.           |
 | `IllegalArgument`   | a malformed input to a signature utility (bad signature / empty type name / unknown descriptor char). |
 | `MapValidation`     | for the `validate` kind: the `inputMap` was rejected by the schema/bounds validator (TS: `MapValidationError`; Kotlin: `MapValidationException`). |
+| `TargetPolicy`      | for `class` cases in `target-policy.json`: the resolved obfuscated target is forbidden by the namespace guard and is rejected at the resolver chokepoint before any `Java.use` / `Class.forName` (TS: `TargetPolicyError`; Kotlin: `TargetPolicyException`). |
 
 Each client maps these to its own error type (Kotlin: `ResolveException`,
 `UnknownArgTypeException`, `AmbiguousOverloadException`,
@@ -172,6 +201,25 @@ case is asserted to be exactly that subtype.
 - **Signature parsing**: splits a descriptor's arg list, supporting
   primitives, object types, and (multi-dim) arrays; malformed signatures
   throw.
+- **Validation** (`validation.json`): each `validate` case runs its inline
+  `inputMap` through the client's map validator, pinning the constraints
+  BOTH validators enforce (`schema_version` hard gate, non-empty
+  `obfuscated`/`version`, `app` pattern, `version_code` width incl. the
+  2^32-accept / 2^53-reject boundary, reserved record keys).
+- **Arg-type heuristic** (`heuristic.json`): the `unknownArgTypeOrNull` /
+  `isClassNameForm` exclusion classification — a class-name-form unmapped
+  arg yields the precise `UnknownArgType`; any descriptor / primitive /
+  lone-letter / array form is excluded and yields a generic `Resolve` miss.
+- **Bound values** (`bounds.json`): the shared DoS/cardinality constants are
+  pinned by value so the triplicated schema / Zod / Kotlin copies cannot
+  drift apart silently.
+- **Target-namespace guard** (`target-policy.json`): under the default
+  policy, app-prefixed / package-local obf targets resolve while reserved
+  (`java.`, `android.`) and foreign namespaces are rejected fail-closed with
+  `TargetPolicy`.
+- **Fuzzy version selection** (`version-select.json`): the opt-in fuzzy
+  registry selector ranks candidates by component-wise lexicographic semver
+  distance (not the old weighted sum), pinned across both clients.
 
 ## Adding a fixture file
 

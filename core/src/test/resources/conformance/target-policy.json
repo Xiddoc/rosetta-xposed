@@ -1,0 +1,58 @@
+{
+    "description": "Cross-client parity for the target-namespace guard (RFC 0001 C1; xposed#11 / the f11 twin). A community map maps a real name to an ARBITRARY obfuscated string fed verbatim into Java.use / Class.forName; the guard confines that target to the app's own / package-local namespace under the DEFAULT policy and rejects reserved framework namespaces (java., android., …) and foreign namespaces fail-closed BEFORE the load. Both clients run the same guard at the resolver chokepoint (frida `assertTargetAllowed`, xposed `TargetGuard.assertAllowed`) with the same value-for-value DEFAULT_DENY_PREFIXES, so the same map must be accepted/rejected identically. These `class` cases drive resolveClass (which invokes the guard) under the default policy: app-prefixed and package-local obf names resolve; a reserved-namespace obf and a foreign-namespace obf are rejected with `TargetPolicy`. The app is `com.example.app`, so the default 2-label app prefix is `com.example`. Provider-neutral; see README.md.",
+    "map": {
+        "schema_version": 2,
+        "app": "com.example.app",
+        "version": "1.0.0",
+        "version_code": 100,
+        "classes": {
+            "com.example.app.PackageLocal": {
+                "obfuscated": "aaaa"
+            },
+            "com.example.app.AppPrefixed": {
+                "obfuscated": "com.example.app.bbbb"
+            },
+            "com.example.app.EvilRuntime": {
+                "obfuscated": "java.lang.Runtime"
+            },
+            "com.example.app.EvilFramework": {
+                "obfuscated": "android.app.ActivityManager"
+            },
+            "com.example.app.EvilForeign": {
+                "obfuscated": "org.evil.Backdoor"
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "package-local obf name (no dots) is allowed",
+            "kind": "class",
+            "class": "com.example.app.PackageLocal",
+            "expectObf": "aaaa"
+        },
+        {
+            "name": "app-prefixed obf name is allowed (within com.example)",
+            "kind": "class",
+            "class": "com.example.app.AppPrefixed",
+            "expectObf": "com.example.app.bbbb"
+        },
+        {
+            "name": "reserved java.* target is rejected (default denylist)",
+            "kind": "class",
+            "class": "com.example.app.EvilRuntime",
+            "expectError": "TargetPolicy"
+        },
+        {
+            "name": "reserved android.* target is rejected (default denylist)",
+            "kind": "class",
+            "class": "com.example.app.EvilFramework",
+            "expectError": "TargetPolicy"
+        },
+        {
+            "name": "foreign namespace target is rejected (not app-prefixed)",
+            "kind": "class",
+            "class": "com.example.app.EvilForeign",
+            "expectError": "TargetPolicy"
+        }
+    ]
+}
