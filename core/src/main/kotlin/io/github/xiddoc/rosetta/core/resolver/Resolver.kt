@@ -25,16 +25,52 @@ import io.github.xiddoc.rosetta.core.UnknownArgTypeException
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.policy.TargetGuard
+import io.github.xiddoc.rosetta.core.policy.TargetPolicy
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * The neutral real → obf resolver.
+ *
+ * THREAD SAFETY (xposed#10). An Xposed module runs inside the app JVM and hooks
+ * dispatch on arbitrary threads, so a single [Resolver] is shared across
+ * threads. All caches and indices are [ConcurrentHashMap]s populated via
+ * [ConcurrentHashMap.computeIfAbsent]: resolution is idempotent, so a benign
+ * last-writer-wins on a race produces an equal value (no torn reads, no
+ * `HashMap` resize corruption). [override] (the self-healing write path) takes a
+ * short lock so its multi-map mutation is atomic with respect to readers.
+ *
+ * SECURITY — TARGET NAMESPACE GUARD (xposed#11, RFC 0001 C1). Every resolve
+ * path that produces a target FQN (the obfuscated name a layer-4 binding would
+ * hand to `Class.forName` / `Java.use`) runs [TargetGuard.assertAllowed] at this
+ * single `:core` chokepoint BEFORE the value is cached or returned, matching the
+ * Frida resolver. A standalone `:core` consumer therefore cannot bypass C1; the
+ * `:xposed` binding's boot/system loader check is defense-in-depth on top.
+ *
+ * @param map the selected per-version map.
+ * @param policy the C1 target namespace policy (default = the strict
+ *   [TargetPolicy] defaults).
+ * @param appPackage the app package the namespace prefix is derived from
+ *   (defaults to [RosettaMap.app]); pass it explicitly only to override the
+ *   prefix the map's `app` would imply.
+ */
 public class Resolver(
     private val map: RosettaMap,
+    private val policy: TargetPolicy = TargetPolicy(),
+    appPackage: String = map.app,
 ) {
-    /** Runtime overrides — take precedence over [RosettaMap.classes]. */
-    private val overrides = mutableMapOf<String, ClassEntry>()
+    /** The app's own namespace prefix, derived once for the C1 guard. */
+    private val appPrefix: String = TargetGuard.appPrefixOf(appPackage, policy)
 
-    private val classCache = mutableMapOf<String, ResolvedClass>()
-    private val methodCache = mutableMapOf<String, ResolvedMethod>()
-    private val fieldCache = mutableMapOf<String, ResolvedField>()
+    /** Runtime overrides — take precedence over [RosettaMap.classes]. */
+    private val overrides = ConcurrentHashMap<String, ClassEntry>()
+
+    private val classCache = ConcurrentHashMap<String, ResolvedClass>()
+    private val methodCache = ConcurrentHashMap<String, ResolvedMethod>()
+    private val fieldCache = ConcurrentHashMap<String, ResolvedField>()
+
+    /** Guards the multi-map mutation in [override] so a reader never sees a half-applied re-point. */
+    private val overrideLock = Any()
 
     /**
      * Reverse index: obfuscated class short name → real FQN, for tier-3
@@ -49,10 +85,10 @@ public class Resolver(
      * and DOES take the obf entry, after cleaning the overridden real name's
      * previous (now stale) obf entry.
      */
-    private val reverseClassIndex = mutableMapOf<String, String>()
+    private val reverseClassIndex = ConcurrentHashMap<String, String>()
 
     /** The obf short name each real name currently owns, so [override] can clean its stale reverse entry. */
-    private val forwardObfIndex = mutableMapOf<String, String>()
+    private val forwardObfIndex = ConcurrentHashMap<String, String>()
 
     init {
         for ((realName, entry) in map.classes) {
@@ -75,13 +111,27 @@ public class Resolver(
     public fun resolveClass(
         realName: String,
         prefetched: ClassEntry? = null,
-    ): ResolvedClass {
-        classCache[realName]?.let { return it }
-        val entry = prefetched ?: entryFor(realName)
-        val value = ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
-        classCache[realName] = value
-        return value
-    }
+    ): ResolvedClass =
+        // computeIfAbsent keeps the cache populate atomic + idempotent under
+        // concurrent callers (xposed#10). The mapping function runs the C1
+        // guard, which THROWS for a denied target — computeIfAbsent propagates
+        // that and stores nothing, so a forbidden target is never cached
+        // (no cache poisoning), exactly as the Frida resolver does.
+        classCache.computeIfAbsent(realName) {
+            val entry = prefetched ?: entryFor(realName)
+            // (C1) Guard the target FQN BEFORE caching — a denied target must
+            // throw before any downstream Class.forName / Java.use.
+            TargetGuard.assertAllowed(realName, entry.obfuscated, appPrefix, policy)
+            // `extends` is carried THROUGH UNTRANSLATED (xposed#12 decision).
+            // The shared conformance fixture pins `extends` to the raw map value
+            // and the Frida twin does the same, so translating it here would
+            // diverge the two clients. The inherited-member walk that #12 needs
+            // is done in the `:xposed` binding off the LOADED runtime superclass
+            // chain (`Class.superclass`), which is robust even when the map omits
+            // the `extends` edge — so the resolver does not need a translated
+            // parent name. See `Targets.MethodTarget.member` / `FieldTarget.field`.
+            ResolvedClass(realName = realName, obfName = entry.obfuscated, extends = entry.extends)
+        }
 
     /**
      * The backing [ClassEntry] for [realName] (override-first), or throw a
@@ -236,30 +286,34 @@ public class Resolver(
      * resolver re-resolves by are carried in — provenance stays with the
      * discovery sink, never the resolver.
      */
-    public fun override(discovered: DiscoveredClass) {
-        val entry =
-            ClassEntry(
-                obfuscated = discovered.obfName,
-                extends = discovered.extends,
-                methods = discovered.methods,
-                fields = discovered.fields,
-            )
-        overrides[discovered.realName] = entry
+    public fun override(discovered: DiscoveredClass): Unit =
+        // The override mutates four maps; take the lock so the multi-map
+        // re-point is atomic w.r.t. another override and never leaves a reader
+        // observing a half-applied state (xposed#10). Reads stay lock-free.
+        synchronized(overrideLock) {
+            val entry =
+                ClassEntry(
+                    obfuscated = discovered.obfName,
+                    extends = discovered.extends,
+                    methods = discovered.methods,
+                    fields = discovered.fields,
+                )
+            overrides[discovered.realName] = entry
 
-        // Clean the stale reverse entry: if this real name previously owned a
-        // (different) obf short name in the reverse index, drop it so a lookup
-        // of the OLD obf no longer resolves to this real name.
-        val previousObf = forwardObfIndex[discovered.realName]
-        if (previousObf != null && previousObf != entry.obfuscated && reverseClassIndex[previousObf] == discovered.realName) {
-            reverseClassIndex.remove(previousObf)
+            // Clean the stale reverse entry: if this real name previously owned a
+            // (different) obf short name in the reverse index, drop it so a lookup
+            // of the OLD obf no longer resolves to this real name.
+            val previousObf = forwardObfIndex[discovered.realName]
+            if (previousObf != null && previousObf != entry.obfuscated && reverseClassIndex[previousObf] == discovered.realName) {
+                reverseClassIndex.remove(previousObf)
+            }
+            // An override is an intentional re-point, so it takes the obf entry
+            // (last-write-wins for this one obf) — the documented exception to the
+            // first-write-wins build policy.
+            reverseClassIndex[entry.obfuscated] = discovered.realName
+            forwardObfIndex[discovered.realName] = entry.obfuscated
+            invalidate(discovered.realName)
         }
-        // An override is an intentional re-point, so it takes the obf entry
-        // (last-write-wins for this one obf) — the documented exception to the
-        // first-write-wins build policy.
-        reverseClassIndex[entry.obfuscated] = discovered.realName
-        forwardObfIndex[discovered.realName] = entry.obfuscated
-        invalidate(discovered.realName)
-    }
 
     /** Reverse-lookup an obfuscated class short name to its real FQN. */
     public fun reverseLookup(obfName: String): String? = reverseClassIndex[obfName]

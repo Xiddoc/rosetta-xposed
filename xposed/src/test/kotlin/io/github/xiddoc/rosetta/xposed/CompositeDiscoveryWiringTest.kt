@@ -22,6 +22,13 @@ class CompositeDiscoveryWiringTest {
     private val obf = "io.github.xiddoc.rosetta.xposed.fixtures.ObfClient"
     private val real = "com.example.RealClient"
 
+    // The fixture obf lives outside the `com.example` app namespace, so the
+    // :core C1 guard (xposed#11) would deny it under the default policy. These
+    // discovery-wiring tests are not exercising the guard, so they allowlist the
+    // fixture FQN — the same escape hatch RosettaXposedTest uses — and pass it
+    // into the static backend whose :core resolver now runs the guard.
+    private val policy = TargetPolicy(allow = listOf(obf))
+
     private fun emptyStaticMap() =
         MapLoader.fromJson(
             """
@@ -54,7 +61,7 @@ class CompositeDiscoveryWiringTest {
         val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
         val composite =
             CompositeResolutionBackend(
-                StaticResolutionBackend(staticMap),
+                StaticResolutionBackend(staticMap, policy),
                 DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;"))),
             )
         assertEquals(obf, composite.resolveClass(real).obfName)
@@ -84,7 +91,7 @@ class CompositeDiscoveryWiringTest {
         val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
         val composite =
             CompositeResolutionBackend(
-                StaticResolutionBackend(staticMap),
+                StaticResolutionBackend(staticMap, policy),
                 DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;"))),
             )
         assertTrue(composite.canResolve(real))
@@ -96,7 +103,7 @@ class CompositeDiscoveryWiringTest {
     @Test
     fun `composite writes a discovery back so the next lookup is static`() {
         val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
-        val static = StaticResolutionBackend(emptyStaticMap())
+        val static = StaticResolutionBackend(emptyStaticMap(), policy)
         val composite =
             CompositeResolutionBackend(
                 static,
@@ -120,7 +127,7 @@ class CompositeDiscoveryWiringTest {
                 byAidl = mapOf("Lcom/example/IFoo;" to obf),
                 methods = mapOf(obf to listOf(MethodMatch(obf, "c", "(Ljava/lang/String;)Ljava/lang/String;"))),
             )
-        val static = StaticResolutionBackend(emptyStaticMap())
+        val static = StaticResolutionBackend(emptyStaticMap(), policy)
         val composite =
             CompositeResolutionBackend(
                 static,
@@ -158,7 +165,7 @@ class CompositeDiscoveryWiringTest {
         // The discovered class carries no fields, so a static field lookup misses
         // with a core ResolveException — but the class WAS written back (index
         // consulted), proving resolveField routes through the class discovery.
-        val static = StaticResolutionBackend(emptyStaticMap())
+        val static = StaticResolutionBackend(emptyStaticMap(), policy)
         val composite =
             CompositeResolutionBackend(
                 static,
@@ -176,7 +183,7 @@ class CompositeDiscoveryWiringTest {
         // dynamic discovery into the static resolver, so a resolveClass after
         // write-back surfaces the discovered parent.
         val index = FakeDexKitIndex(bySuper = mapOf("zzzz" to obf))
-        val static = StaticResolutionBackend(emptyStaticMap())
+        val static = StaticResolutionBackend(emptyStaticMap(), policy)
         val composite =
             CompositeResolutionBackend(
                 static,
@@ -191,7 +198,7 @@ class CompositeDiscoveryWiringTest {
     fun `composite canResolve is false when neither backend knows the name`() {
         val composite =
             CompositeResolutionBackend(
-                StaticResolutionBackend(emptyStaticMap()),
+                StaticResolutionBackend(emptyStaticMap(), policy),
                 DynamicResolutionBackend(FakeDexKitIndex(), emptyMap()),
             )
         assertTrue(!composite.canResolve("com.example.Unknown"))

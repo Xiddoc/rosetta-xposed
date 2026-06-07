@@ -175,7 +175,9 @@ class CoverageTest {
     fun `resolveMethod through the interface uses the argTypes default`() {
         // Calling the two-arg overload via a ResolutionBackend reference goes
         // through the interface's default-argument bridge.
-        val backend: ResolutionBackend = StaticResolutionBackend(map)
+        // The fixture obf is outside the app namespace; allowlist it so the
+        // :core C1 guard (xposed#11) permits the resolve through this backend.
+        val backend: ResolutionBackend = StaticResolutionBackend(map, TargetPolicy(allow = listOf(obf)))
         val resolved = backend.resolveMethod("com.example.RealClient", "single")
         assertEquals("c", resolved.obfName)
     }
