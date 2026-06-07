@@ -5,8 +5,10 @@
  * version. This is the Kotlin analogue of rosetta-frida's
  * `src/validate/schema.ts` + JSON load path:
  *
- *   - Unknown keys are accepted and ignored, so additive schema evolution
- *     doesn't break older readers (matches the Zod `.strip()` behaviour).
+ *   - Unknown keys are REJECTED (xposed#14 M6): the canonical rosetta-maps
+ *     JSON Schema is going `additionalProperties: false` (strict), so a typo'd
+ *     or stray key is a hard parse failure here too — a map that loads on one
+ *     client loads on all. (`ignoreUnknownKeys = false`.)
  *   - `schema_version` is a hard gate: a map declaring anything other than
  *     the current version is rejected with a structured issue, exactly as
  *     the Frida side rejects non-`2` maps via `z.literal(2)`.
@@ -31,7 +33,11 @@ import kotlinx.serialization.json.Json
 public object MapLoader {
     private val json: Json =
         Json {
-            ignoreUnknownKeys = true
+            // Strict (xposed#14 M6): reject unknown / typo'd keys, matching the
+            // canonical schema's `additionalProperties: false`. All optional
+            // schema fields are declared on the model, so a rejected key is a
+            // genuinely unknown one, not additive evolution this reader lags.
+            ignoreUnknownKeys = false
             isLenient = false
         }
 
@@ -109,6 +115,15 @@ public object MapLoader {
     /** The Android package-name shape required of `app`. */
     private val APP_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
 
+    /** Highest code point encoded as 1 UTF-8 byte (U+007F). See [utf8ByteLength]. */
+    private const val UTF8_1BYTE_MAX = 0x7F
+
+    /** Highest code point encoded as 2 UTF-8 bytes (U+07FF). See [utf8ByteLength]. */
+    private const val UTF8_2BYTE_MAX = 0x7FF
+
+    /** UTF-8 byte count for a BMP code unit above U+07FF (incl. each surrogate). See [utf8ByteLength]. */
+    private const val UTF8_3BYTE_LEN = 3
+
     /**
      * Parse and validate a JSON map.
      *
@@ -142,12 +157,19 @@ public object MapLoader {
      * Cheap pre-parse denial-of-service guard: reject oversized input by
      * byte length, then scan once for excessive structural nesting (which
      * would risk a stack overflow in the recursive decoder).
+     *
+     * The byte-length check counts UTF-8 bytes in a SINGLE pass WITHOUT
+     * allocating a copy (xposed#14 L4): the previous `toByteArray().size`
+     * allocated a full byte[] just to read its length, scanning the input an
+     * extra time. [utf8ByteLength] counts in place and short-circuits the moment
+     * the count passes [MAX_INPUT_BYTES], so an oversized input is rejected
+     * fail-fast before the depth scan ever runs.
      */
     private fun guardInput(text: String) {
-        val bytes = text.toByteArray(Charsets.UTF_8).size
+        val bytes = utf8ByteLength(text)
         if (bytes > MAX_INPUT_BYTES) {
             throw MapInputTooLargeException(
-                "Map input is $bytes bytes, over the $MAX_INPUT_BYTES-byte limit",
+                "Map input exceeds the $MAX_INPUT_BYTES-byte limit (over $MAX_INPUT_BYTES bytes)",
             )
         }
         val depth = maxNestingDepth(text)
@@ -156,6 +178,32 @@ public object MapLoader {
                 "Map input nests to depth $depth, over the $MAX_NESTING_DEPTH limit",
             )
         }
+    }
+
+    /**
+     * UTF-8 byte length of [text] computed in place (no `toByteArray` copy).
+     * Each `char` contributes 1 byte (≤ U+007F), 2 bytes (≤ U+07FF), 3 bytes
+     * (a BMP code unit, incl. an unpaired surrogate), with a surrogate PAIR
+     * contributing 4 bytes total (2 per code unit) — the same total
+     * `String.toByteArray(UTF_8)` produces. Short-circuits at
+     * [MAX_INPUT_BYTES] + 1: once the running total exceeds the cap, the exact
+     * size is irrelevant (the input is rejected), so we stop counting.
+     */
+    private fun utf8ByteLength(text: String): Int {
+        var bytes = 0
+        for (ch in text) {
+            val code = ch.code
+            bytes +=
+                when {
+                    code <= UTF8_1BYTE_MAX -> 1
+                    code <= UTF8_2BYTE_MAX -> 2
+                    else -> UTF8_3BYTE_LEN
+                }
+            // Bound the work: the moment we pass the cap the exact length no
+            // longer matters, so stop (returns a value strictly over the cap).
+            if (bytes > MAX_INPUT_BYTES) return bytes
+        }
+        return bytes
     }
 
     /**

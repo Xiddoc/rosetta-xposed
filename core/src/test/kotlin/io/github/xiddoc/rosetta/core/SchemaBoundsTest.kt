@@ -471,6 +471,57 @@ class SchemaBoundsTest {
     }
 
     @Test
+    fun `byte-length guard counts multi-byte UTF-8 in place and still loads in-bounds input`() {
+        // xposed#14 L4: the size guard counts UTF-8 bytes without a toByteArray
+        // copy. A small map carrying a 2-byte char (é, U+00E9) and a 3-byte char
+        // (€, U+20AC) in `version` exercises the 2-byte and 3-byte counting
+        // branches; the input is well under the cap so it loads cleanly.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0-é€",
+             "version_code":100,"classes":{}}
+            """.trimIndent()
+        val loaded = MapLoader.fromJson(json)
+        assertEquals("1.0-é€", loaded.version)
+    }
+
+    @Test
+    fun `byte-length guard rejects multi-byte input that overflows the cap`() {
+        // A 3-byte char (€) repeated past the byte cap: the running count crosses
+        // MAX_INPUT_BYTES well before the char count would, proving the guard
+        // measures BYTES (multi-byte aware) and short-circuits over the cap.
+        val big = "€".repeat(MapLoader.MAX_INPUT_BYTES / 3 + 1)
+        val ex = assertFailsWith<MapInputTooLargeException> { MapLoader.fromJson(big) }
+        assertTrue(ex.message!!.contains("bytes"))
+    }
+
+    @Test
+    fun `rejects an unknown top-level key`() {
+        // xposed#14 M6: strict parsing (ignoreUnknownKeys = false) mirrors the
+        // canonical schema's additionalProperties:false — a stray/typo key is a
+        // hard parse failure surfaced as a MapValidationException.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0.0",
+             "version_code":100,"classes":{},"totallyUnknownKey":true}
+            """.trimIndent()
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
+    }
+
+    @Test
+    fun `rejects an unknown nested key on a class entry`() {
+        // A typo on a class entry (e.g. "obfuscated") is rejected too, so a
+        // mistyped field can never silently become a no-op default.
+        val json =
+            """
+            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+             "classes":{"com.example.Foo":{"obfuscated":"a","mystery":1}}}
+            """.trimIndent()
+        assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+    }
+
+    @Test
     fun `rejects deeply-nested input before parsing`() {
         val deep = "[".repeat(MapLoader.MAX_NESTING_DEPTH + 1) + "]".repeat(MapLoader.MAX_NESTING_DEPTH + 1)
         val ex = assertFailsWith<MapInputTooLargeException> { MapLoader.fromJson(deep) }
