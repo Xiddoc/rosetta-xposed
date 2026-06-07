@@ -187,12 +187,19 @@ public object MapLoader {
 
     /**
      * UTF-8 byte length of [text] computed in place (no `toByteArray` copy).
-     * Each `char` contributes 1 byte (≤ U+007F), 2 bytes (≤ U+07FF), 3 bytes
-     * (a BMP code unit, incl. an unpaired surrogate), with a surrogate PAIR
-     * contributing 4 bytes total (2 per code unit) — the same total
-     * `String.toByteArray(UTF_8)` produces. Short-circuits at
-     * [MAX_INPUT_BYTES] + 1: once the running total exceeds the cap, the exact
-     * size is irrelevant (the input is rejected), so we stop counting.
+     * Each `char` contributes 1 byte (≤ U+007F), 2 bytes (≤ U+07FF), or 3 bytes
+     * (any higher BMP code unit — INCLUDING each half of a surrogate pair).
+     *
+     * This is a CONSERVATIVE OVERCOUNT for supplementary characters, NOT exact
+     * parity with `String.toByteArray(UTF_8)`: a real surrogate pair encodes to
+     * 4 UTF-8 bytes, but counting 3 bytes per surrogate charges it 6 — an
+     * overcount of 2 bytes per supplementary char. That is intentional and safe
+     * for a fail-fast SIZE guard: it can only make the count larger, so it never
+     * lets an over-cap input slip through; the worst case is rejecting an input
+     * very slightly under the byte cap that happens to be dense in emoji, which
+     * is far below any real map size. Short-circuits at [MAX_INPUT_BYTES] + 1:
+     * once the running total exceeds the cap the exact size is irrelevant (the
+     * input is rejected), so we stop counting.
      */
     private fun utf8ByteLength(text: String): Int {
         var bytes = 0

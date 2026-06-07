@@ -253,11 +253,13 @@ public class RosettaXposed internal constructor(
          * @param policy the C1 target namespace policy applied to every target
          *   (discovered or static).
          * @param allowUnverified opt-in to the unverified path: only consulted
-         *   when [identity] is null AND [map] carries a `signer_sha256`. Leave
-         *   `false` (the default) and such a map fails closed with
-         *   [UnverifiedDiscoveryException]; set `true` to deliberately accept an
-         *   authenticated map without checking it (e.g. early bring-up before an
-         *   `AppIdentity` is wired). An unsigned map needs no opt-in.
+         *   when [identity] is null AND [map] carries a `signer_sha256`. It is a
+         *   NO-OP when [identity] != null — an identity always enforces the guard
+         *   fail-closed, so the flag cannot loosen a verified construction. Leave
+         *   `false` (the default) and a signed, identity-less map fails closed
+         *   with [UnverifiedDiscoveryException]; set `true` to deliberately accept
+         *   an authenticated map without checking it (e.g. early bring-up before
+         *   an `AppIdentity` is wired). An unsigned map needs no opt-in.
          * @throws UnverifiedDiscoveryException if [identity] is null, [map]
          *   demands a signer, and [allowUnverified] is false.
          */
