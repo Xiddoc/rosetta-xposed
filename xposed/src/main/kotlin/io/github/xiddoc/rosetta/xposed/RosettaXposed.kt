@@ -310,8 +310,17 @@ public class RosettaXposed internal constructor(
                     // Translate the dynamic backend's `argTypes` through the SAME
                     // map the static resolver uses (real → obf), so a mapped
                     // app-class arg type matches a discovered overload's obf
-                    // descriptor instead of spuriously failing on identity.
-                    dynamic = DynamicResolutionBackend(index, discovery.hints, discovery.sink, static::translateType),
+                    // descriptor instead of spuriously failing on identity. The
+                    // discovery cache (rosetta-xposed#19) is threaded through so a
+                    // discovery survives a process restart.
+                    dynamic =
+                        DynamicResolutionBackend(
+                            index,
+                            discovery.hints,
+                            discovery.sink,
+                            static::translateType,
+                            discovery.cache,
+                        ),
                 )
             return RosettaXposed(composite, classLoader, map.app, policy)
         }

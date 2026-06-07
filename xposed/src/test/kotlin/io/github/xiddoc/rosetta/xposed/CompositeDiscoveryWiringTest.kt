@@ -268,6 +268,50 @@ class CompositeDiscoveryWiringTest {
     }
 
     @Test
+    fun `fromMapWithDiscovery threads the discovery cache through to the dynamic backend`() {
+        // rosetta-xposed#19: a DiscoveryConfig.cache must be wired into the
+        // dynamic backend so a discovery is persisted. A first lookup discovers
+        // and writes back to the cache; a SECOND binding over the SAME cache
+        // serves the class without touching the index — proving cross-instance
+        // (and, on a real device, cross-restart) persistence.
+        val cache = InMemoryDiscoveryCache()
+        val firstIndex = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
+        val first =
+            RosettaXposed.fromMapWithDiscovery(
+                map = emptyStaticMap(),
+                index = firstIndex,
+                classLoader = javaClass.classLoader,
+                discovery =
+                    DiscoveryConfig(
+                        hints = mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;")),
+                        cache = cache,
+                    ),
+                policy = policy,
+            )
+        assertEquals(obf, first.useClass(real).load().name)
+        assertTrue(firstIndex.calls > 0)
+        assertEquals(obf, cache.get(real)?.obfuscated)
+
+        // A brand-new backend instance (fresh map + fresh index) sharing the
+        // populated cache resolves WITHOUT scanning — the cache short-circuited it.
+        val secondIndex = FakeDexKitIndex()
+        val second =
+            RosettaXposed.fromMapWithDiscovery(
+                map = emptyStaticMap(),
+                index = secondIndex,
+                classLoader = javaClass.classLoader,
+                discovery =
+                    DiscoveryConfig(
+                        hints = mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;")),
+                        cache = cache,
+                    ),
+                policy = policy,
+            )
+        assertEquals(obf, second.useClass(real).load().name)
+        assertEquals(0, secondIndex.calls)
+    }
+
+    @Test
     fun `fromMapWithDiscovery wires the static map translator into dynamic argTypes`() {
         // F1 end-to-end: the static map maps an arg class real → obf, but the
         // class being hooked is discovered dynamically. The discovered overload
