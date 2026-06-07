@@ -219,12 +219,20 @@ public class MethodTarget internal constructor(
      * so the walk + `declaredMethods` is what reaches a non-public inherited
      * method. Constructors are NOT inherited, so the constructor branch stays on
      * the declared class only.
+     *
+     * CONSTRUCTOR DISPATCH (xposed#14 L3). The constructor branch is taken when
+     * the schema's `is_constructor` flag is set ([ResolvedMethod.isConstructor]
+     * == true) OR the obfuscated name is the JVM `<init>` magic string. The flag
+     * is the authoritative signal the model carries; the magic-string match is
+     * kept as a belt-and-braces fallback for maps that name a constructor
+     * `<init>` without setting the flag. A constructor never lives on a
+     * superclass, so this branch searches the declared class only.
      */
     public fun member(): Member {
         val cls = loader.loadGuardedClass(resolved.realName, resolved.className)
         val wantArgs = parseSignatureArgs(resolved.signature)
 
-        if (resolved.obfName == "<init>") {
+        if (resolved.isConstructor == true || resolved.obfName == "<init>") {
             return cls.declaredConstructors
                 .firstOrNull {
                     JvmDescriptors.paramsOf(it.parameterTypes) == wantArgs

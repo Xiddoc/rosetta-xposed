@@ -38,6 +38,7 @@ class CoverageTest {
                   "methods": {
                     "single": { "obfuscated": "c", "signature": "(Ljava/lang/String;)Ljava/lang/String;" },
                     "ctor": { "obfuscated": "<init>", "signature": "(Ljava/lang/String;)V" },
+                    "flagCtor": { "obfuscated": "irrelevant", "signature": "(Ljava/lang/String;)V", "is_constructor": true },
                     "ghostCtor": { "obfuscated": "<init>", "signature": "(J)V" },
                     "ghost": { "obfuscated": "noSuchMethod", "signature": "()V" }
                   },
@@ -82,6 +83,16 @@ class CoverageTest {
     @Test
     fun `binds a constructor target to a declared constructor`() {
         val member = rosetta.method("com.example.RealClient", "ctor").member()
+        assertTrue(member is java.lang.reflect.Constructor<*>)
+        assertEquals(1, (member as java.lang.reflect.Constructor<*>).parameterCount)
+    }
+
+    @Test
+    fun `the is_constructor flag drives constructor dispatch even when obf name is not init`() {
+        // xposed#14 L3: `flagCtor` carries is_constructor=true but an obfuscated
+        // name of "irrelevant" (NOT "<init>"). The flag — not the magic string —
+        // must route it through the constructor branch, binding the (String) ctor.
+        val member = rosetta.method("com.example.RealClient", "flagCtor").member()
         assertTrue(member is java.lang.reflect.Constructor<*>)
         assertEquals(1, (member as java.lang.reflect.Constructor<*>).parameterCount)
     }
