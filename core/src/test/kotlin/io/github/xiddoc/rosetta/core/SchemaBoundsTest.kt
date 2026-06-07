@@ -329,6 +329,29 @@ class SchemaBoundsTest {
     }
 
     @Test
+    fun `MAX_VERSION_CODE is 2 pow 53 minus 1 (Number MAX_SAFE_INTEGER)`() {
+        assertEquals(9_007_199_254_740_991L, MapLoader.MAX_VERSION_CODE)
+    }
+
+    @Test
+    fun `accepts full 64-bit longVersionCode values past the old int32 cap`() {
+        // 2^31 - 1 (old int32 cap), 2^31 (just past), 2^32 (versionCodeMajor = 1).
+        for (code in listOf(2_147_483_647L, 2_147_483_648L, 4_294_967_296L)) {
+            val map = base.copy(versionCode = code)
+            assertSame(map, MapLoader.validate(map), "version_code $code should validate")
+        }
+    }
+
+    @Test
+    fun `rejects a negative version_code`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.validate(base.copy(versionCode = -1L))
+            }
+        assertTrue(ex.issues.any { it.path == "version_code" })
+    }
+
+    @Test
     fun `rejects over-length free strings on the map and on sources`() {
         val long = "x".repeat(MapLoader.MAX_FREE_STRING_LEN + 1)
         val map =
