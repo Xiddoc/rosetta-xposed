@@ -25,7 +25,7 @@ mirror of rosetta-frida's "just makes `Java.use` smarter" stance.
 
 ## Layout
 
-Two-module Gradle (Kotlin/JVM) build:
+Three-module Gradle (Kotlin/JVM) build:
 
 - **`:core`** — pure-JVM Kotlin, the framework-neutral layers (RFC 0001
   layers 2–3): the `schema_version: 2` map model

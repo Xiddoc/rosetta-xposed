@@ -1,7 +1,7 @@
 /*
  * Signer authenticity guard — enforces a map's optional `signer_sha256`
  * against the running app's signing-certificate hashes (RFC 0001
- * Decision 4: `version_code` selects, `signer_sha256` guards).
+ * Decision 3: `version_code` selects, `signer_sha256` guards).
  *
  * This is identity/authenticity, not resolution: a wrong-signer map is for
  * a build signed by a different (possibly repackaged/spoofed) certificate
