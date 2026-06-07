@@ -101,6 +101,26 @@ class HealthCheckTest {
     }
 
     @Test
+    fun `a SIGNER failure message reflects the specific cause`() {
+        val report = HealthCheck.run(map(signer = hashA), identity(signers = setOf(hashB)))
+        val failure = report.hardFailures.single()
+        // The synthesized message must carry the specific exception's diagnostic
+        // (the expected hash) rather than the generic fallback, while still
+        // preserving the typed exception as the cause.
+        assertEquals(failure.cause!!.message, failure.message)
+        assertTrue(failure.message.contains(hashA))
+    }
+
+    @Test
+    fun `a match-any signer passes when the app set also contains other hashes`() {
+        // The map pins ONE hash; the app presents a SET that contains it plus
+        // another — the match-any branch must pass with no SIGNER failure.
+        val report = HealthCheck.run(map(signer = hashA), identity(signers = setOf(hashB, hashA)))
+        assertTrue(report.ok)
+        assertTrue(report.hardFailures.none { it.kind == HealthCheckFailureKind.SIGNER })
+    }
+
+    @Test
     fun `a map demanding a signer against an empty app set is a SIGNER failure`() {
         val report = HealthCheck.run(map(signer = hashA), identity(signers = emptySet()))
         assertFalse(report.ok)

@@ -8,7 +8,13 @@ package io.github.xiddoc.rosetta.core
 
 /** Base type for every error the Rosetta core raises. */
 public sealed class RosettaException(
-    message: String,
+    /**
+     * The human-readable diagnostic. Overridden as NON-null (the base
+     * `Throwable.message` is platform-nullable): every Rosetta error is
+     * constructed with a concrete message, so callers can read it without a
+     * null-handling branch.
+     */
+    override val message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 

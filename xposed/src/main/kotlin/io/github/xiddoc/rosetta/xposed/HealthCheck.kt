@@ -84,17 +84,20 @@ public enum class HealthCheckWarningKind {
 }
 
 /**
- * The structured outcome of [HealthCheck.run]. [ok] is true iff there were no
- * [hardFailures]; warnings never affect [ok].
+ * The structured outcome of [HealthCheck.run]. [ok] is DERIVED from
+ * [hardFailures] (true iff it is empty) so the two can never drift out of sync;
+ * it is intentionally NOT a constructor parameter, so `copy(...)` cannot
+ * manufacture an inconsistent instance. Warnings never affect [ok].
  */
 public data class HealthCheckReport(
-    /** True iff [hardFailures] is empty. Warnings do not affect this. */
-    val ok: Boolean,
     /** Blocking problems — when non-empty the map should not be used as-is. */
     val hardFailures: List<HealthCheckFailure>,
     /** Non-blocking observations the caller may surface to the user. */
     val warnings: List<HealthCheckWarning>,
-)
+) {
+    /** Derived from [hardFailures]: true iff it is empty. Warnings do not affect this. */
+    val ok: Boolean get() = hardFailures.isEmpty()
+}
 
 /**
  * Pure-JVM attach-time health check. See the file header for the parity
@@ -174,7 +177,6 @@ public object HealthCheck {
             }
 
         return HealthCheckReport(
-            ok = hardFailures.isEmpty(),
             hardFailures = hardFailures,
             warnings = warnings,
         )
@@ -197,13 +199,20 @@ public object HealthCheck {
             // SignerGuard.verify's only failure modes are its three signer
             // exceptions (mismatch / missing / malformed), all RosettaException
             // subtypes; this single catch folds every one into a structured
-            // SIGNER failure. We synthesize the message (rather than reading
-            // e.message) so the path carries no extra null-handling branch; the
+            // SIGNER failure. We surface the specific exception message (which
+            // carries the expected/actual hash, the missing-signer hint, etc.)
+            // so the human-readable summary is diagnostic, falling back to a
+            // generic line only if the typed exception has no message; the
             // canonical exception is preserved as the cause for a caller that
             // wants to rethrow it.
             HealthCheckFailure(
                 kind = HealthCheckFailureKind.SIGNER,
-                message = "Signer guard rejected the map for ${map.app} (version_code=${map.versionCode}).",
+                // RosettaException's constructor mandates a non-null message, so
+                // every SignerGuard failure carries its specific diagnostic
+                // (expected/actual hash, the missing-signer hint, etc.); read it
+                // directly so the human-readable summary stays diagnostic. The
+                // canonical exception is still preserved as the cause.
+                message = e.message,
                 cause = e,
             )
         }
