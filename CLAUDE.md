@@ -109,6 +109,9 @@ These come from RFC 0001 and were confirmed with the project owner.
    The build auto-provisions the JDK 17 toolchain via the foojay resolver.
 4. **`explicitApi()` is on** for both modules — declare visibility on every
    public symbol.
+5. **The attach-time health check is opt-in** (`RosettaXposed.healthCheck`) —
+   unlike Frida's auto-run `rosetta.session()`, the construction factories
+   deliberately do not run it. See `docs/getting-started/usage.md`.
 
 ## Testing mandate
 

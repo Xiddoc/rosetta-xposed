@@ -3,6 +3,7 @@ package io.github.xiddoc.rosetta.android
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AndroidIdentitiesTest {
     @Test
@@ -90,5 +91,73 @@ class AndroidIdentitiesTest {
                 versionName = null,
             )
         assertNull(identity.versionName)
+    }
+
+    @Test
+    fun `longVersionCode with no major half equals the legacy versionCode`() {
+        assertEquals(30405L, AndroidIdentities.longVersionCode(versionCode = 30405))
+    }
+
+    @Test
+    fun `longVersionCode packs major into the high 32 bits`() {
+        // major=1, minor=2 → (1 << 32) | 2 == 0x1_0000_0002
+        assertEquals((1L shl 32) or 2L, AndroidIdentities.longVersionCode(versionCode = 2, versionCodeMajor = 1))
+    }
+
+    @Test
+    fun `longVersionCode treats a high-bit versionCode as unsigned`() {
+        // versionCode = Int.MIN_VALUE has its sign bit set; it must widen as the
+        // unsigned 0x8000_0000 in the LOW half, NOT sign-extend into the major
+        // half (which would corrupt every higher bit).
+        assertEquals(0x8000_0000L, AndroidIdentities.longVersionCode(versionCode = Int.MIN_VALUE))
+    }
+
+    @Test
+    fun `longVersionCode treats versionCode -1 as the full low-32 ones`() {
+        assertEquals(0xFFFF_FFFFL, AndroidIdentities.longVersionCode(versionCode = -1))
+    }
+
+    @Test
+    fun `longVersionCode with a negative major half yields a negative result`() {
+        // The major half is NOT masked, so a negative versionCodeMajor shifts its
+        // sign bit into bit 63 and produces a NEGATIVE longVersionCode — not a
+        // valid selection key; MapLoader rejects it downstream.
+        val result = AndroidIdentities.longVersionCode(versionCode = 1, versionCodeMajor = -1)
+        assertEquals((-1L shl 32) or 1L, result)
+        assertTrue(result < 0L)
+    }
+
+    @Test
+    fun `fromPackageManagerPrimitives composes the version code and hashes certs`() {
+        val identity =
+            AndroidIdentities.fromPackageManagerPrimitives(
+                packageName = "com.example.app",
+                versionCode = 2,
+                versionCodeMajor = 1,
+                versionName = "3.4.5",
+                signerCertsDer = listOf("abc".toByteArray()),
+            )
+
+        assertEquals("com.example.app", identity.packageName)
+        assertEquals((1L shl 32) or 2L, identity.versionCode)
+        assertEquals("3.4.5", identity.versionName)
+        assertEquals(
+            setOf("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            identity.signerSha256s,
+        )
+    }
+
+    @Test
+    fun `fromPackageManagerPrimitives defaults major to zero and certs to empty`() {
+        val identity =
+            AndroidIdentities.fromPackageManagerPrimitives(
+                packageName = "com.example.app",
+                versionCode = 42,
+            )
+
+        assertEquals("com.example.app", identity.packageName)
+        assertEquals(42L, identity.versionCode)
+        assertNull(identity.versionName)
+        assertEquals(emptySet(), identity.signerSha256s)
     }
 }

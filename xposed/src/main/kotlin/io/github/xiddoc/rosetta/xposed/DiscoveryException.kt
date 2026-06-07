@@ -28,3 +28,11 @@ public class DiscoveryException(
     cause: Throwable? = null,
 ) : RuntimeException(message, cause),
     XposedBindingFailure
+
+// NOTE: UnverifiedDiscoveryException is a signer-guard refusal, so it lives in
+// `:core` alongside the other signer exceptions (SignerMismatchException etc.)
+// as a `RosettaException` subtype — see RosettaErrors.kt. It is still NOT an
+// [XposedBindingFailure] (a module's per-target catch must not swallow it), and
+// is still thrown only by [RosettaXposed.fromMapWithDiscovery]. The core base is
+// `sealed`, which a `:xposed`-local class could not extend, so the type moved to
+// core rather than the hierarchy being widened.

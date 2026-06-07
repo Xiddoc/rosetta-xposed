@@ -41,8 +41,12 @@ internal object AndroidAppIdentity {
         } else {
             @Suppress("DEPRECATION")
             val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            // Pre-28 has no longVersionCode / versionCodeMajor: the legacy
+            // `versionCode` int IS the low 32 bits (major == 0). Compose it
+            // through the helper instead of `.toLong()` so a high-bit
+            // versionCode is widened UNSIGNED rather than sign-extended.
             @Suppress("DEPRECATION")
-            versionCode = info.versionCode.toLong()
+            versionCode = AndroidIdentities.longVersionCode(info.versionCode, 0)
             versionName = info.versionName
             @Suppress("DEPRECATION")
             certs =

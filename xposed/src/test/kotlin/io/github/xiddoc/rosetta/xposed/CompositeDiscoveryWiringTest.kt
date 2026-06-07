@@ -12,7 +12,9 @@
 package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.MapLoader
+import io.github.xiddoc.rosetta.core.RosettaException
 import io.github.xiddoc.rosetta.core.TargetPolicyException
+import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -374,5 +376,83 @@ class CompositeDiscoveryWiringTest {
                 policy = TargetPolicy(allow = listOf(obf)),
             )
         assertEquals(obf, rosetta.useClass(real).load().name)
+    }
+
+    // ---- M5: explicit, safe handling of the signer-skip path ----------------
+
+    private fun signedMap() =
+        MapLoader.fromJson(
+            """
+            {
+              "schema_version": 2,
+              "app": "com.example.app",
+              "version": "1.0.0",
+              "version_code": 100,
+              "signer_sha256": "${"a".repeat(64)}",
+              "classes": {}
+            }
+            """.trimIndent(),
+        )
+
+    @Test
+    fun `fromMapWithDiscovery refuses a signed map with no identity unless opted in`() {
+        // xposed#14 M5: a map demanding a signer, built with NO identity and
+        // without allowUnverified, fails closed rather than silently skipping the
+        // guard. Discovery never runs.
+        val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
+        assertFailsWith<UnverifiedDiscoveryException> {
+            RosettaXposed.fromMapWithDiscovery(
+                map = signedMap(),
+                index = index,
+                classLoader = javaClass.classLoader,
+            )
+        }
+        assertEquals(0, index.calls)
+    }
+
+    @Test
+    fun `fromMapWithDiscovery accepts a signed map with no identity when allowUnverified is true`() {
+        // The explicit opt-in deliberately skips the signer guard (e.g. early
+        // bring-up before an AppIdentity is wired). Construction succeeds.
+        val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
+        val rosetta =
+            RosettaXposed.fromMapWithDiscovery(
+                map = signedMap(),
+                index = index,
+                classLoader = javaClass.classLoader,
+                allowUnverified = true,
+                policy = policy,
+            )
+        // Unsigned/empty classes, no hints → simply unknown, but it CONSTRUCTED.
+        assertTrue(!rosetta.knows(real))
+    }
+
+    @Test
+    fun `fromMapWithDiscovery needs no opt-in for an unsigned map with no identity`() {
+        // An unsigned map has no guard to skip, so the default (allowUnverified
+        // = false, no identity) path constructs without throwing.
+        val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
+        val rosetta =
+            RosettaXposed.fromMapWithDiscovery(
+                map = emptyStaticMap(),
+                index = index,
+                classLoader = javaClass.classLoader,
+            )
+        assertTrue(!rosetta.knows(real))
+    }
+
+    @Test
+    fun `UnverifiedDiscoveryException is not an XposedBindingFailure`() {
+        // M5: the construction-time security refusal must NOT be swallowed by a
+        // module's per-target binding-failure catch clause.
+        assertTrue(UnverifiedDiscoveryException("x") !is XposedBindingFailure)
+    }
+
+    @Test
+    fun `UnverifiedDiscoveryException is a RosettaException (signer-guard sibling)`() {
+        // Item 8: it is semantically a signer-guard refusal, so it is part of the
+        // core RosettaException taxonomy (like SignerMismatchException), NOT a bare
+        // RuntimeException — while staying distinct from XposedBindingFailure.
+        assertTrue(UnverifiedDiscoveryException("x") is RosettaException)
     }
 }

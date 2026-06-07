@@ -21,6 +21,13 @@ complexity:
   CyclomaticComplexMethod:
     active: true
     threshold: 20
+  # Made discoverable (item 12): the test-file split (e.g. the dynamic-backend
+  # tests) was done against a LargeClass budget that wasn't visible in config.
+  # Pin it at detekt's own default threshold (600) so the budget is explicit;
+  # this is the active default, so it changes no current verdict.
+  LargeClass:
+    active: true
+    threshold: 600
   LongMethod:
     active: true
     threshold: 80

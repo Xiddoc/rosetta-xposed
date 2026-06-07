@@ -38,6 +38,7 @@ class CoverageTest {
                   "methods": {
                     "single": { "obfuscated": "c", "signature": "(Ljava/lang/String;)Ljava/lang/String;" },
                     "ctor": { "obfuscated": "<init>", "signature": "(Ljava/lang/String;)V" },
+                    "flagCtor": { "obfuscated": "irrelevant", "signature": "(Ljava/lang/String;)V", "is_constructor": true },
                     "ghostCtor": { "obfuscated": "<init>", "signature": "(J)V" },
                     "ghost": { "obfuscated": "noSuchMethod", "signature": "()V" }
                   },
@@ -78,10 +79,30 @@ class CoverageTest {
     }
 
     // ---- MethodTarget: constructor binding + the not-found failure modes.
+    //
+    // xposed#14 L3 — constructor dispatch has TWO entry branches, each pinned by
+    // its own test below:
+    //   1. the `<init>` MAGIC-STRING branch (obfuscated name == "<init>"):
+    //      `binds a constructor target to a declared constructor` (via `ctor`).
+    //   2. the `is_constructor == true` FLAG branch (any obfuscated name):
+    //      `the is_constructor flag drives constructor dispatch ...` (via
+    //      `flagCtor`, whose obf name is deliberately NOT "<init>").
 
     @Test
     fun `binds a constructor target to a declared constructor`() {
+        // L3 branch 1: `ctor`'s obfuscated name IS the "<init>" magic string, so
+        // the magic-string arm (not the is_constructor flag) routes it to a ctor.
         val member = rosetta.method("com.example.RealClient", "ctor").member()
+        assertTrue(member is java.lang.reflect.Constructor<*>)
+        assertEquals(1, (member as java.lang.reflect.Constructor<*>).parameterCount)
+    }
+
+    @Test
+    fun `the is_constructor flag drives constructor dispatch even when obf name is not init`() {
+        // L3 branch 2: `flagCtor` carries is_constructor=true but an obfuscated
+        // name of "irrelevant" (NOT "<init>"). The flag — not the magic string —
+        // must route it through the constructor branch, binding the (String) ctor.
+        val member = rosetta.method("com.example.RealClient", "flagCtor").member()
         assertTrue(member is java.lang.reflect.Constructor<*>)
         assertEquals(1, (member as java.lang.reflect.Constructor<*>).parameterCount)
     }

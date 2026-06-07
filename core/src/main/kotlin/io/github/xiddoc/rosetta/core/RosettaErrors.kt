@@ -8,7 +8,13 @@ package io.github.xiddoc.rosetta.core
 
 /** Base type for every error the Rosetta core raises. */
 public sealed class RosettaException(
-    message: String,
+    /**
+     * The human-readable diagnostic. Overridden as NON-null (the base
+     * `Throwable.message` is platform-nullable): every Rosetta error is
+     * constructed with a concrete message, so callers can read it without a
+     * null-handling branch.
+     */
+    override val message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 
@@ -108,7 +114,10 @@ public class UnknownArgTypeException(
 public class AmbiguousOverloadException(
     message: String,
     public val methodName: String,
-    public val className: String,
+    // `classScope` (not `className`) for parity with rosetta-frida's
+    // AmbiguousOverloadError in src/errors.ts — the field names match so the
+    // two clients' error shapes stay diffable.
+    public val classScope: String,
     public val overloadCount: Int,
 ) : RosettaException(message)
 
@@ -142,6 +151,22 @@ public class MissingSignerException(
     message: String,
     /** The normalized signer hash the map demands but could not verify. */
     public val expected: String,
+) : RosettaException(message)
+
+/**
+ * A self-healing binding was constructed over a map that DEMANDS a
+ * `signer_sha256` without supplying an `AppIdentity` to verify it, and without
+ * the explicit `allowUnverified` opt-in (xposed#14 M5). This is a
+ * CONSTRUCTION-time signer-guard REFUSAL — semantically a sibling of
+ * [SignerMismatchException] / [MissingSignerException], so it is a
+ * [RosettaException] (the core base) and lives here with the other signer
+ * errors. It is deliberately NOT an `XposedBindingFailure` (the layer-4 marker),
+ * so a module's per-target hook-loop catch clause must not swallow it. Thrown
+ * only by `RosettaXposed.fromMapWithDiscovery`; the fix is to pass an identity,
+ * set `allowUnverified=true`, or use `RosettaXposed.fromMapUnverified`.
+ */
+public class UnverifiedDiscoveryException(
+    message: String,
 ) : RosettaException(message)
 
 /**

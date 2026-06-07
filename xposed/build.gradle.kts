@@ -20,6 +20,13 @@
  */
 plugins {
     kotlin("jvm")
+    // Android API-signature gate (xposed#16). Checks this module's `main`
+    // byte-code against the android-api-level-24 signature. This module is the
+    // most exposed to the trap the gate guards against — it runs INSIDE the app
+    // JVM on Android ART (e.g. the boot/platform-loader handling in Targets.kt
+    // deliberately avoids `ClassLoader.getPlatformClassLoader()`, a JDK-9 API
+    // absent on ART); the gate makes that constraint mechanical, not a comment.
+    id("ru.vyarus.animalsniffer")
 }
 
 // Repositories are declared centrally in settings.gradle.kts. Phase 2 (the
@@ -39,6 +46,10 @@ dependencies {
     // RE2 is pure-JVM, so it keeps the module device-free and unit-testable.
     implementation("com.google.re2j:re2j:1.7")
 
+    // The Android API contract :xposed's `main` byte-code is checked against
+    // (xposed#16). API level 24 matches the example app's minSdk.
+    signature("net.sf.androidscents.signature:android-api-level-24:7.0_r2@signature")
+
     // The real DexKit-backed adapter that implements the `DexKitIndex` seam on
     // a device is a thin, on-device follow-up (RFC 0001 Decision 5 — DexKit is
     // an OPTIONAL later-phase dependency); it stays commented out here:
@@ -53,6 +64,22 @@ kotlin {
     jvmToolchain(17)
     explicitApi()
 }
+
+// Animal-sniffer (xposed#16): police only OUR `main` byte-code against the
+// android-api-level-24 contract. The plugin checks only this module's compiled
+// classes — it does NOT police the byte-code of `implementation` dependencies
+// like RE2J — so the gate is inherently confined to the code that actually runs
+// on ART inside the app. (The 1.7.1 extension exposes no `ignoreDependencies`
+// knob; that confinement is the plugin's built-in behaviour, not a setting.)
+animalsniffer {
+    ignore("java.time.*")
+}
+
+// Police only `main` (the byte-code that ships and runs on Android ART), not
+// the JVM-only test sources (which legitimately use APIs absent on ART, e.g.
+// Method.getParameterCount / ClassLoader.getPlatformClassLoader). The
+// auto-registered `animalsnifferTest` task is disabled accordingly.
+tasks.named("animalsnifferTest") { enabled = false }
 
 tasks.test {
     useJUnitPlatform()
