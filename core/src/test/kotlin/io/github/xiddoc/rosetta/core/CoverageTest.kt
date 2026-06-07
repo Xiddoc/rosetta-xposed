@@ -426,6 +426,28 @@ class CoverageTest {
     }
 
     @Test
+    fun `reverse index first-write-wins is insertion-order, the canonical cross-client policy`() {
+        // xposed#14 M2: the winner is the FIRST entry by INSERTION order, not by
+        // any sort. Inserting Beta first here (the reverse of the sibling test)
+        // makes Beta own "dup", proving the policy keys off map iteration order —
+        // the deterministic first-write-wins both Rosetta clients standardize on.
+        val colliding =
+            RosettaMap(
+                schemaVersion = 2,
+                app = "com.example.app",
+                version = "1.0.0",
+                versionCode = 100,
+                classes =
+                    linkedMapOf(
+                        "com.example.Beta" to ClassEntry(obfuscated = "dup"),
+                        "com.example.Alpha" to ClassEntry(obfuscated = "dup"),
+                    ),
+            )
+        val resolver = Resolver(colliding)
+        assertEquals("com.example.Beta", resolver.reverseLookup("dup"))
+    }
+
+    @Test
     fun `override to the same obf keeps the reverse entry intact`() {
         // previousObf == entry.obfuscated → the stale-clean branch is skipped.
         val base =

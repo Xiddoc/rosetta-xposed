@@ -102,14 +102,19 @@ public class Resolver(
      * Reverse index: obfuscated class short name → real FQN, for tier-3
      * introspection.
      *
-     * COLLISION POLICY — first-write-wins. Two real names that map to the same
-     * obfuscated short name is a degenerate (usually invalid) map, but we make
+     * COLLISION POLICY — first-write-wins. This is the CANONICAL cross-client
+     * policy (xposed#14 M2, orchestrator decision): both Rosetta resolvers — this
+     * Kotlin one and the rosetta-frida TS twin — resolve an obfuscated-short-name
+     * collision to the FIRST real name encountered. Two real names that map to the
+     * same obfuscated short name is a degenerate (usually invalid) map, but we make
      * the behaviour deterministic: the FIRST real name encountered owns the
-     * reverse entry, and later collisions are ignored (rather than the previous
-     * silent last-write-wins, which depended on map iteration order). A runtime
-     * [override] is the one exception — it is an explicit, intentional re-point
-     * and DOES take the obf entry, after cleaning the overridden real name's
-     * previous (now stale) obf entry.
+     * reverse entry, and later collisions are ignored (rather than a silent
+     * last-write-wins, which would depend on map iteration order). The
+     * "reverse index is first-write-wins on a build-time obf collision" test
+     * (CoverageTest) pins this. A runtime [override] is the one
+     * exception — it is an explicit, intentional re-point and DOES take the obf
+     * entry, after cleaning the overridden real name's previous (now stale) obf
+     * entry.
      */
     private val reverseClassIndex = ConcurrentHashMap<String, String>()
 
