@@ -29,6 +29,13 @@ plugins {
     // Coverage (Kover). Applied at the root, which aggregates both modules'
     // coverage into one report + verification gate (see below).
     id("org.jetbrains.kotlinx.kover") version "0.8.3"
+    // Android API-signature gate (animal-sniffer, xposed#16). Declared at the
+    // root with `apply false`; the pure-JVM library modules (:core, :xposed)
+    // apply it themselves and check their `main` byte-code against the
+    // android-api-level-24 signature. This catches JVM-only APIs (e.g.
+    // `ClassLoader.getPlatformClassLoader()`) that compile on JDK 17 but throw
+    // `NoSuchMethodError` on Android ART, where this binding runs on-device.
+    id("ru.vyarus.animalsniffer") version "1.7.1" apply false
 }
 
 allprojects {
