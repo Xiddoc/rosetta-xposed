@@ -9,7 +9,9 @@
  *   - empty classes                              → EMPTY_MAP warning
  *   - blank obfuscated name                      → BLANK_OBFUSCATED_NAME warning
  *   - multiple hard failures accumulate          → all reported, ok=false
- *   - reached via RosettaXposed.healthCheck      → same report
+ *   - hard failure + warning accumulate          → independent loops, ok=false
+ *   - multiple blank obfuscated names            → one warning each
+ *   - reached via RosettaXposed.healthCheck      → same report (pass + fail)
  */
 package io.github.xiddoc.rosetta.xposed
 
@@ -76,6 +78,7 @@ class HealthCheckTest {
             listOf(HealthCheckFailureKind.VERSION_MISMATCH),
             report.hardFailures.map { it.kind },
         )
+        assertEquals(null, report.hardFailures.single().cause)
     }
 
     @Test
@@ -181,8 +184,60 @@ class HealthCheckTest {
     }
 
     @Test
+    fun `a mixed hard failure and warning accumulate independently`() {
+        // Wrong package (HARD APP_MISMATCH) on an empty-class map (EMPTY_MAP
+        // warning) — proves the hard-failure and warning loops run independently:
+        // exactly one of each, and ok reflects only the hard failure.
+        val report =
+            HealthCheck.run(
+                map(classes = emptyMap()),
+                identity(packageName = "com.other.app"),
+            )
+        assertFalse(report.ok)
+        assertEquals(
+            listOf(HealthCheckFailureKind.APP_MISMATCH),
+            report.hardFailures.map { it.kind },
+        )
+        assertEquals(
+            listOf(HealthCheckWarningKind.EMPTY_MAP),
+            report.warnings.map { it.kind },
+        )
+    }
+
+    @Test
+    fun `multiple blank obfuscated names each warn`() {
+        val report =
+            HealthCheck.run(
+                map(
+                    classes =
+                        mapOf(
+                            "com.example.RealClientA" to ClassEntry(obfuscated = ""),
+                            "com.example.RealClientB" to ClassEntry(obfuscated = "  "),
+                        ),
+                ),
+                identity(),
+            )
+        assertTrue(report.ok)
+        assertEquals(2, report.warnings.size)
+        assertTrue(report.warnings.all { it.kind == HealthCheckWarningKind.BLANK_OBFUSCATED_NAME })
+    }
+
+    @Test
     fun `RosettaXposed_healthCheck forwards to HealthCheck_run`() {
         val report = RosettaXposed.healthCheck(map(), identity())
         assertTrue(report.ok)
+    }
+
+    @Test
+    fun `RosettaXposed_healthCheck forwards failures faithfully`() {
+        // A deliberately mismatched packageName must surface as an APP_MISMATCH
+        // hard failure through the forwarder — a swapped-argument delegate would
+        // pass the happy-path test above undetected.
+        val report = RosettaXposed.healthCheck(map(), identity(packageName = "com.other.app"))
+        assertFalse(report.ok)
+        assertEquals(
+            listOf(HealthCheckFailureKind.APP_MISMATCH),
+            report.hardFailures.map { it.kind },
+        )
     }
 }
