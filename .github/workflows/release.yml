@@ -16,10 +16,10 @@ on:
         tags:
             - 'v*'
 
-# Least privilege: the publish job only reads the repo (it pushes to an EXTERNAL
-# Maven repository using the secrets above, not the GitHub token). `contents:
-# write` is added only because a future step may attach artifacts to a GitHub
-# Release; drop to `read` if that is never added.
+# Least privilege: the publish job only READS the repo. It pushes to an EXTERNAL
+# Maven repository (the Sonatype Central Portal) using the secrets above, not the
+# GitHub token, so it needs no write scope. If a future step attaches artifacts
+# to a GitHub Release, raise this to `contents: write` then.
 permissions:
     contents: read
 
@@ -91,3 +91,69 @@ jobs:
                   :xposed:publishMavenPublicationToCentralPortalRepository
                   :xposed-android:publishMavenPublicationToCentralPortalRepository
                   --stacktrace
+
+            # ---------------------------------------------------------------
+            # Promote the staged deployment to Maven Central.
+            #
+            # WHY THIS STEP EXISTS: the Gradle step above uploads to the OSSRH
+            # Staging API bridge (ossrh-staging-api.central.sonatype.com), which
+            # only CREATES an `open` staging deployment under our namespace.
+            # Vanilla `maven-publish` has no concept of "release the staging
+            # repo", so without this call a `v*` tag would leave the artifacts
+            # parked in staging and publish NOTHING to Central. (We can't use a
+            # Nexus-publish Gradle plugin to do this for us — adding any new
+            # plugin would break the strict dependency-verification invariant.)
+            #
+            # FLOW (Central Portal "OSSRH Staging API", current as of 2026-06):
+            #   1. GET  /manual/search/repositories?state=open  → find the key
+            #           of the open deployment this run just uploaded.
+            #   2. POST /manual/upload/repository/<key>?publishing_type=automatic
+            #           → validate and auto-release to Central if checks pass.
+            # Both calls authenticate with a Bearer token that is the base64 of
+            # `CENTRAL_USERNAME:CENTRAL_PASSWORD` (the Portal token pair).
+            # See https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/
+            #
+            # MANUAL FALLBACK: if this step cannot resolve/promote the repo (API
+            # drift, validation held for review, etc.), the deployment is still
+            # safely in staging — log in to https://central.sonatype.com,
+            # open Deployments, and click "Publish" on the pending deployment to
+            # release it by hand. `publishing_type=user_managed` (instead of
+            # `automatic`) would force that manual path on purpose.
+            - name: Promote staged deployment to Central
+              env:
+                  CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+                  CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+              run: |
+                  set -euo pipefail
+                  api="https://ossrh-staging-api.central.sonatype.com"
+                  token="$(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
+
+                  echo "Searching for the open staging deployment..."
+                  search="$(curl -fsS -X GET \
+                      -H "Authorization: Bearer ${token}" \
+                      "${api}/manual/search/repositories?state=open")"
+                  echo "Search response: ${search}"
+
+                  # Pull the deployment/repository key out of the JSON. The
+                  # bridge returns `repositories: [{ key: "...", state: "open" }]`;
+                  # accept either `key` or `repository_key` defensively.
+                  key="$(printf '%s' "${search}" \
+                      | grep -oE '"(key|repository_key)"[[:space:]]*:[[:space:]]*"[^"]+"' \
+                      | head -n1 \
+                      | sed -E 's/.*"([^"]+)"$/\1/')"
+
+                  if [ -z "${key}" ]; then
+                      echo "::error::Could not find an open staging deployment to promote." >&2
+                      echo "The upload may have failed, or the API shape changed." >&2
+                      echo "MANUAL FALLBACK: log in to https://central.sonatype.com," >&2
+                      echo "open Deployments, and click Publish on the pending deployment." >&2
+                      exit 1
+                  fi
+
+                  echo "Promoting deployment '${key}' (publishing_type=automatic)..."
+                  curl -fsS -X POST \
+                      -H "Authorization: Bearer ${token}" \
+                      "${api}/manual/upload/repository/${key}?publishing_type=automatic"
+                  echo "Promotion request accepted. Central runs validation; on success the"
+                  echo "artifacts release automatically. Check the Portal Deployments view if"
+                  echo "validation holds the release for review."
