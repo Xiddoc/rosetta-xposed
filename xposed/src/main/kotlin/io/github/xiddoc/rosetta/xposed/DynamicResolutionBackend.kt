@@ -322,6 +322,10 @@ public class DynamicResolutionBackend(
         // entry, exactly like the in-process memo.
         discovered[realClass] = entry
         cache.put(realClass, entry)
+        // Two distinct notifications: the sink records the resolved entry's
+        // PROVENANCE (this name was runtime-discovered), while the observer
+        // below reports which resolve PATH produced it (a fresh scan vs a cache
+        // hit — and cache hits never reach the sink at all).
         sink.record(realClass, entry)
         // Observability (#22): a fresh DexKit scan located this name (the
         // expensive path the cache exists to amortise). Emitted once per name
