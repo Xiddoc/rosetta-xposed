@@ -36,6 +36,7 @@ import io.github.xiddoc.rosetta.core.model.ClassEntryCodec
 import io.github.xiddoc.rosetta.xposed.AppIdentity
 import io.github.xiddoc.rosetta.xposed.DiscoveryCache
 import io.github.xiddoc.rosetta.xposed.DiscoveryObserver
+import io.github.xiddoc.rosetta.xposed.InvalidationReason
 
 /**
  * The minimal string key/value store the persistent cache needs. A consumer
@@ -109,10 +110,11 @@ public class PersistentDiscoveryCache private constructor(
          * — the e2e's "version bump → stale entry dropped → re-discovered"
          * signal. It is NOT called when the fingerprint already matched (a warm
          * relaunch of the same build), so a "served from cache" launch is
-         * cleanly distinguishable from an "invalidated" one. The flag reports
-         * whether a DIFFERENT build's fingerprint was found (true) versus a
-         * first run with none stored yet (false). [observer] defaults to NOOP,
-         * preserving the existing call sites.
+         * cleanly distinguishable from an "invalidated" one. The reason reports
+         * whether a DIFFERENT build's fingerprint was found
+         * ([InvalidationReason.FINGERPRINT_CHANGED]) versus a first run with
+         * none stored yet ([InvalidationReason.FIRST_RUN]). [observer] defaults
+         * to NOOP, preserving the existing call sites.
          */
         public fun create(
             store: KeyValueStore,
@@ -151,11 +153,14 @@ public class PersistentDiscoveryCache private constructor(
                 .filter { it.startsWith(ENTRY_PREFIX) }
                 .forEach { store.remove(it) }
             store.putString(FINGERPRINT_KEY, fingerprint)
-            // Report the invalidation (#22). `stored != null` means a DIFFERENT
-            // build's fingerprint was present — a genuine update / signer change
-            // — versus a first run with nothing stored. Routed through `safe` so
-            // a throwing observer can't break cache construction.
-            DiscoveryObserver.safe(observer) { it.onCacheInvalidated(hadPriorFingerprint = stored != null) }
+            // Report the invalidation (#22). A DIFFERENT build's fingerprint
+            // present (`stored != null`) is a genuine update / signer change;
+            // `stored == null` is a first run with nothing stored. Routed
+            // through `safe` so a throwing observer can't break cache
+            // construction.
+            val reason =
+                if (stored == null) InvalidationReason.FIRST_RUN else InvalidationReason.FINGERPRINT_CHANGED
+            DiscoveryObserver.safe(observer) { it.onCacheInvalidated(reason) }
         }
     }
 }

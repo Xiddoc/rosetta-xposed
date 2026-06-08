@@ -26,6 +26,7 @@ import android.util.Log
 import de.robv.android.xposed.XposedBridge
 import io.github.xiddoc.rosetta.xposed.DiscoveryObserver
 import io.github.xiddoc.rosetta.xposed.DiscoveryOutcome
+import io.github.xiddoc.rosetta.xposed.InvalidationReason
 
 internal class LogcatDiscoveryObserver : DiscoveryObserver {
     override fun onOutcome(
@@ -46,8 +47,14 @@ internal class LogcatDiscoveryObserver : DiscoveryObserver {
         XposedBridge.log("rosetta-example: $line")
     }
 
-    override fun onCacheInvalidated(hadPriorFingerprint: Boolean) {
-        val kind = if (hadPriorFingerprint) "version-or-signer-change" else "first-run"
+    override fun onCacheInvalidated(reason: InvalidationReason) {
+        // Marker text kept IDENTICAL to the historical strings so the e2e greps
+        // don't move; the exhaustive `when` just maps the typed reason to them.
+        val kind =
+            when (reason) {
+                InvalidationReason.FINGERPRINT_CHANGED -> "version-or-signer-change"
+                InvalidationReason.FIRST_RUN -> "first-run"
+            }
         val line = "CACHE_INVALIDATED ($kind)"
         Log.i(DISCOVERY_TAG, line)
         XposedBridge.log("rosetta-example: $line")

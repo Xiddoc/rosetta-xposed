@@ -93,7 +93,7 @@ class DiscoveryObserverTest {
                     outcome: DiscoveryOutcome,
                 ): Unit = throw ObserverBlewUp()
 
-                override fun onCacheInvalidated(hadPriorFingerprint: Boolean): Unit = throw ObserverBlewUp()
+                override fun onCacheInvalidated(reason: InvalidationReason): Unit = throw ObserverBlewUp()
             }
         val index = FakeDexKitIndex(byAidl = mapOf(aidl to obf))
 
@@ -113,7 +113,7 @@ class DiscoveryObserverTest {
                     outcome: DiscoveryOutcome,
                 ): Unit = throw ObserverBlewUp()
 
-                override fun onCacheInvalidated(hadPriorFingerprint: Boolean) = Unit
+                override fun onCacheInvalidated(reason: InvalidationReason) = Unit
             },
         ) { it.onOutcome(real, obf, DiscoveryOutcome.DISCOVERED) }
         // Reaching here without an exception IS the assertion.
@@ -124,18 +124,21 @@ class DiscoveryObserverTest {
     fun `NOOP ignores every signal`() {
         // Exercise both NOOP methods for coverage; neither records anything.
         DiscoveryObserver.NOOP.onOutcome(real, obf, DiscoveryOutcome.DISCOVERED)
-        DiscoveryObserver.NOOP.onCacheInvalidated(hadPriorFingerprint = true)
+        DiscoveryObserver.NOOP.onCacheInvalidated(InvalidationReason.FINGERPRINT_CHANGED)
         assertTrue(true)
     }
 
     @Test
     fun `RecordingDiscoveryObserver records outcomes and invalidations in order`() {
         val observer = RecordingDiscoveryObserver()
-        observer.onCacheInvalidated(hadPriorFingerprint = false)
+        observer.onCacheInvalidated(InvalidationReason.FIRST_RUN)
         observer.onOutcome(real, obf, DiscoveryOutcome.DISCOVERED)
-        observer.onCacheInvalidated(hadPriorFingerprint = true)
+        observer.onCacheInvalidated(InvalidationReason.FINGERPRINT_CHANGED)
 
-        assertEquals(listOf(false, true), observer.invalidations())
+        assertEquals(
+            listOf(InvalidationReason.FIRST_RUN, InvalidationReason.FINGERPRINT_CHANGED),
+            observer.invalidations(),
+        )
         assertEquals(
             listOf(RecordingDiscoveryObserver.Outcome(real, obf, DiscoveryOutcome.DISCOVERED)),
             observer.outcomes(),

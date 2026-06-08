@@ -16,6 +16,7 @@ import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.xposed.AppIdentity
 import io.github.xiddoc.rosetta.xposed.DiscoveryObserver
 import io.github.xiddoc.rosetta.xposed.DiscoveryOutcome
+import io.github.xiddoc.rosetta.xposed.InvalidationReason
 import io.github.xiddoc.rosetta.xposed.RecordingDiscoveryObserver
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -135,25 +136,25 @@ class PersistentDiscoveryCacheTest {
     // ---- observer / invalidation reporting (rosetta-xposed#22) --------------
 
     @Test
-    fun `a first run reports invalidation with hadPriorFingerprint false`() {
+    fun `a first run reports invalidation with reason FIRST_RUN`() {
         // No fingerprint stored yet: the cache invalidates (clears nothing) and
         // reports a first run. This is the e2e's fresh-install signal.
         val observer = RecordingDiscoveryObserver()
         PersistentDiscoveryCache.create(FakeStore(), identity, observer)
-        assertEquals(listOf(false), observer.invalidations())
+        assertEquals(listOf(InvalidationReason.FIRST_RUN), observer.invalidations())
     }
 
     @Test
-    fun `a version_code bump reports invalidation with hadPriorFingerprint true`() {
+    fun `a version_code bump reports invalidation with reason FINGERPRINT_CHANGED`() {
         // The e2e's "bump versionCode → stale entry dropped → re-discovered"
-        // assertion: a DIFFERENT build's fingerprint was present, so the flag is
-        // true and the stale entry is gone.
+        // assertion: a DIFFERENT build's fingerprint was present, so the reason
+        // is FINGERPRINT_CHANGED and the stale entry is gone.
         val store = FakeStore()
         PersistentDiscoveryCache.create(store, identity).put(real, entry)
         val observer = RecordingDiscoveryObserver()
         val cache = PersistentDiscoveryCache.create(store, identity.copy(versionCode = 101), observer)
         assertNull(cache.get(real))
-        assertEquals(listOf(true), observer.invalidations())
+        assertEquals(listOf(InvalidationReason.FINGERPRINT_CHANGED), observer.invalidations())
     }
 
     @Test
@@ -177,7 +178,7 @@ class PersistentDiscoveryCacheTest {
                     outcome: DiscoveryOutcome,
                 ) = Unit
 
-                override fun onCacheInvalidated(hadPriorFingerprint: Boolean): Unit = throw ObserverBlewUp()
+                override fun onCacheInvalidated(reason: InvalidationReason): Unit = throw ObserverBlewUp()
             }
         // Construction (which invalidates on a first run) must still succeed.
         val cache = PersistentDiscoveryCache.create(FakeStore(), identity, throwing)

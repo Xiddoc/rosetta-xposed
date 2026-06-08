@@ -33,6 +33,11 @@ package io.github.xiddoc.rosetta.xposed
 /**
  * How a real name's obfuscated mapping was obtained on a given resolve. The
  * three cases mirror the dynamic backend's internal control flow.
+ *
+ * An enum (not a sealed type) on purpose: every case today is a plain tag with
+ * no per-case payload. A future outcome that DID carry a different payload — a
+ * deferred / pending-binding result, say — would motivate promoting this to a
+ * sealed hierarchy; until then a sealed type would be YAGNI.
  */
 public enum class DiscoveryOutcome {
     /**
@@ -48,6 +53,26 @@ public enum class DiscoveryOutcome {
      * "relaunch is cheap" proof.
      */
     SERVED_FROM_CACHE,
+}
+
+/**
+ * Why the persistent discovery cache was invalidated at construction. A typed
+ * reason instead of a bare boolean so consumers (and the e2e markers) read the
+ * intent directly rather than re-deriving it from a flag.
+ */
+public enum class InvalidationReason {
+    /**
+     * No prior fingerprint was stored — a fresh install (or a wiped cache).
+     * Nothing was cleared; the stamp is simply written for the first time.
+     */
+    FIRST_RUN,
+
+    /**
+     * A DIFFERENT build's fingerprint was found and cleared — a genuine update
+     * (the `version_code` bumped) or a signer change. Every previously cached
+     * entry was dropped, so the next resolve of each name re-discovers.
+     */
+    FINGERPRINT_CHANGED,
 }
 
 /**
@@ -85,13 +110,14 @@ public interface DiscoveryObserver {
      *
      * Emitted at most once per cache instance, BEFORE any resolution. A first
      * run (no prior fingerprint) also invalidates — the consumer distinguishes
-     * "fresh install" from "update" by [hadPriorFingerprint] if it cares.
+     * "fresh install" from "update" by [reason] if it cares.
      *
-     * @param hadPriorFingerprint false on a first run (no fingerprint stored
-     *   yet), true when a DIFFERENT build's fingerprint was found and cleared
-     *   (a genuine update / signer change).
+     * @param reason [InvalidationReason.FIRST_RUN] when no fingerprint was
+     *   stored yet, [InvalidationReason.FINGERPRINT_CHANGED] when a DIFFERENT
+     *   build's fingerprint was found and cleared (a genuine update / signer
+     *   change).
      */
-    public fun onCacheInvalidated(hadPriorFingerprint: Boolean)
+    public fun onCacheInvalidated(reason: InvalidationReason)
 
     public companion object {
         /** An observer that ignores every signal — the default. */
@@ -105,17 +131,23 @@ public interface DiscoveryObserver {
                     // Intentionally no-op.
                 }
 
-                override fun onCacheInvalidated(hadPriorFingerprint: Boolean) {
+                override fun onCacheInvalidated(reason: InvalidationReason) {
                     // Intentionally no-op.
                 }
             }
 
         /**
-         * Invoke [block] on [observer], swallowing any exception it throws.
+         * Invoke [block] on [observer], swallowing any [Throwable] it throws.
          * Observability is a side-channel: an observer must never be able to
          * fail a discovery. Used by the dynamic backend at every emit point and
          * by `:xposed-android`'s `PersistentDiscoveryCache` when it reports an
          * invalidation, so it is `public` (cross-module).
+         *
+         * Deliberate trade-off: this catches `Throwable` (including `Error`,
+         * not just `Exception`) so even a pathological observer can never abort
+         * a resolve — at the cost of silent diagnosability (a broken observer
+         * fails quietly). That is accepted: the alternative debug-sink
+         * machinery would be over-engineering for a side-channel.
          */
         public fun safe(
             observer: DiscoveryObserver,
@@ -136,6 +168,10 @@ public interface DiscoveryObserver {
  * logcat observer instead, but the SAME outcomes are exercised here on a plain
  * JVM, which is where #22's testable value lives.
  *
+ * Deliberately `public` (parallel to [DiscoveryObserver.NOOP]): it is a
+ * reference / test-double downstream test authors can reuse to assert their own
+ * discovery wiring, not just an internal fixture.
+ *
  * THREAD SAFETY. Records under a single lock so concurrent discovery threads
  * produce a consistent [outcomes] / [invalidations] snapshot.
  */
@@ -149,7 +185,7 @@ public class RecordingDiscoveryObserver : DiscoveryObserver {
 
     private val lock = Any()
     private val recordedOutcomes = mutableListOf<Outcome>()
-    private val recordedInvalidations = mutableListOf<Boolean>()
+    private val recordedInvalidations = mutableListOf<InvalidationReason>()
 
     override fun onOutcome(
         realName: String,
@@ -159,8 +195,8 @@ public class RecordingDiscoveryObserver : DiscoveryObserver {
         synchronized(lock) { recordedOutcomes += Outcome(realName, obfName, outcome) }
     }
 
-    override fun onCacheInvalidated(hadPriorFingerprint: Boolean) {
-        synchronized(lock) { recordedInvalidations += hadPriorFingerprint }
+    override fun onCacheInvalidated(reason: InvalidationReason) {
+        synchronized(lock) { recordedInvalidations += reason }
     }
 
     /** A snapshot of every [onOutcome] call, in order. */
@@ -168,7 +204,7 @@ public class RecordingDiscoveryObserver : DiscoveryObserver {
 
     /**
      * A snapshot of every [onCacheInvalidated] call (each element is its
-     * `hadPriorFingerprint` flag), in order.
+     * [InvalidationReason]), in order.
      */
-    public fun invalidations(): List<Boolean> = synchronized(lock) { recordedInvalidations.toList() }
+    public fun invalidations(): List<InvalidationReason> = synchronized(lock) { recordedInvalidations.toList() }
 }

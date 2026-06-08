@@ -133,9 +133,10 @@ side-channel instead of ad-hoc log strings:
   live DexKit scan that located the name.
 - `onOutcome(realName, obfName, SERVED_FROM_CACHE)` — a discovery written by an
   earlier process was read back; **no** scan ran this launch.
-- `onCacheInvalidated(hadPriorFingerprint)` — `PersistentDiscoveryCache.create`
+- `onCacheInvalidated(reason)` — `PersistentDiscoveryCache.create`
   dropped a stale cache because the app's `(app, version_code, signer)`
-  fingerprint changed (the flag separates a real update from a first run).
+  fingerprint changed; the `InvalidationReason` separates a real update
+  (`FINGERPRINT_CHANGED`) from a first run (`FIRST_RUN`).
 
 Each outcome fires **once per real name per process** (the in-memory memo is
 transparent), and emits are **fail-soft**: an observer that throws can never
