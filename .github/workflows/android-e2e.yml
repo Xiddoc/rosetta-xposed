@@ -3,17 +3,35 @@ name: Android e2e (emulator + LSPatch)
 # The ONLY test that exercises the full on-device path: it boots an emulator,
 # uses LSPatch (non-root) to embed the rosetta example module into the victim
 # APK, installs + launches it, and asserts via logcat that the Rosetta-resolved
-# hook fired. The victim's MainActivity.onCreate logs the formatTicket result
-# under tag `RosettaVictim`; with the module active that line reads
-# `HOOKED(ticket:T-123)` instead of `ticket:T-123`.
+# hooks fired. It covers BOTH resolution paths:
+#
+#   STATIC  (the original assertion): TicketService#formatTicket (`a.b#c`) IS in
+#     the bundled map. MainActivity logs the result under `RosettaVictim`; with
+#     the module active it reads `HOOKED(ticket:T-123)` instead of `ticket:T-123`.
+#
+#   DYNAMIC (rosetta-xposed#22): AuditService#auditTicket (`c.d#e`) is
+#     DELIBERATELY ABSENT from the map, so the module resolves it by LIVE DexKit
+#     discovery (real native on ART — the last untested layer). Three sub-checks,
+#     all driven by the module's DiscoveryObserver markers under
+#     `RosettaDiscovery` plus the victim's `RosettaVictimDyn` result tag:
+#       1. static miss → DexKit DISCOVERED → hook fires (`DHOOKED(...)`);
+#       2. relaunch → SERVED_FROM_CACHE, no rescan (PersistentDiscoveryCache
+#          survived the process restart);
+#       3. version bump (a 101 victim APK) → CACHE_INVALIDATED → re-DISCOVERED.
 #
 # Why LSPatch and not LSPosed: running LSPosed in CI needs Magisk root + a
 # Zygisk module on the AVD (no turnkey action, very flaky). LSPatch patches the
 # target APK to self-load the module — no root, vanilla emulator.
 #
-# This job is ADVISORY (never a required gate): emulator boot + the LSPatch
-# loader are slow and inherently flaky. It runs nightly, on demand, and when the
-# Android example (or the layers it depends on) changes.
+# This job is ADVISORY (`continue-on-error: true`, never a required gate):
+# emulator boot + the LSPatch loader are slow and inherently flaky, and the
+# dynamic path adds a real native `.so` load and DexKit scan on top — strictly
+# MORE device-dependent than the static path, so it firmly stays advisory rather
+# than a gated check (rosetta-xposed#22 decision). The always-required gate is
+# the plain-JVM `./gradlew build` in ci.yml, which fully covers the observer /
+# cache / invalidation LOGIC this job only smoke-tests on a real device. It runs
+# nightly, on demand, and when the Android example (or the layers it depends on)
+# changes.
 #
 # SPEED + STABILITY: the slow part is a cold emulator boot (~4 min) which also
 # races the runner's post-boot setup (the infamous `cmd: ... Broken pipe (32)`
@@ -98,6 +116,23 @@ jobs:
             - name: Assemble victim + module APKs
               run: ./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug --stacktrace
 
+            # rosetta-xposed#22 cache-invalidation phase: a SECOND victim APK
+            # with a bumped versionCode (101) — same code, different identity —
+            # so installing it as an update flips the module's persistent-cache
+            # fingerprint and forces a re-discovery. Copied out immediately so it
+            # does not clobber the v100 APK at the same output path.
+            - name: Assemble version-bumped victim APK (for cache invalidation)
+              run: |
+                  set -euo pipefail
+                  ./gradlew -p examples/android :victim:assembleDebug -PvictimVersionCode=101 --stacktrace
+                  BUMPED_SRC=$(find examples/android/victim -name '*-debug.apk' | head -1)
+                  mkdir -p victim-bumped
+                  cp "$BUMPED_SRC" victim-bumped/victim-v101-debug.apk
+                  echo "VICTIM_BUMPED=$PWD/victim-bumped/victim-v101-debug.apk" >> "$GITHUB_ENV"
+                  # Re-assemble v100 so the default APK path holds the base version
+                  # for the static + first-launch dynamic assertions.
+                  ./gradlew -p examples/android :victim:assembleDebug --stacktrace
+
             # LSPatch's jar is compiled for JDK 21 (class file 65.0); the Gradle
             # build above needs JDK 17. Install 21 too and invoke LSPatch with it
             # explicitly (via $JAVA_HOME_21_X64) so the JDK-17 build is untouched.
@@ -166,6 +201,13 @@ jobs:
                   PATCHED_CONTROL=$(find patched-control -name '*.apk' | head -1)
                   echo "patched_control=$PATCHED_CONTROL"
                   echo "PATCHED_CONTROL=$PATCHED_CONTROL" >> "$GITHUB_ENV"
+                  # rosetta-xposed#22: patch the version-bumped (101) victim with
+                  # the SAME module, for the cache-invalidation assertion. The
+                  # assert script installs it as an update over the v100 app.
+                  "${JAVA_HOME_21_X64}/bin/java" -jar "$LSPATCH_JAR" "$VICTIM_BUMPED" -m "$MODULE" -o patched-bumped --force -l 2
+                  PATCHED_BUMPED=$(find patched-bumped -name '*.apk' | head -1)
+                  echo "patched_bumped=$PATCHED_BUMPED"
+                  echo "PATCHED_BUMPED=$PATCHED_BUMPED" >> "$GITHUB_ENV"
 
             # --- Emulator: documented snapshot-caching pattern -----------------
             # actions/cache stores the AVD + its saved snapshot. On a HIT the run
@@ -225,7 +267,10 @@ jobs:
                   # `sh -c` invocations (dash), so multi-line loops/ifs and
                   # cross-line variables don't work inline. Keep it to ONE line
                   # that hands off to a committed bash script (full pipefail + loop
-                  # support). PATCHED is read from the environment by that script.
+                  # support). PATCHED / PATCHED_CONTROL / PATCHED_BUMPED are read
+                  # from the environment by that script (PATCHED_BUMPED drives the
+                  # rosetta-xposed#22 cache-invalidation assertion; if unset, that
+                  # phase is skipped, not failed).
                   script: bash "$GITHUB_WORKSPACE/examples/android/scripts/e2e-assert.sh"
 
             - name: Upload e2e artifacts
@@ -236,6 +281,7 @@ jobs:
                   path: |
                       patched/**/*.apk
                       patched-control/**/*.apk
+                      patched-bumped/**/*.apk
                       examples/android/**/build/outputs/apk/**/*.apk
                       e2e-logcat.txt
                   retention-days: 14

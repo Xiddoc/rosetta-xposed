@@ -51,6 +51,20 @@ dependencies {
     // re-implementing bundled-map loading and signer-hash/AppIdentity assembly.
     implementation("io.github.xiddoc.rosetta:xposed-android")
 
+    // DYNAMIC path (rosetta-xposed#22): the on-device DexKit adapter
+    // (DexKitBackedIndex). Pulls :xposed transitively. The adapter declares
+    // DexKit `compileOnly`, so the AAR is NOT dragged in transitively — this
+    // Android module adds the real DexKit AAR itself (next line) so the bridge
+    // is present at runtime on a device. This is the device-only dependency #22
+    // wires; the JVM library build never sees it.
+    implementation("io.github.xiddoc.rosetta:dexkit")
+
+    // The real DexKit native bridge AAR. Ships an Android `.so` that loads on
+    // ART (NOT on a desktop JVM — see :dexkit's CI-built host native for tests).
+    // The example app is the right place for the runtime dependency: only the
+    // module-as-app needs the native, never the rosetta-xposed library itself.
+    implementation("org.luckypray:dexkit:2.2.0")
+
     // Legacy Xposed API — provided by the framework at runtime, so compileOnly.
     // This is the path LegacyEntry uses and the one wired live in LOOP #1.
     compileOnly("de.robv.android.xposed:api:82")

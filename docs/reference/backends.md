@@ -121,6 +121,33 @@ val rosetta = RosettaXposed.fromMapWithDiscovery(
 )
 ```
 
+### Observability (`DiscoveryObserver`)
+
+The backend already distinguishes a fresh DexKit scan from a persistent-cache
+hit — and the cache distinguishes a stale-cache drop from a warm relaunch — but
+nothing **surfaced** which happened. The `DiscoveryObserver` seam
+(rosetta-xposed#22) funnels those outcomes through one small, testable
+side-channel instead of ad-hoc log strings:
+
+- `onOutcome(realName, obfName, DISCOVERED)` — a static miss fell through to a
+  live DexKit scan that located the name.
+- `onOutcome(realName, obfName, SERVED_FROM_CACHE)` — a discovery written by an
+  earlier process was read back; **no** scan ran this launch.
+- `onCacheInvalidated(reason)` — `PersistentDiscoveryCache.create`
+  dropped a stale cache because the app's `(app, version_code, signer)`
+  fingerprint changed; the `InvalidationReason` separates a real update
+  (`FINGERPRINT_CHANGED`) from a first run (`FIRST_RUN`).
+
+Each outcome fires **once per real name per process** (the in-memory memo is
+transparent), and emits are **fail-soft**: an observer that throws can never
+break a resolve (`DiscoveryObserver.safe` swallows it). The default is
+`DiscoveryObserver.NOOP`; `RecordingDiscoveryObserver` is the in-memory
+reference impl used in tests. The on-device e2e (see
+[DexKit integration](dexkit-integration.md#on-device-dynamic-path-e2e-android-e2eyml-rosetta-xposed22))
+wraps a thin logcat observer that turns each outcome into a greppable marker —
+but the SAME outcomes are exercised on a plain JVM, which is where the testable
+value lives. Wire one in through `DiscoveryConfig.observer`.
+
 ## Composite (static-first, dynamic-on-miss)
 
 `CompositeResolutionBackend` is what a self-healing module wires up via

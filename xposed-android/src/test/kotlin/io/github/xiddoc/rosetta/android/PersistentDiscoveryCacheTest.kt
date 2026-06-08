@@ -14,12 +14,19 @@ package io.github.xiddoc.rosetta.android
 
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.xposed.AppIdentity
+import io.github.xiddoc.rosetta.xposed.DiscoveryObserver
+import io.github.xiddoc.rosetta.xposed.DiscoveryOutcome
+import io.github.xiddoc.rosetta.xposed.InvalidationReason
+import io.github.xiddoc.rosetta.xposed.RecordingDiscoveryObserver
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PersistentDiscoveryCacheTest {
+    /** A specific exception the fail-soft test throws (detekt forbids generic ones). */
+    private class ObserverBlewUp : RuntimeException("observer blew up")
+
     /** A plain in-memory stand-in for the consumer's SharedPreferences adapter. */
     private class FakeStore(
         private val map: MutableMap<String, String> = mutableMapOf(),
@@ -124,6 +131,59 @@ class PersistentDiscoveryCacheTest {
             PersistentDiscoveryCache.fingerprintOf(identity) !=
                 PersistentDiscoveryCache.fingerprintOf(other),
         )
+    }
+
+    // ---- observer / invalidation reporting (rosetta-xposed#22) --------------
+
+    @Test
+    fun `a first run reports invalidation with reason FIRST_RUN`() {
+        // No fingerprint stored yet: the cache invalidates (clears nothing) and
+        // reports a first run. This is the e2e's fresh-install signal.
+        val observer = RecordingDiscoveryObserver()
+        PersistentDiscoveryCache.create(FakeStore(), identity, observer)
+        assertEquals(listOf(InvalidationReason.FIRST_RUN), observer.invalidations())
+    }
+
+    @Test
+    fun `a version_code bump reports invalidation with reason FINGERPRINT_CHANGED`() {
+        // The e2e's "bump versionCode → stale entry dropped → re-discovered"
+        // assertion: a DIFFERENT build's fingerprint was present, so the reason
+        // is FINGERPRINT_CHANGED and the stale entry is gone.
+        val store = FakeStore()
+        PersistentDiscoveryCache.create(store, identity).put(real, entry)
+        val observer = RecordingDiscoveryObserver()
+        val cache = PersistentDiscoveryCache.create(store, identity.copy(versionCode = 101), observer)
+        assertNull(cache.get(real))
+        assertEquals(listOf(InvalidationReason.FINGERPRINT_CHANGED), observer.invalidations())
+    }
+
+    @Test
+    fun `a warm relaunch of the same build reports NO invalidation`() {
+        // Same fingerprint → no invalidation event, so a "served from cache"
+        // launch is cleanly distinguishable from an "invalidated" one.
+        val store = FakeStore()
+        PersistentDiscoveryCache.create(store, identity).put(real, entry)
+        val observer = RecordingDiscoveryObserver()
+        PersistentDiscoveryCache.create(store, identity, observer)
+        assertTrue(observer.invalidations().isEmpty())
+    }
+
+    @Test
+    fun `a throwing observer never breaks cache construction (fail-soft)`() {
+        val throwing =
+            object : DiscoveryObserver {
+                override fun onOutcome(
+                    realName: String,
+                    obfName: String,
+                    outcome: DiscoveryOutcome,
+                ) = Unit
+
+                override fun onCacheInvalidated(reason: InvalidationReason): Unit = throw ObserverBlewUp()
+            }
+        // Construction (which invalidates on a first run) must still succeed.
+        val cache = PersistentDiscoveryCache.create(FakeStore(), identity, throwing)
+        cache.put(real, entry)
+        assertEquals(entry, cache.get(real))
     }
 
     @Test

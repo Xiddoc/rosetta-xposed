@@ -4,10 +4,14 @@
  * with it enabled you see the hooked result (e.g. `HOOKED(ticket:T-123)`),
  * which is the visible proof the Rosetta-resolved hook fired.
  *
- * For headless CI (the emulator + LSPatch e2e workflow), onCreate also calls
- * formatTicket once and Log.i's the result under TAG. The e2e job greps logcat
- * for `HOOKED(ticket:T-123)` to assert the Rosetta-resolved hook fired — no UI
- * automation needed.
+ * onCreate exercises TWO paths so headless CI can assert both:
+ *   - STATIC  — `a.b#c` (TicketService) IS in the bundled map; logged under
+ *     `RosettaVictim`, hooked → `HOOKED(ticket:T-123)`.
+ *   - DYNAMIC — `c.d#e` (AuditService, rosetta-xposed#22) is DELIBERATELY
+ *     absent from the bundled map, so the module resolves it by live DexKit
+ *     discovery; logged under `RosettaVictimDyn`, hooked → `DHOOKED(...)`.
+ *
+ * The e2e job greps logcat for each marker; no UI automation needed.
  */
 package com.example.victim
 
@@ -18,14 +22,20 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.victim.a.b
+import com.example.victim.c.d
 
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Headless hook signal for CI: with the module active this logs
-        // `HOOKED(ticket:T-123)`, without it `ticket:T-123`.
+        // STATIC path: `a.b#c` IS in the bundled map. With the module active
+        // this logs `HOOKED(ticket:T-123)`, without it `ticket:T-123`.
         Log.i(TAG, b().c("T-123"))
+
+        // DYNAMIC path (#22): `c.d#e` (AuditService) is absent from the map, so
+        // the module resolves it by live DexKit discovery. With discovery wired
+        // this logs `DHOOKED(...)`, otherwise the raw `audit[...]:T-123`.
+        Log.i(DYN_TAG, d().e("T-123"))
 
         val output =
             TextView(this).apply {
@@ -53,5 +63,6 @@ class MainActivity : Activity() {
 
     private companion object {
         const val TAG = "RosettaVictim"
+        const val DYN_TAG = "RosettaVictimDyn"
     }
 }
