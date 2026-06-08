@@ -112,15 +112,21 @@ the release consumes:
 - Once the surface is stable the library graduates to `1.0.0` and ordinary
   SemVer applies.
 
-The single in-code source of truth is
+The in-code source of truth is
 `io.github.xiddoc.rosetta.core.BuildInfo` (`GROUP` / `VERSION` /
-`SCHEMA_VERSION`); a unit test pins `VERSION` to the Gradle release line and
-binds `SCHEMA_VERSION` to the loader's `CURRENT_SCHEMA_VERSION`, so the
-published coordinate can never silently drift from the schema it speaks.
+`SCHEMA_VERSION`). `GROUP` and `VERSION` are **generated at build time** from
+the Gradle `project.group` / `project.version` (the `generateBuildInfo` task in
+`core/build.gradle.kts` writes a generated Kotlin source into the `:core`
+compilation — no new plugins), so the constant cannot drift from the published
+coordinate: the release tag flows through `-Prosetta.version` into both the
+Maven coordinate and `BuildInfo.VERSION`. A unit test (`BuildInfoTest`) asserts
+`BuildInfo.VERSION` equals the injected Gradle version and binds
+`SCHEMA_VERSION` to the loader's `CURRENT_SCHEMA_VERSION`, so a tag↔constant or
+schema↔coordinate mismatch **fails the gate**.
 
-The build's `version` defaults to that literal but is overridable for a release
-via `-Prosetta.version=<x.y.z>`; the [release workflow](#tag-driven-release)
-feeds it the git tag (a `v0.1.0` tag publishes `0.1.0`).
+The build's `version` defaults to `0.1.0` but is overridable for a release via
+`-Prosetta.version=<x.y.z>`; the [release workflow](#tag-driven-release) feeds it
+the git tag (a `v0.1.0` tag publishes `0.1.0`).
 
 ### Local install
 
@@ -148,12 +154,36 @@ network-free.
 ### Tag-driven release
 
 `.github/workflows/release.yml` runs on a pushed `v*` tag. It runs the full
-quality gate (`spotlessCheck detekt test koverVerify build`), then publishes the
-three modules GPG-signed to the Sonatype Central Portal. It reads four CI
-secrets **by name** (never inline): `SIGNING_KEY` (ASCII-armored GPG private
-key), `SIGNING_PASSWORD`, `CENTRAL_USERNAME`, and `CENTRAL_PASSWORD`. Develocity
-auto-injection is disabled the same way as in `ci.yml` so strict dependency
-verification stays green.
+quality gate (`spotlessCheck detekt test koverVerify build`), then:
+
+1. **Uploads** the three modules, GPG-signed, to the Sonatype Central Portal via
+   the OSSRH Staging API bridge (`ossrh-staging-api.central.sonatype.com`). With
+   plain `maven-publish` this only creates an `open` **staging** deployment — it
+   does not release anything.
+2. **Promotes** that deployment to Maven Central with a `curl` call to the Portal
+   promotion endpoint: it `GET`s `/manual/search/repositories?state=open` to find
+   the deployment key this run created, then `POST`s
+   `/manual/upload/repository/<key>?publishing_type=automatic`, which validates
+   and auto-releases if the checks pass. Both calls authenticate with a Bearer
+   token = base64 of `CENTRAL_USERNAME:CENTRAL_PASSWORD`. (A nexus-publish Gradle
+   plugin would normally do this, but adding any new plugin would break the
+   strict dependency-verification invariant, so the promotion is a plain
+   `curl`.)
+
+It reads four CI secrets **by name** (never inline): `SIGNING_KEY`
+(ASCII-armored GPG private key), `SIGNING_PASSWORD`, `CENTRAL_USERNAME`, and
+`CENTRAL_PASSWORD`. Develocity auto-injection is disabled the same way as in
+`ci.yml` so strict dependency verification stays green.
+
+**Manual fallback / unverified status.** If the promotion call cannot resolve or
+release the deployment (Portal API drift, or Central holding the release for
+review), the artifacts remain safely in staging: log in to
+<https://central.sonatype.com>, open **Deployments**, and click **Publish** on
+the pending deployment to release it by hand. This whole publish-and-promote
+path is **wired but not yet verified against a live Central account** — no real
+release has been cut, so treat the first `v*` tag as the proving run for the
+credentials, signing key, namespace approval, and promotion call. See the
+[OSSRH Staging API docs](https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/).
 
 ## Docs
 

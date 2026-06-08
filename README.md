@@ -49,13 +49,19 @@ Distribution is via the usual Xposed/LSPosed/LSPatch mechanisms (build the
 module APK and load it through your framework manager) or by depending on the
 published Kotlin library.
 
-The three pure-JVM modules publish under the group `io.github.xiddoc.rosetta`:
+The three pure-JVM modules are set up to publish under the group
+`io.github.xiddoc.rosetta`:
 
 | Coordinate | What it gives you |
 | --- | --- |
 | `io.github.xiddoc.rosetta:xposed:0.1.0` | the layer-4 binding (pulls `core` transitively) |
 | `io.github.xiddoc.rosetta:core:0.1.0` | the framework-neutral map model + resolver |
 | `io.github.xiddoc.rosetta:xposed-android:0.1.0` | pure-JVM Android helpers (bundled-map + `AppIdentity` assembly) |
+
+> **Not on Central yet.** The tag-driven publish + auto-promote workflow is
+> wired but **unverified against a live Central account** — no release has been
+> cut. Until the first `v*` tag proves it, use `publishToMavenLocal` (below) to
+> consume the library. See [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/).
 
 Most modules want just `:xposed` (it depends on `:core`):
 
