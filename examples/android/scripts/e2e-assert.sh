@@ -87,30 +87,125 @@ if [ -n "${PATCHED_CONTROL:-}" ]; then
     adb uninstall com.example.victim >/dev/null 2>&1 || true
 fi
 
-echo "===== ASSERTION: module embedded, expect HOOKED(ticket:T-123) ====="
-# Clear logcat BEFORE install/launch so we don't pick up stale lines from the
-# control run / snapshot.
+# launch_and_wait <human-label>: clear logcat, cold-start MainActivity, and
+# wait for the RosettaVictim (static) tag to appear. Exits the script on a
+# timeout (the app crashed / never ran). Used before EACH assertion phase so
+# every launch reads a clean buffer.
+launch_and_wait() {
+    label="$1"
+    adb logcat -c
+    adb shell am force-stop com.example.victim || true
+    adb shell am start -n com.example.victim/.MainActivity
+    if ! await_rosetta_tag "${label}" 60; then
+        echo "TIMEOUT [${label}]: RosettaVictim tag never appeared — app may have crashed." >&2
+        dump_diagnostics
+        exit 1
+    fi
+}
+
+echo "===== ASSERTION 1: static hook — expect HOOKED(ticket:T-123) ====="
+# Clear logcat BEFORE install so we don't pick up stale lines from the control
+# run / snapshot.
 adb logcat -c
 adb install -r "${PATCHED}"
 # MainActivity.onCreate calls formatTicket and logs the result under tag
 # RosettaVictim; with the module active it reads HOOKED(ticket:T-123).
-adb shell am start -n com.example.victim/.MainActivity
-
-if ! await_rosetta_tag assertion 60; then
-    echo "TIMEOUT: RosettaVictim tag never appeared — app may have crashed." >&2
-    dump_diagnostics
-    exit 1
-fi
+launch_and_wait static
 
 # Dump the RosettaVictim lines once for the assertion + the log.
 LOGCAT_DUMP="$(adb logcat -d -s RosettaVictim:I)"
-echo "----- RosettaVictim logs -----"
+echo "----- RosettaVictim (static) logs -----"
 echo "${LOGCAT_DUMP}"
 
 if echo "${LOGCAT_DUMP}" | grep -qF 'HOOKED(ticket:T-123)'; then
-    echo "E2E PASS: Rosetta-resolved hook fired (HOOKED(ticket:T-123))."
+    echo "E2E PASS (static): Rosetta-resolved hook fired (HOOKED(ticket:T-123))."
 else
-    echo "E2E FAIL: HOOKED(ticket:T-123) not observed (unhooked would be 'ticket:T-123')." >&2
+    echo "E2E FAIL (static): HOOKED(ticket:T-123) not observed (unhooked would be 'ticket:T-123')." >&2
     dump_diagnostics
     exit 1
 fi
+
+# -------------------------------------------------------------------------
+# DYNAMIC path (rosetta-xposed#22): static miss → DexKit discovery → hook.
+#
+# AuditService (`c.d#e`) is DELIBERATELY absent from the bundled map, so the
+# module resolves it by live DexKit discovery. The victim logs the (possibly
+# hooked) result under RosettaVictimDyn; the module logs the resolve PATH
+# (DISCOVERED / SERVED_FROM_CACHE / CACHE_INVALIDATED) under RosettaDiscovery.
+#
+# We assert on the FIRST module launch above (already booted): the hook fired
+# AND it was a fresh DISCOVERED scan (the cache was just invalidated on first
+# run). Then a SECOND launch must be SERVED_FROM_CACHE (no rescan). Then a
+# version-bumped APK must CACHE_INVALIDATE and re-DISCOVER.
+# -------------------------------------------------------------------------
+
+# assert_marker <logcat-dump> <grep-pattern> <pass-msg> <fail-msg>: fixed-string
+# grep; pass or dump+exit. Keeps the three dynamic phases uniform.
+assert_marker() {
+    dump="$1"; pattern="$2"; pass="$3"; fail="$4"
+    if echo "${dump}" | grep -qF "${pattern}"; then
+        echo "${pass}"
+    else
+        echo "${fail}" >&2
+        dump_diagnostics
+        exit 1
+    fi
+}
+
+echo "===== ASSERTION 2: dynamic hook fired + fresh DISCOVERED scan ====="
+DYN_DUMP="$(adb logcat -d -s RosettaVictimDyn:I)"
+DISC_DUMP="$(adb logcat -d -s RosettaDiscovery:I)"
+echo "----- RosettaVictimDyn logs -----"; echo "${DYN_DUMP}"
+echo "----- RosettaDiscovery logs -----"; echo "${DISC_DUMP}"
+assert_marker "${DYN_DUMP}" 'DHOOKED(' \
+    "E2E PASS (dynamic): discovered hook fired (DHOOKED(...))." \
+    "E2E FAIL (dynamic): DHOOKED(...) not observed — discovery did not resolve/hook AuditService."
+assert_marker "${DISC_DUMP}" 'DISCOVERED com.example.victim.AuditService' \
+    "E2E PASS (dynamic): first launch was a fresh DexKit DISCOVERED scan." \
+    "E2E FAIL (dynamic): expected a DISCOVERED marker on the first launch."
+
+echo "===== ASSERTION 3: relaunch is SERVED_FROM_CACHE (no rescan) ====="
+# Same APK, same versionCode → the persistent cache from launch #1 is still
+# valid, so the discovery must be served from it WITHOUT a DexKit scan.
+launch_and_wait cache-hit
+DISC_DUMP="$(adb logcat -d -s RosettaDiscovery:I)"
+echo "----- RosettaDiscovery (relaunch) logs -----"; echo "${DISC_DUMP}"
+assert_marker "${DISC_DUMP}" 'SERVED_FROM_CACHE com.example.victim.AuditService' \
+    "E2E PASS (cache): relaunch served the discovery from the persistent cache." \
+    "E2E FAIL (cache): expected SERVED_FROM_CACHE on relaunch (cache did not survive the restart)."
+# A relaunch of the SAME build must NOT re-run a fresh scan.
+if echo "${DISC_DUMP}" | grep -qF 'DISCOVERED com.example.victim.AuditService'; then
+    echo "E2E FAIL (cache): a fresh DISCOVERED scan ran on relaunch — the cache was not used." >&2
+    dump_diagnostics
+    exit 1
+fi
+echo "E2E PASS (cache): no fresh discovery scan on relaunch."
+
+# -------------------------------------------------------------------------
+# ASSERTION 4: cache invalidation on a version bump. The workflow builds a
+# SECOND victim APK with a bumped versionCode (patched into ${PATCHED_BUMPED}).
+# Installing it over the first is an app update: the persistent cache's
+# (app, version_code, signer) fingerprint changes, so the stale entry is
+# dropped (CACHE_INVALIDATED) and the name is re-DISCOVERED. Skipped (not
+# failed) if the workflow did not provide the bumped APK.
+# -------------------------------------------------------------------------
+if [ -n "${PATCHED_BUMPED:-}" ]; then
+    echo "===== ASSERTION 4: version bump → CACHE_INVALIDATED → re-DISCOVERED ====="
+    adb logcat -c
+    # Update install (-r) over the existing package; the cache prefs survive the
+    # update, but the fingerprint no longer matches, forcing invalidation.
+    adb install -r "${PATCHED_BUMPED}"
+    launch_and_wait invalidation
+    DISC_DUMP="$(adb logcat -d -s RosettaDiscovery:I)"
+    echo "----- RosettaDiscovery (post-bump) logs -----"; echo "${DISC_DUMP}"
+    assert_marker "${DISC_DUMP}" 'CACHE_INVALIDATED' \
+        "E2E PASS (invalidation): version bump dropped the stale cache (CACHE_INVALIDATED)." \
+        "E2E FAIL (invalidation): expected CACHE_INVALIDATED after the version bump."
+    assert_marker "${DISC_DUMP}" 'DISCOVERED com.example.victim.AuditService' \
+        "E2E PASS (invalidation): the name was re-DISCOVERED after invalidation." \
+        "E2E FAIL (invalidation): expected a fresh DISCOVERED scan after invalidation."
+else
+    echo "NOTE: PATCHED_BUMPED not provided — skipping the version-bump invalidation assertion." >&2
+fi
+
+echo "E2E PASS: all static + dynamic (discovery / cache-hit / invalidation) assertions passed."

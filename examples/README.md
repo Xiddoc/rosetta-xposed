@@ -38,7 +38,7 @@ because the Google Maven SDK hosts are routinely network-restricted in CI.
 | --- | ---- | ---------- |
 | [`harness/`](harness) | Pure-JVM walkthroughs **without R8** (obf names simulated by source spelling, so deterministic and offline): the full static resolve→hook path (`Walkthrough`) **and** the fail-closed signer guard — MATCH / MISMATCH / MISSING / MALFORMED / normalization (`SignerWalkthrough`). | **Anywhere, no Android.** Fast; the required gate. |
 | [`r8/`](r8) | The same flow **with real R8 obfuscation** (`--classfile`), across **two versions**: `R8WalkthroughTest` proves resolution against genuine obfuscator output; `VersionRotationTest` proves ONE real-name hook resolves both v100 (`a.b#c`) and v101 (`x.y#q`) by selecting the right map from a `MapRegistry`. Also guards the maps against drifting from what R8 emits. | **Anywhere, no Android SDK.** Needs network once to fetch R8. |
-| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side), now consuming the optional `:xposed-android` helper module. | A device/emulator with LSPosed (Android SDK to build). |
+| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side), consuming the optional `:xposed-android` helper module — now covering BOTH the static hook (`TicketService`, in the map) and the **dynamic** self-healing path (`AuditService`, absent from the map → live DexKit discovery + persistent cache, rosetta-xposed#22). | A device/emulator with LSPosed (Android SDK to build). |
 
 ### Run the JVM tests (no SDK needed)
 
@@ -102,12 +102,24 @@ In `.github/workflows/android-e2e.yml` (nightly + on-demand + on `examples/andro
 changes), **advisory**:
 
 - `android-e2e` boots an emulator, uses **LSPatch** (non-root) to embed the
-  module into the victim APK, launches it, and asserts via logcat that the
-  victim's startup log reads `HOOKED(ticket:T-123)` (the headless hook signal —
-  `MainActivity.onCreate` logs the `formatTicket` result under tag
-  `RosettaVictim`). This is the only test that exercises the full on-device path.
+  module into the victim APK, launches it, and asserts via logcat against BOTH
+  resolution paths. This is the only test that exercises the full on-device path.
   LSPosed-with-root isn't CI-feasible; LSPatch is. The workflow is authored for
   GitHub's KVM runners and may need first-run tuning of the LSPatch flags.
+    - **Static** — `TicketService#formatTicket` IS in the bundled map; the
+      victim's startup log (tag `RosettaVictim`) reads `HOOKED(ticket:T-123)`.
+    - **Dynamic** (rosetta-xposed#22) — `AuditService#auditTicket` is
+      *deliberately absent* from the map, so the module resolves it by live
+      **DexKit** discovery. The job asserts: a static miss → `DISCOVERED` →
+      hook fires (`DHOOKED(...)`); a relaunch → `SERVED_FROM_CACHE` (the
+      `PersistentDiscoveryCache` survived the restart, no rescan); a
+      version-bumped APK → `CACHE_INVALIDATED` → re-`DISCOVERED`. The resolve-path
+      markers come from the module's `LogcatDiscoveryObserver` (tag
+      `RosettaDiscovery`). The dynamic path is *more* device-dependent (it loads
+      a real native + scans the APK), so it firmly stays advisory — the
+      observer / cache / invalidation **logic** is unit-tested on the always-green
+      JVM gate instead. See
+      [`docs/reference/dexkit-integration.md`](../docs/reference/dexkit-integration.md).
 
 ### Building the Android APKs locally
 

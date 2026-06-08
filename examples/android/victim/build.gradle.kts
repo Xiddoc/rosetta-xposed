@@ -22,7 +22,12 @@ android {
         applicationId = "com.example.victim"
         minSdk = 24
         targetSdk = 34
-        versionCode = 100 // MUST match the map filename / version_code (maps/100.json).
+        // Defaults to 100 (matches maps/100.json). The android-e2e workflow's
+        // cache-invalidation phase (rosetta-xposed#22) rebuilds the victim with
+        // `-PvictimVersionCode=101` to simulate an app UPDATE: same code, bumped
+        // version_code, which flips the module's persistent-cache fingerprint and
+        // forces a re-discovery. The module bundles maps/101.json to match.
+        versionCode = (project.findProperty("victimVersionCode") as String?)?.toInt() ?: 100
         versionName = "1.0.0"
     }
 

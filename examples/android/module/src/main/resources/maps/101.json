@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "app": "com.example.victim",
+  "version": "1.0.1",
+  "version_code": 101,
+  "captured_at": "2026-06-08",
+  "sources": [
+    { "tool": "hand-authored", "classes": 1, "notes": "rosetta-xposed#22 version-bump fixture: same static TicketService as 100.json with a bumped version_code, so the dynamic-path persistent cache invalidates on the bump. AuditService is intentionally omitted (dynamic-discovery target)." }
+  ],
+  "classes": {
+    "com.example.victim.TicketService": {
+      "obfuscated": "com.example.victim.a.b",
+      "kind": "class",
+      "methods": {
+        "formatTicket": {
+          "obfuscated": "c",
+          "signature": "(Ljava/lang/String;)Ljava/lang/String;"
+        }
+      }
+    }
+  }
+}

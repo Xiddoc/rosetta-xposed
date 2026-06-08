@@ -33,14 +33,26 @@ class LegacyEntry : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != TARGET_PACKAGE) return
 
-        val map = BundledMaps.load("$TARGET_VERSION_CODE.json")
+        // Reach the running Application once (reflectively — see currentApp).
+        // It feeds BOTH the identity read and the dynamic path (SharedPreferences
+        // + the APK path DexKit scans).
+        val app = currentApp()
 
         // Identity: read it properly from PackageManager when we can reach a
         // context; otherwise fall back to the known selection key. Reading the
         // signer set requires a PackageManager, which is awkward this early in
         // legacy handleLoadPackage — that awkwardness is itself a gap worth
         // noting. ModernEntry shows the clean libxposed path.
-        val identity = identityOrFallback(lpparam)
+        val identity = identityOrFallback(lpparam, app)
+
+        // Select the bundled map by the DETECTED version_code so the e2e's
+        // version-bump APK (versionCode 101) still finds a map; fall back to the
+        // base 100 map for any other version. The version-bump scenario (#22)
+        // bumps the cache fingerprint, not the static map contents — both map
+        // versions carry TicketService statically and omit AuditService.
+        val mapVersion =
+            if (identity.versionCode == BUMPED_VERSION_CODE) BUMPED_VERSION_CODE else TARGET_VERSION_CODE
+        val map = BundledMaps.load("$mapVersion.json")
 
         val rosetta = RosettaXposed.fromRegistry(MapRegistry.of(map), identity, lpparam.classLoader)
         if (rosetta == null) {
@@ -48,6 +60,7 @@ class LegacyEntry : IXposedHookLoadPackage {
             return
         }
 
+        // STATIC path: TicketService IS in the bundled map.
         rosetta
             .method("com.example.victim.TicketService", "formatTicket")
             .hook(
@@ -59,24 +72,26 @@ class LegacyEntry : IXposedHookLoadPackage {
                     },
                 ),
             )
-
         XposedBridge.log("rosetta-example: hooked TicketService.formatTicket in ${lpparam.packageName}")
+
+        // DYNAMIC path (#22): AuditService is ABSENT from the map, so it is
+        // resolved by live DexKit discovery (cache-backed, observed). Needs a
+        // real Application for SharedPreferences + the APK path; skip cleanly if
+        // we could not reach one (DiscoveryHooks is itself fail-soft besides).
+        if (app != null) {
+            DiscoveryHooks.install(app, map, identity, lpparam.classLoader)
+        } else {
+            XposedBridge.log("rosetta-example: no Application reachable; skipping dynamic-path discovery")
+        }
     }
 
-    private fun identityOrFallback(lpparam: XC_LoadPackage.LoadPackageParam): AppIdentity {
-        // `android.app.AndroidAppHelper` is a @hide framework class: it exists at
-        // runtime in the app process but is absent from both the Xposed API stub
-        // and the public android.jar, so it cannot be referenced at compile time.
-        // Reach it reflectively through XposedHelpers (which IS in the API jar);
-        // this is the awkwardness that makes early identity reads fiddly on the
-        // legacy path. With a real Application we read the full identity (incl. the
-        // signer set) via AndroidAppIdentity.of; otherwise we fall back to the
-        // known selection key (fine here — maps/100.json pins no signer_sha256).
-        val app =
-            runCatching {
-                val helper = XposedHelpers.findClass("android.app.AndroidAppHelper", null)
-                XposedHelpers.callStaticMethod(helper, "currentApplication") as? Application
-            }.getOrNull()
+    private fun identityOrFallback(
+        lpparam: XC_LoadPackage.LoadPackageParam,
+        app: Application?,
+    ): AppIdentity {
+        // With a real Application we read the full identity (incl. the signer
+        // set) via AndroidAppIdentity.of; otherwise we fall back to the known
+        // selection key (fine here — maps/100.json pins no signer_sha256).
         val pm = app?.packageManager
         return if (pm != null) {
             AndroidAppIdentity.of(pm, lpparam.packageName)
@@ -85,8 +100,25 @@ class LegacyEntry : IXposedHookLoadPackage {
         }
     }
 
+    /**
+     * The running [Application], or null if unreachable. `android.app.
+     * AndroidAppHelper` is a @hide framework class: it exists at runtime in the
+     * app process but is absent from both the Xposed API stub and the public
+     * android.jar, so it cannot be referenced at compile time. Reach it
+     * reflectively through XposedHelpers (which IS in the API jar); this is the
+     * awkwardness that makes early reads fiddly on the legacy path.
+     */
+    private fun currentApp(): Application? =
+        runCatching {
+            val helper = XposedHelpers.findClass("android.app.AndroidAppHelper", null)
+            XposedHelpers.callStaticMethod(helper, "currentApplication") as? Application
+        }.getOrNull()
+
     private companion object {
         const val TARGET_PACKAGE = "com.example.victim"
         const val TARGET_VERSION_CODE = 100L
+
+        /** The e2e's version-bump APK (#22) ships this versionCode; its map is `101.json`. */
+        const val BUMPED_VERSION_CODE = 101L
     }
 }

@@ -114,6 +114,77 @@ therefore enforced by *deliberate* tests (the
 `DexKitBackedIndexIntegrationTest` cases) rather than the gate — every branch of
 `DexKitBackedIndex` has an explicit real-bridge test.
 
+## On-device dynamic-path e2e (`android-e2e.yml`, rosetta-xposed#22)
+
+The `:dexkit` integration test proves the adapter against a *committed DEX
+fixture* on the host JVM. What it cannot prove is the **full on-device path**:
+the real `DexKitBridge` native loaded on Android **ART**, scanning a live APK,
+driving self-healing discovery inside a hooked app, with the
+`PersistentDiscoveryCache` surviving a real process restart. The
+`android-e2e.yml` workflow — already the home of the **static**-path LSPatch
+assertion — was extended to cover the **dynamic** path too.
+
+### What it exercises
+
+The toy victim (`examples/android/victim`) gained a second "obfuscated" class,
+`com.example.victim.c.d#e` (real name `AuditService#auditTicket`), that is
+**deliberately absent from the bundled map**, so the static lookup misses and
+the module must fall through to discovery. The module
+(`examples/android/module`) wires it via
+`RosettaXposed.fromMapWithDiscovery(...)` with a real `DexKitBackedIndex`, a
+`PersistentDiscoveryCache` over the app's `SharedPreferences`, and a
+`DiscoveryHints` whose only signal is a **stable string anchor**
+(`rosetta.audit.anchor.v1`) the victim class references — the cross-version
+signal DexKit finds the class by even when `c.d`/`e` rotate.
+
+Three logcat assertions, all driven by the **`DiscoveryObserver`** markers (see
+[Resolution backends](backends.md)) the module's `LogcatDiscoveryObserver`
+prints under tag `RosettaDiscovery`, plus the victim's own `RosettaVictimDyn`
+result tag:
+
+1. **Discovery + hook** — static miss → `DISCOVERED` (a fresh DexKit scan) →
+   the hook fires (`DHOOKED(...)`), mirroring the static `HOOKED(...)` marker.
+2. **Cache hit** — a second launch logs `SERVED_FROM_CACHE` and **no**
+   `DISCOVERED` line: the persistent cache survived the process restart, so no
+   rescan ran.
+3. **Invalidation** — a version-bumped victim APK (`-PvictimVersionCode=101`,
+   patched with the same module) is installed as an update; the cache's
+   `(app, version_code, signer)` fingerprint changes, so the stale entry is
+   dropped (`CACHE_INVALIDATED`) and the name is re-`DISCOVERED`.
+
+### Where the testable value actually lives
+
+The observer / cache-hit / invalidation **logic** is **not** in the Android
+module — it is pushed down into the libraries behind the `DiscoveryObserver`
+seam (`:xposed`) and `PersistentDiscoveryCache`'s invalidation reporting
+(`:xposed-android`), both pure-JVM and **unit-tested on the always-green
+`./gradlew build` gate** (`DiscoveryObserverTest`,
+`DynamicDiscoveryCacheWiringTest`, `PersistentDiscoveryCacheTest`,
+`CompositeDiscoveryWiringTest`). The module's `LogcatDiscoveryObserver` is the
+*irreducible Android edge* — it only turns a `DiscoveryOutcome` into a `Log.i`
+line, exactly like `SharedPreferencesStore` is the edge of the cache. So the
+device run is a smoke test of wiring + the one genuinely ART-only thing (the
+native load + a real DexKit scan), while every branch of the surrounding logic
+is gated on a plain JVM.
+
+### Advisory, not gated
+
+The dynamic-path job stays **advisory** (`continue-on-error: true`), like the
+existing static emulator job — in fact *more* so: it adds a real native `.so`
+load and a DexKit scan on top of the already-flaky emulator-boot + LSPatch
+loader, so it is strictly more device-dependent. Making it a required gate would
+let emulator/native flakiness block merges for no correctness gain, because the
+correctness it would catch is already covered by the JVM unit tests above. The
+**only** always-required gate remains the no-Android-SDK `./gradlew build`. The
+version-bump phase is itself skipped (not failed) if the workflow does not
+provide the bumped APK, so a partial environment degrades gracefully.
+
+> **Not executed in cloud sessions.** This job needs an emulator + the Android
+> SDK + a loadable DexKit native — none of which exist in a web/cloud agent
+> session. The wiring, workflow, and assertions are committed and ready to run
+> nightly / on demand on a GitHub `ubuntu-latest` runner; a physical
+> device/emulator pass is the remaining manual confirmation.
+
 ## Refreshing the fixtures
 
 Two binaries back the integration test; both have a reproducible build script.
