@@ -14,7 +14,7 @@
  * (no persistence, exactly today's behaviour); [InMemoryDiscoveryCache] is a
  * fully-tested non-persistent implementation; the on-device,
  * `SharedPreferences`-backed implementation lives at the Android edge in
- * `:xposed-android` (`PersistentDiscoveryCache`), where the
+ * `:android-runtime` (`PersistentDiscoveryCache`), where the
  * `(app, version_code, signer)` invalidation that a persistent store needs is
  * applied — mirroring how `AppIdentity` assembly keeps the irreducible Android
  * call in the consumer.
@@ -69,7 +69,7 @@ public interface DiscoveryCache {
 
 /**
  * A process-lifetime, in-memory [DiscoveryCache]. It does NOT survive a
- * restart (use the `:xposed-android` `PersistentDiscoveryCache` for that), but
+ * restart (use the `:android-runtime` `PersistentDiscoveryCache` for that), but
  * it is the fully-tested reference implementation of the seam and is useful for
  * sharing discoveries between several backend instances in one process.
  *

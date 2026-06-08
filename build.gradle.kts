@@ -106,16 +106,16 @@ subprojects {
 }
 
 // Aggregate all modules' coverage into the root project. Kover merges the
-// `:core`, `:xposed`, and `:xposed-android` measurements so a single
+// `:core`, `:xposed`, and `:android-runtime` measurements so a single
 // `./gradlew koverVerify` gates the whole codebase (rosetta-frida's "100% or
 // the build fails" rule).
 dependencies {
     kover(project(":core"))
     kover(project(":xposed"))
-    // :xposed-android is pure JVM (no Android plugin), so its helper LOGIC is
+    // :android-runtime is pure JVM (no Android plugin), so its runtime LOGIC is
     // fully unit-testable and joins the 100% line + branch gate. :dexkit stays
     // OUT (its integration test legitimately skips without the native lib).
-    kover(project(":xposed-android"))
+    kover(project(":android-runtime"))
 }
 
 kover {

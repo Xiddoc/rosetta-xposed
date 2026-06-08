@@ -1,5 +1,5 @@
 /*
- * :xposed-android — an OPTIONAL, pure-JVM module of reusable Android-helper
+ * :android-runtime — an OPTIONAL, pure-JVM module of reusable Android-runtime
  * LOGIC for Xposed-family modules.
  *
  * Design note — why this module is PURE-JVM (no Android plugin, no android.jar):

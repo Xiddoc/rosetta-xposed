@@ -5,7 +5,7 @@
   "version_code": 100,
   "captured_at": "2026-06-05",
   "sources": [
-    { "tool": "hand-authored", "classes": 1, "notes": "xposed-android BundledMaps test fixture" }
+    { "tool": "hand-authored", "classes": 1, "notes": "android-runtime BundledMaps test fixture" }
   ],
   "classes": {
     "com.example.victim.TicketService": {

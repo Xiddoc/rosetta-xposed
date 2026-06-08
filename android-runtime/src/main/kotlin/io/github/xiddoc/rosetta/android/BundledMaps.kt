@@ -10,9 +10,10 @@
  * resources. Reading via the class loader is therefore the reliable
  * cross-process way to get at a bundled map, with no modulePath dance.
  *
- * This is the shipping, reusable form of the helper every Xposed module would
- * otherwise re-write by hand. It is pure JVM (class loader + MapLoader), so it
- * lives in the gated :xposed-android module and is fully unit-tested.
+ * This is the shipping, reusable form of the load-a-bundled-map step every
+ * Xposed module would otherwise re-write by hand. It is pure JVM (class loader
+ * + MapLoader), so it lives in the gated :android-runtime module and is fully
+ * unit-tested.
  */
 package io.github.xiddoc.rosetta.android
 

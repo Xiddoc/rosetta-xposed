@@ -140,7 +140,7 @@ public interface DiscoveryObserver {
          * Invoke [block] on [observer], swallowing any [Throwable] it throws.
          * Observability is a side-channel: an observer must never be able to
          * fail a discovery. Used by the dynamic backend at every emit point and
-         * by `:xposed-android`'s `PersistentDiscoveryCache` when it reports an
+         * by `:android-runtime`'s `PersistentDiscoveryCache` when it reports an
          * invalidation, so it is `public` (cross-module).
          *
          * Deliberate trade-off: this catches `Throwable` (including `Error`,

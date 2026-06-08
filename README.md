@@ -56,7 +56,7 @@ The three pure-JVM modules are set up to publish under the group
 | --- | --- |
 | `io.github.xiddoc.rosetta:xposed:0.1.0` | the layer-4 binding (pulls `core` transitively) |
 | `io.github.xiddoc.rosetta:core:0.1.0` | the framework-neutral map model + resolver |
-| `io.github.xiddoc.rosetta:xposed-android:0.1.0` | pure-JVM Android helpers (bundled-map + `AppIdentity` assembly) |
+| `io.github.xiddoc.rosetta:android-runtime:0.1.0` | pure-JVM Android-runtime logic (bundled-map + `AppIdentity` assembly) |
 
 > **Not on Central yet.** The tag-driven publish + auto-promote workflow is
 > wired but **unverified against a live Central account** — no release has been

@@ -48,7 +48,7 @@ on:
     pull_request:
         paths:
             - 'examples/android/**'
-            - 'xposed-android/**'
+            - 'android-runtime/**'
             - '.github/workflows/android-e2e.yml'
 
 permissions:

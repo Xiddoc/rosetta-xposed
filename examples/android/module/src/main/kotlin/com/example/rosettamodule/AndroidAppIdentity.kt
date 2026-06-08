@@ -7,7 +7,7 @@
  * signing-certificate byte arrays — can only live in a consuming Android module.
  * This is that thin extraction; the hashing + AppIdentity assembly is delegated
  * to the shipping, fully-tested `io.github.xiddoc.rosetta.android.AndroidIdentities`
- * in the optional pure-JVM `:xposed-android` module.
+ * in the optional pure-JVM `:android-runtime` module.
  *
  *   - `versionCode` is the O(1) map selection key (longVersionCode on API 28+).
  *   - the cert byte arrays become `signerSha256s`; SignerGuard matches the map's
@@ -55,7 +55,7 @@ internal object AndroidAppIdentity {
                     .orEmpty()
         }
 
-        // Delegate hashing + assembly to the tested :xposed-android helper.
+        // Delegate hashing + assembly to the tested :android-runtime module.
         return AndroidIdentities.build(
             packageName = packageName,
             versionCode = versionCode,

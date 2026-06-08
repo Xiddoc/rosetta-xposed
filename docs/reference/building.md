@@ -1,6 +1,6 @@
 # Building
 
-The project is a four-module Gradle (Kotlin/JVM) build (`:core`, `:xposed`, `:xposed-android`, `:dexkit`). It builds and tests
+The project is a four-module Gradle (Kotlin/JVM) build (`:core`, `:xposed`, `:android-runtime`, `:dexkit`). It builds and tests
 on a plain JVM — no Android SDK or emulator required.
 
 ```sh
@@ -84,7 +84,7 @@ checksum verification stays untouched, and `verify-metadata` remains
 
 ## Publishing
 
-The three pure-JVM modules — `:core`, `:xposed`, `:xposed-android` — publish to
+The three pure-JVM modules — `:core`, `:xposed`, `:android-runtime` — publish to
 Maven under the group **`io.github.xiddoc.rosetta`**. The optional, native
 `:dexkit` adapter is **not** published (it is kept out of the default build —
 see [Status](status.md)).
@@ -95,7 +95,7 @@ see [Status](status.md)).
 | --- | --- |
 | `io.github.xiddoc.rosetta:xposed:0.1.0` | `:xposed` (depends on `:core`) |
 | `io.github.xiddoc.rosetta:core:0.1.0` | `:core` |
-| `io.github.xiddoc.rosetta:xposed-android:0.1.0` | `:xposed-android` |
+| `io.github.xiddoc.rosetta:android-runtime:0.1.0` | `:android-runtime` |
 
 Each module publishes a main jar plus `-sources` and `-javadoc` jars and a full
 POM (name, description, URL, MIT license, SCM, developer, issue tracker).

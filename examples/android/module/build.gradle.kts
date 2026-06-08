@@ -46,10 +46,10 @@ dependencies {
     // Resolved from the parent build via the composite includeBuild in settings.
     implementation("io.github.xiddoc.rosetta:xposed")
 
-    // Optional Android-helper LOGIC (BundledMaps + AndroidIdentities). Pure JVM;
+    // Optional Android-runtime LOGIC (BundledMaps + AndroidIdentities). Pure JVM;
     // resolved via the same composite includeBuild. Keeps the module from
     // re-implementing bundled-map loading and signer-hash/AppIdentity assembly.
-    implementation("io.github.xiddoc.rosetta:xposed-android")
+    implementation("io.github.xiddoc.rosetta:android-runtime")
 
     // DYNAMIC path (rosetta-xposed#22): the on-device DexKit adapter
     // (DexKitBackedIndex). Pulls :xposed transitively. The adapter declares

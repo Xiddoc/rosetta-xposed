@@ -1,7 +1,7 @@
 name: Release
 
 # Tag-driven publish: pushing a `v*` tag (e.g. v0.1.0) builds, runs the full
-# quality gate, then publishes :core, :xposed, and :xposed-android to the
+# quality gate, then publishes :core, :xposed, and :android-runtime to the
 # Sonatype Central Portal, GPG-signed. :dexkit is NOT published (optional,
 # native; kept out of the default build — CLAUDE.md Decision 5).
 #
@@ -89,7 +89,7 @@ jobs:
                   ./gradlew -Prosetta.version=${{ steps.ver.outputs.version }}
                   :core:publishMavenPublicationToCentralPortalRepository
                   :xposed:publishMavenPublicationToCentralPortalRepository
-                  :xposed-android:publishMavenPublicationToCentralPortalRepository
+                  :android-runtime:publishMavenPublicationToCentralPortalRepository
                   --stacktrace
 
             # ---------------------------------------------------------------

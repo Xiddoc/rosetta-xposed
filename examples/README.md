@@ -15,7 +15,7 @@ including across an obfuscation **version rotation** (v100 `a.b#c` → v101
 > These are **standalone Gradle builds**, deliberately not wired into the
 > repo-root `settings.gradle.kts`, so `./gradlew build` for `:core` / `:xposed`
 > stays Android-free and green (the CLAUDE.md invariant). They consume
-> `io.github.xiddoc.rosetta:xposed` (and `:xposed-android`) from the parent
+> `io.github.xiddoc.rosetta:xposed` (and `:android-runtime`) from the parent
 > build via a composite `includeBuild("../..")` — the pre-Maven distribution
 > story a real consumer uses today.
 
@@ -38,7 +38,7 @@ because the Google Maven SDK hosts are routinely network-restricted in CI.
 | --- | ---- | ---------- |
 | [`harness/`](harness) | Pure-JVM walkthroughs **without R8** (obf names simulated by source spelling, so deterministic and offline): the full static resolve→hook path (`Walkthrough`) **and** the fail-closed signer guard — MATCH / MISMATCH / MISSING / MALFORMED / normalization (`SignerWalkthrough`). | **Anywhere, no Android.** Fast; the required gate. |
 | [`r8/`](r8) | The same flow **with real R8 obfuscation** (`--classfile`), across **two versions**: `R8WalkthroughTest` proves resolution against genuine obfuscator output; `VersionRotationTest` proves ONE real-name hook resolves both v100 (`a.b#c`) and v101 (`x.y#q`) by selecting the right map from a `MapRegistry`. Also guards the maps against drifting from what R8 emits. | **Anywhere, no Android SDK.** Needs network once to fetch R8. |
-| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side), consuming the optional `:xposed-android` helper module — now covering BOTH the static hook (`TicketService`, in the map) and the **dynamic** self-healing path (`AuditService`, absent from the map → live DexKit discovery + persistent cache, rosetta-xposed#22). | A device/emulator with LSPosed (Android SDK to build). |
+| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side), consuming the optional `:android-runtime` module — now covering BOTH the static hook (`TicketService`, in the map) and the **dynamic** self-healing path (`AuditService`, absent from the map → live DexKit discovery + persistent cache, rosetta-xposed#22). | A device/emulator with LSPosed (Android SDK to build). |
 
 ### Run the JVM tests (no SDK needed)
 
@@ -139,10 +139,10 @@ export ANDROID_HOME="$HOME/android-sdk" ANDROID_SDK_ROOT="$HOME/android-sdk"
 ./gradlew -p examples/android :victim:assembleDebug :module:assembleDebug
 ```
 
-## The `:xposed-android` helper module
+## The `:android-runtime` module
 
-The two helpers this dogfood originally re-implemented have been **promoted**
-into an optional, pure-JVM, fully-tested module — `:xposed-android` (in the root
+The two pieces this dogfood originally re-implemented have been **promoted**
+into an optional, pure-JVM, fully-tested module — `:android-runtime` (in the root
 build and the 100% coverage gate, alongside `:core`/`:xposed`/`:dexkit`):
 
 - **`BundledMaps`** — load a map bundled in the module APK via the module class

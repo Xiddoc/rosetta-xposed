@@ -36,7 +36,7 @@ pure-JVM modules is wired. What remains is on-device / native wiring.
   fixture; the test skips automatically when the native `.so` is absent (CI
   builds it from pinned source and caches it).
 - **Maven publishing (wired, not yet verified live)** — `:core`, `:xposed`,
-  and `:xposed-android` are configured to publish under
+  and `:android-runtime` are configured to publish under
   `io.github.xiddoc.rosetta` (version from the release tag), each with
   `-sources` / `-javadoc` jars and a full POM. A tag-driven `release.yml`
   workflow signs the artifacts, uploads them to the Sonatype Central Portal
