@@ -39,3 +39,9 @@ tasks.test {
         events("passed", "skipped", "failed")
     }
 }
+
+// Maven-publishing wiring (xposed#21). Shared convention: built-in
+// maven-publish + signing, a `-sources` jar, and an (empty) `-javadoc` jar —
+// no new plugins, so the offline default build and strict dependency
+// verification stay intact. See gradle/publishing.gradle.kts.
+apply(from = rootProject.file("gradle/publishing.gradle.kts"))

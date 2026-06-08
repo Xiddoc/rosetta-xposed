@@ -2,8 +2,8 @@
 
 The neutral `:core` (model + loader + resolver + conformance suite), the
 static and dynamic `:xposed` bindings, and the optional `:dexkit` adapter
-are all implemented and tested on the JVM. What remains is on-device /
-native wiring and Maven publishing.
+are all implemented and tested on the JVM. Maven publishing for the three
+pure-JVM modules is wired. What remains is on-device / native wiring.
 
 ## Built
 
@@ -35,6 +35,20 @@ native wiring and Maven publishing.
   integration test that runs real DexKit against a committed obfuscated DEX
   fixture; the test skips automatically when the native `.so` is absent (CI
   builds it from pinned source and caches it).
+- **Maven publishing (wired, not yet verified live)** — `:core`, `:xposed`,
+  and `:xposed-android` are configured to publish under
+  `io.github.xiddoc.rosetta` (version from the release tag), each with
+  `-sources` / `-javadoc` jars and a full POM. A tag-driven `release.yml`
+  workflow signs the artifacts, uploads them to the Sonatype Central Portal
+  (OSSRH Staging API bridge) on a `v*` tag, and then attempts to
+  **auto-release** the staged deployment via the Portal promotion endpoint
+  (`publishing_type=automatic`); a manual "Publish" in the Portal UI is the
+  documented fallback. The optional native `:dexkit` adapter is not
+  published. This path is **unverified against a live Central account** — no
+  real release has been cut yet, so the credentials, signing key, namespace
+  approval, and promotion call are wired but unproven end to end. See
+  [Building → Publishing](building.md#publishing) for coordinates and the
+  version scheme.
 
 ## Remaining work
 
@@ -46,4 +60,7 @@ native wiring and Maven publishing.
   `AppIdentity`; selection and signer enforcement are built, but the
   convenience wiring from a real `PackageManager` lives in the consuming
   module, not here.
-- **Maven publishing** — publishing to a Maven coordinate is pending.
+- **First live Central release** — the publish + auto-promote workflow is
+  wired but has never run against a real Central account. Cutting the first
+  `v*` tag will prove (or expose gaps in) the credentials, GPG signing,
+  namespace approval, and the staging-deployment promotion call.

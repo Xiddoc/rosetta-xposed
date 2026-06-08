@@ -38,20 +38,32 @@ plugins {
     id("ru.vyarus.animalsniffer") version "1.7.1" apply false
 }
 
+// The released version. This `version` is the single source of truth: the
+// `:core` build GENERATES `io.github.xiddoc.rosetta.core.BuildInfo.VERSION` from
+// it at build time (and a unit test pins the constant back to it), so the
+// in-code coordinate can never drift from what is published. The release
+// workflow overrides it from the pushed git tag via
+// `-Prosetta.version=<tag-without-v>` so a `v0.1.0` tag publishes `0.1.0`; an
+// ordinary local build uses the default below. Version scheme: SemVer with the
+// MINOR line coordinated to the map `schema_version` (0.1.x ⇄ schema 2) — see
+// docs/reference/building.md.
+val rosettaVersion: String = (findProperty("rosetta.version") as String?)?.takeIf { it.isNotBlank() } ?: "0.1.0"
+
 allprojects {
     group = "io.github.xiddoc.rosetta"
-    version = "0.0.0-dev"
+    version = rosettaVersion
 }
 
 // The ktlint engine version Spotless drives. Pinned so formatting is
 // reproducible across developer machines and CI runners.
 val ktlintVersion = "1.3.1"
 
-// Format the root build scripts (settings.gradle.kts + build.gradle.kts),
-// which belong to no subproject.
+// Format the root build scripts (settings.gradle.kts + build.gradle.kts) AND
+// the shared convention scripts under gradle/ (e.g. gradle/publishing.gradle.kts),
+// which belong to no subproject and would otherwise escape the format gate.
 spotless {
     kotlinGradle {
-        target("*.gradle.kts")
+        target("*.gradle.kts", "gradle/*.gradle.kts")
         ktlint(ktlintVersion)
         trimTrailingWhitespace()
         endWithNewline()

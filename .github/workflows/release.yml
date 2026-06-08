@@ -1,0 +1,159 @@
+name: Release
+
+# Tag-driven publish: pushing a `v*` tag (e.g. v0.1.0) builds, runs the full
+# quality gate, then publishes :core, :xposed, and :xposed-android to the
+# Sonatype Central Portal, GPG-signed. :dexkit is NOT published (optional,
+# native; kept out of the default build — CLAUDE.md Decision 5).
+#
+# Required repository secrets (referenced by NAME only — never inline values):
+#   SIGNING_KEY       — ASCII-armored GPG private key (the whole block,
+#                       `-----BEGIN PGP PRIVATE KEY BLOCK----- ... `)
+#   SIGNING_PASSWORD  — passphrase for that key
+#   CENTRAL_USERNAME  — Sonatype Central Portal token username
+#   CENTRAL_PASSWORD  — Sonatype Central Portal token password
+on:
+    push:
+        tags:
+            - 'v*'
+
+# Least privilege: the publish job only READS the repo. It pushes to an EXTERNAL
+# Maven repository (the Sonatype Central Portal) using the secrets above, not the
+# GitHub token, so it needs no write scope. If a future step attaches artifacts
+# to a GitHub Release, raise this to `contents: write` then.
+permissions:
+    contents: read
+
+concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        name: Build, sign, and publish to Central Portal
+        runs-on: ubuntu-latest
+        # Same Develocity-injection kill-switch as ci.yml: the auto-injected
+        # build-scan plugin drags unpinned BOM metadata that trips strict
+        # dependency verification at configuration time.
+        env:
+            DEVELOCITY_INJECTION_ENABLED: 'false'
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up JDK 17
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '17'
+
+            - name: Set up Gradle (with build cache)
+              uses: gradle/actions/setup-gradle@v4
+              with:
+                  develocity-injection-enabled: false
+
+            - name: Remove Develocity auto-injection init script
+              run: |
+                  init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+                  rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+                  echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
+
+            # Derive the release version from the tag: `v0.1.0` -> `0.1.0`. Fed
+            # to Gradle as -Prosetta.version so the published coordinate matches
+            # the tag. The in-code BuildInfo.VERSION is pinned to this same line
+            # by a unit test, so a mismatched tag fails the gate below.
+            - name: Derive version from tag
+              id: ver
+              run: |
+                  raw="${GITHUB_REF_NAME}"
+                  echo "version=${raw#v}" >> "$GITHUB_OUTPUT"
+                  echo "Releasing version: ${raw#v}"
+
+            # Run the full quality gate first (strict dependency verification
+            # stays ON — no extra plugins were added for publishing). A red gate
+            # must block a publish.
+            - name: Quality gate (spotless + detekt + test + 100% coverage) and build
+              run: >-
+                  ./gradlew -Prosetta.version=${{ steps.ver.outputs.version }}
+                  spotlessCheck detekt test koverVerify build --stacktrace
+
+            # Publish the three pure-JVM modules, GPG-signed, to the Central
+            # Portal repository. Signing keys + Central credentials come from the
+            # secrets via the env block below (read by gradle/publishing.gradle.kts).
+            - name: Publish to Sonatype Central Portal
+              env:
+                  SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+                  SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+                  CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+                  CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+              run: >-
+                  ./gradlew -Prosetta.version=${{ steps.ver.outputs.version }}
+                  :core:publishMavenPublicationToCentralPortalRepository
+                  :xposed:publishMavenPublicationToCentralPortalRepository
+                  :xposed-android:publishMavenPublicationToCentralPortalRepository
+                  --stacktrace
+
+            # ---------------------------------------------------------------
+            # Promote the staged deployment to Maven Central.
+            #
+            # WHY THIS STEP EXISTS: the Gradle step above uploads to the OSSRH
+            # Staging API bridge (ossrh-staging-api.central.sonatype.com), which
+            # only CREATES an `open` staging deployment under our namespace.
+            # Vanilla `maven-publish` has no concept of "release the staging
+            # repo", so without this call a `v*` tag would leave the artifacts
+            # parked in staging and publish NOTHING to Central. (We can't use a
+            # Nexus-publish Gradle plugin to do this for us — adding any new
+            # plugin would break the strict dependency-verification invariant.)
+            #
+            # FLOW (Central Portal "OSSRH Staging API", current as of 2026-06):
+            #   1. GET  /manual/search/repositories?state=open  → find the key
+            #           of the open deployment this run just uploaded.
+            #   2. POST /manual/upload/repository/<key>?publishing_type=automatic
+            #           → validate and auto-release to Central if checks pass.
+            # Both calls authenticate with a Bearer token that is the base64 of
+            # `CENTRAL_USERNAME:CENTRAL_PASSWORD` (the Portal token pair).
+            # See https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/
+            #
+            # MANUAL FALLBACK: if this step cannot resolve/promote the repo (API
+            # drift, validation held for review, etc.), the deployment is still
+            # safely in staging — log in to https://central.sonatype.com,
+            # open Deployments, and click "Publish" on the pending deployment to
+            # release it by hand. `publishing_type=user_managed` (instead of
+            # `automatic`) would force that manual path on purpose.
+            - name: Promote staged deployment to Central
+              env:
+                  CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+                  CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+              run: |
+                  set -euo pipefail
+                  api="https://ossrh-staging-api.central.sonatype.com"
+                  token="$(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
+
+                  echo "Searching for the open staging deployment..."
+                  search="$(curl -fsS -X GET \
+                      -H "Authorization: Bearer ${token}" \
+                      "${api}/manual/search/repositories?state=open")"
+                  echo "Search response: ${search}"
+
+                  # Pull the deployment/repository key out of the JSON. The
+                  # bridge returns `repositories: [{ key: "...", state: "open" }]`;
+                  # accept either `key` or `repository_key` defensively.
+                  key="$(printf '%s' "${search}" \
+                      | grep -oE '"(key|repository_key)"[[:space:]]*:[[:space:]]*"[^"]+"' \
+                      | head -n1 \
+                      | sed -E 's/.*"([^"]+)"$/\1/')"
+
+                  if [ -z "${key}" ]; then
+                      echo "::error::Could not find an open staging deployment to promote." >&2
+                      echo "The upload may have failed, or the API shape changed." >&2
+                      echo "MANUAL FALLBACK: log in to https://central.sonatype.com," >&2
+                      echo "open Deployments, and click Publish on the pending deployment." >&2
+                      exit 1
+                  fi
+
+                  echo "Promoting deployment '${key}' (publishing_type=automatic)..."
+                  curl -fsS -X POST \
+                      -H "Authorization: Bearer ${token}" \
+                      "${api}/manual/upload/repository/${key}?publishing_type=automatic"
+                  echo "Promotion request accepted. Central runs validation; on success the"
+                  echo "artifacts release automatically. Check the Portal Deployments view if"
+                  echo "validation holds the release for review."

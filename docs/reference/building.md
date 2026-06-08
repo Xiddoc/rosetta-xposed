@@ -82,13 +82,108 @@ With injection off, no unpinned artifacts ever reach the classpath, JAR
 checksum verification stays untouched, and `verify-metadata` remains
 `true`.
 
-## Distribution
+## Publishing
 
-This is an Xposed-family module dependency, **not** an npm package.
-Distribution is via the usual Xposed/LSPosed/LSPatch mechanisms (build the
-module APK and load it through your framework manager) or by depending on
-the Kotlin library once it is published to a Maven coordinate. Maven
-publishing is **planned** — see [Status](status.md).
+The three pure-JVM modules — `:core`, `:xposed`, `:xposed-android` — publish to
+Maven under the group **`io.github.xiddoc.rosetta`**. The optional, native
+`:dexkit` adapter is **not** published (it is kept out of the default build —
+see [Status](status.md)).
+
+### Coordinates
+
+| Coordinate | Module |
+| --- | --- |
+| `io.github.xiddoc.rosetta:xposed:0.1.0` | `:xposed` (depends on `:core`) |
+| `io.github.xiddoc.rosetta:core:0.1.0` | `:core` |
+| `io.github.xiddoc.rosetta:xposed-android:0.1.0` | `:xposed-android` |
+
+Each module publishes a main jar plus `-sources` and `-javadoc` jars and a full
+POM (name, description, URL, MIT license, SCM, developer, issue tracker).
+
+### Version scheme
+
+SemVer, with the **MINOR line deliberately tied to the map `schema_version`**
+the release consumes:
+
+- `0.1.x` consumes `schema_version: 2`.
+- A breaking schema bump (to `schema_version: 3`) moves the library to the next
+  MINOR (`0.2.x`); a breaking *library API* change before 1.0 also moves the
+  MINOR.
+- Once the surface is stable the library graduates to `1.0.0` and ordinary
+  SemVer applies.
+
+The in-code source of truth is
+`io.github.xiddoc.rosetta.core.BuildInfo` (`GROUP` / `VERSION` /
+`SCHEMA_VERSION`). `GROUP` and `VERSION` are **generated at build time** from
+the Gradle `project.group` / `project.version` (the `generateBuildInfo` task in
+`core/build.gradle.kts` writes a generated Kotlin source into the `:core`
+compilation — no new plugins), so the constant cannot drift from the published
+coordinate: the release tag flows through `-Prosetta.version` into both the
+Maven coordinate and `BuildInfo.VERSION`. A unit test (`BuildInfoTest`) asserts
+`BuildInfo.VERSION` equals the injected Gradle version and binds
+`SCHEMA_VERSION` to the loader's `CURRENT_SCHEMA_VERSION`, so a tag↔constant or
+schema↔coordinate mismatch **fails the gate**.
+
+The build's `version` defaults to `0.1.0` but is overridable for a release via
+`-Prosetta.version=<x.y.z>`; the [release workflow](#tag-driven-release) feeds it
+the git tag (a `v0.1.0` tag publishes `0.1.0`).
+
+### Local install
+
+```sh
+./gradlew publishToMavenLocal   # installs all three modules into ~/.m2
+```
+
+No signing key is needed locally: signing is **required only when a key is
+present** (the publish workflow supplies one). A plain build or
+`publishToMavenLocal` skips it.
+
+### Offline-safe by construction
+
+Publishing uses only the **built-in** `maven-publish` and `signing` Gradle
+plugins — no new artifacts on the classpath, so nothing new to pin in
+`gradle/verification-metadata.xml` and the strict dependency-verification gate
+is untouched. The `-javadoc` jar is an **empty placeholder** rather than a Dokka
+build: Maven Central only requires a `-javadoc` artifact to exist, and pulling
+Dokka would mean network resolution + new verification pins that the offline
+default build cannot do. The human-facing API docs live in the MkDocs site
+([below](#docs)); if rendered Javadoc becomes a requirement, add Dokka behind a
+guard and regenerate the verification metadata, keeping the default `build`
+network-free.
+
+### Tag-driven release
+
+`.github/workflows/release.yml` runs on a pushed `v*` tag. It runs the full
+quality gate (`spotlessCheck detekt test koverVerify build`), then:
+
+1. **Uploads** the three modules, GPG-signed, to the Sonatype Central Portal via
+   the OSSRH Staging API bridge (`ossrh-staging-api.central.sonatype.com`). With
+   plain `maven-publish` this only creates an `open` **staging** deployment — it
+   does not release anything.
+2. **Promotes** that deployment to Maven Central with a `curl` call to the Portal
+   promotion endpoint: it `GET`s `/manual/search/repositories?state=open` to find
+   the deployment key this run created, then `POST`s
+   `/manual/upload/repository/<key>?publishing_type=automatic`, which validates
+   and auto-releases if the checks pass. Both calls authenticate with a Bearer
+   token = base64 of `CENTRAL_USERNAME:CENTRAL_PASSWORD`. (A nexus-publish Gradle
+   plugin would normally do this, but adding any new plugin would break the
+   strict dependency-verification invariant, so the promotion is a plain
+   `curl`.)
+
+It reads four CI secrets **by name** (never inline): `SIGNING_KEY`
+(ASCII-armored GPG private key), `SIGNING_PASSWORD`, `CENTRAL_USERNAME`, and
+`CENTRAL_PASSWORD`. Develocity auto-injection is disabled the same way as in
+`ci.yml` so strict dependency verification stays green.
+
+**Manual fallback / unverified status.** If the promotion call cannot resolve or
+release the deployment (Portal API drift, or Central holding the release for
+review), the artifacts remain safely in staging: log in to
+<https://central.sonatype.com>, open **Deployments**, and click **Publish** on
+the pending deployment to release it by hand. This whole publish-and-promote
+path is **wired but not yet verified against a live Central account** — no real
+release has been cut, so treat the first `v*` tag as the proving run for the
+credentials, signing key, namespace approval, and promotion call. See the
+[OSSRH Staging API docs](https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/).
 
 ## Docs
 
