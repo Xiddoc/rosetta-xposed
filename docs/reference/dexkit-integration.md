@@ -167,6 +167,28 @@ device run is a smoke test of wiring + the one genuinely ART-only thing (the
 native load + a real DexKit scan), while every branch of the surrounding logic
 is gated on a plain JVM.
 
+### Static is asserted always; dynamic SKIPs when the native can't load
+
+The assertion script (`examples/android/scripts/e2e-assert.sh`) always asserts
+the **static** path as a hard requirement (`HOOKED(ticket:T-123)` must fire). It
+asserts the **dynamic** path only when DexKit's native lib is actually loadable
+on the device. LSPatch does **not** extract a legacy module's native `.so` to a
+`nativeLibraryDir`, so `System.loadLibrary("dexkit")` finds nothing and the
+module logs, under tag `LSPosed-Bridge`, `dynamic discovery unavailable: No
+implementation found for ... nativeInitDexKit ... is the library loaded, e.g.
+System.loadLibrary?`. The script greps the captured logcat for that sentinel
+(`dynamic discovery unavailable` / `is the library loaded`) **before** the
+dynamic assertions; if it is present, the dynamic assertions (discovery,
+cache-hit, version-bump invalidation) **SKIP** with a loud notice and the job
+exits 0 — an honest skip, **not** a silent pass or a false claim of discovery.
+This mirrors the `:dexkit` integration-test convention exactly (present ⇒ run,
+absent ⇒ skip): the discovery / cache / invalidation **logic** is covered by the
+JVM unit tests above plus the `:dexkit` integration test against the committed
+DEX fixture. The moment DexKit's native *can* load (a future loader, or a
+non-LSPatch host), the sentinel is absent and every dynamic assertion runs as a
+**hard** gate, so on-device discovery gets full coverage and a regression fails
+the job.
+
 ### Advisory, not gated
 
 The dynamic-path job stays **advisory** (`continue-on-error: true`), like the

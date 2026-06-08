@@ -118,7 +118,14 @@ changes), **advisory**:
       `RosettaDiscovery`). The dynamic path is *more* device-dependent (it loads
       a real native + scans the APK), so it firmly stays advisory — the
       observer / cache / invalidation **logic** is unit-tested on the always-green
-      JVM gate instead. See
+      JVM gate instead. The assertion script asserts the **static** path always
+      (hard), and the **dynamic** path only when DexKit's native lib is loadable;
+      under LSPatch-embedded modules the native isn't extractable to a
+      `nativeLibraryDir`, so `System.loadLibrary("dexkit")` finds no `.so` and the
+      dynamic assertions **SKIP** (an honest skip with a loud notice, exit 0 — not
+      a silent pass), with the discovery/cache/invalidation logic covered by the
+      JVM unit tests + the `:dexkit` integration test against the committed DEX
+      fixture. See
       [`docs/reference/dexkit-integration.md`](../docs/reference/dexkit-integration.md).
 
 ### Building the Android APKs locally
