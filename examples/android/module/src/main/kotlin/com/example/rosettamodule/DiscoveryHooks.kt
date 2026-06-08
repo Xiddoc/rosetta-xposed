@@ -45,8 +45,10 @@ import io.github.xiddoc.rosetta.android.PersistentDiscoveryCache
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.dexkit.DexKitBackedIndex
 import io.github.xiddoc.rosetta.xposed.AppIdentity
+import io.github.xiddoc.rosetta.xposed.DiscoveryCache
 import io.github.xiddoc.rosetta.xposed.DiscoveryConfig
 import io.github.xiddoc.rosetta.xposed.DiscoveryHints
+import io.github.xiddoc.rosetta.xposed.DiscoveryObserver
 import io.github.xiddoc.rosetta.xposed.MethodDiscoveryHint
 import io.github.xiddoc.rosetta.xposed.RosettaXposed
 import org.luckypray.dexkit.DexKitBridge
@@ -99,38 +101,14 @@ internal object DiscoveryHooks {
                     PersistentDiscoveryCache.create(SharedPreferencesStore(prefs), identity, observer)
 
                 // 4. Self-healing binding. AuditService is not in `map`, so this
-                // resolves it by the anchor below.
+                // resolves it by the anchor in the discovery config below.
                 val rosetta =
                     RosettaXposed.fromMapWithDiscovery(
                         map = map,
                         index = index,
                         classLoader = classLoader,
                         identity = identity,
-                        discovery =
-                            DiscoveryConfig(
-                                hints =
-                                    mapOf(
-                                        AUDIT_CLASS to
-                                            DiscoveryHints(
-                                                // Locate the class by the stable anchor it references.
-                                                anchors = listOf(AUDIT_ANCHOR),
-                                                // Locate `auditTicket` within it by the SAME anchor
-                                                // string the method body references + its return type.
-                                                // Both survive an R8 rename of `c.d`/`e`.
-                                                methods =
-                                                    listOf(
-                                                        MethodDiscoveryHint(
-                                                            realName = AUDIT_METHOD,
-                                                            returnType = "java.lang.String",
-                                                            paramTypes = listOf("java.lang.String"),
-                                                            usingStrings = listOf(AUDIT_ANCHOR),
-                                                        ),
-                                                    ),
-                                            ),
-                                    ),
-                                cache = cache,
-                                observer = observer,
-                            ),
+                        discovery = auditDiscoveryConfig(cache, observer),
                     )
 
                 // Resolve by REAL name (triggers discovery / a cache hit, which
@@ -154,6 +132,38 @@ internal object DiscoveryHooks {
             XposedBridge.log("rosetta-example: dynamic discovery unavailable: ${e.message}")
         }
     }
+
+    /**
+     * The discovery config for [AUDIT_CLASS]: locate the class by its stable
+     * [AUDIT_ANCHOR], and `auditTicket` within it by the SAME anchor string its
+     * body references plus its return type — both survive an R8 rename of
+     * `c.d`/`e`. Extracted so [install]'s flow (bridge → cache → binding →
+     * resolve+hook) reads at one altitude.
+     */
+    private fun auditDiscoveryConfig(
+        cache: DiscoveryCache,
+        observer: DiscoveryObserver,
+    ): DiscoveryConfig =
+        DiscoveryConfig(
+            hints =
+                mapOf(
+                    AUDIT_CLASS to
+                        DiscoveryHints(
+                            anchors = listOf(AUDIT_ANCHOR),
+                            methods =
+                                listOf(
+                                    MethodDiscoveryHint(
+                                        realName = AUDIT_METHOD,
+                                        returnType = "java.lang.String",
+                                        paramTypes = listOf("java.lang.String"),
+                                        usingStrings = listOf(AUDIT_ANCHOR),
+                                    ),
+                                ),
+                        ),
+                ),
+            cache = cache,
+            observer = observer,
+        )
 
     /** SharedPreferences file the persistent discovery cache lives in. */
     private const val CACHE_PREFS = "rosetta_disc_cache"
