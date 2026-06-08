@@ -58,11 +58,12 @@ allprojects {
 // reproducible across developer machines and CI runners.
 val ktlintVersion = "1.3.1"
 
-// Format the root build scripts (settings.gradle.kts + build.gradle.kts),
-// which belong to no subproject.
+// Format the root build scripts (settings.gradle.kts + build.gradle.kts) AND
+// the shared convention scripts under gradle/ (e.g. gradle/publishing.gradle.kts),
+// which belong to no subproject and would otherwise escape the format gate.
 spotless {
     kotlinGradle {
-        target("*.gradle.kts")
+        target("*.gradle.kts", "gradle/*.gradle.kts")
         ktlint(ktlintVersion)
         trimTrailingWhitespace()
         endWithNewline()
