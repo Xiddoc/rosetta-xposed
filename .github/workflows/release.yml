@@ -1,0 +1,93 @@
+name: Release
+
+# Tag-driven publish: pushing a `v*` tag (e.g. v0.1.0) builds, runs the full
+# quality gate, then publishes :core, :xposed, and :xposed-android to the
+# Sonatype Central Portal, GPG-signed. :dexkit is NOT published (optional,
+# native; kept out of the default build — CLAUDE.md Decision 5).
+#
+# Required repository secrets (referenced by NAME only — never inline values):
+#   SIGNING_KEY       — ASCII-armored GPG private key (the whole block,
+#                       `-----BEGIN PGP PRIVATE KEY BLOCK----- ... `)
+#   SIGNING_PASSWORD  — passphrase for that key
+#   CENTRAL_USERNAME  — Sonatype Central Portal token username
+#   CENTRAL_PASSWORD  — Sonatype Central Portal token password
+on:
+    push:
+        tags:
+            - 'v*'
+
+# Least privilege: the publish job only reads the repo (it pushes to an EXTERNAL
+# Maven repository using the secrets above, not the GitHub token). `contents:
+# write` is added only because a future step may attach artifacts to a GitHub
+# Release; drop to `read` if that is never added.
+permissions:
+    contents: read
+
+concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        name: Build, sign, and publish to Central Portal
+        runs-on: ubuntu-latest
+        # Same Develocity-injection kill-switch as ci.yml: the auto-injected
+        # build-scan plugin drags unpinned BOM metadata that trips strict
+        # dependency verification at configuration time.
+        env:
+            DEVELOCITY_INJECTION_ENABLED: 'false'
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up JDK 17
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '17'
+
+            - name: Set up Gradle (with build cache)
+              uses: gradle/actions/setup-gradle@v4
+              with:
+                  develocity-injection-enabled: false
+
+            - name: Remove Develocity auto-injection init script
+              run: |
+                  init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+                  rm -f "$init_dir"/*develocity*.gradle "$init_dir"/*develocity*.init.gradle 2>/dev/null || true
+                  echo "Remaining init scripts:"; ls -la "$init_dir" 2>/dev/null || echo "(no init.d)"
+
+            # Derive the release version from the tag: `v0.1.0` -> `0.1.0`. Fed
+            # to Gradle as -Prosetta.version so the published coordinate matches
+            # the tag. The in-code BuildInfo.VERSION is pinned to this same line
+            # by a unit test, so a mismatched tag fails the gate below.
+            - name: Derive version from tag
+              id: ver
+              run: |
+                  raw="${GITHUB_REF_NAME}"
+                  echo "version=${raw#v}" >> "$GITHUB_OUTPUT"
+                  echo "Releasing version: ${raw#v}"
+
+            # Run the full quality gate first (strict dependency verification
+            # stays ON — no extra plugins were added for publishing). A red gate
+            # must block a publish.
+            - name: Quality gate (spotless + detekt + test + 100% coverage) and build
+              run: >-
+                  ./gradlew -Prosetta.version=${{ steps.ver.outputs.version }}
+                  spotlessCheck detekt test koverVerify build --stacktrace
+
+            # Publish the three pure-JVM modules, GPG-signed, to the Central
+            # Portal repository. Signing keys + Central credentials come from the
+            # secrets via the env block below (read by gradle/publishing.gradle.kts).
+            - name: Publish to Sonatype Central Portal
+              env:
+                  SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+                  SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+                  CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+                  CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+              run: >-
+                  ./gradlew -Prosetta.version=${{ steps.ver.outputs.version }}
+                  :core:publishMavenPublicationToCentralPortalRepository
+                  :xposed:publishMavenPublicationToCentralPortalRepository
+                  :xposed-android:publishMavenPublicationToCentralPortalRepository
+                  --stacktrace

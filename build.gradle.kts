@@ -38,9 +38,18 @@ plugins {
     id("ru.vyarus.animalsniffer") version "1.7.1" apply false
 }
 
+// The released version. Single source of truth in code is
+// `io.github.xiddoc.rosetta.core.BuildInfo.VERSION` (pinned to this literal by
+// a unit test). The release workflow overrides it from the pushed git tag via
+// `-Prosetta.version=<tag-without-v>` so a `v0.1.0` tag publishes `0.1.0`; an
+// ordinary local build uses the default below. Version scheme: SemVer with the
+// MINOR line coordinated to the map `schema_version` (0.1.x ⇄ schema 2) — see
+// docs/reference/building.md.
+val rosettaVersion: String = (findProperty("rosetta.version") as String?)?.takeIf { it.isNotBlank() } ?: "0.1.0"
+
 allprojects {
     group = "io.github.xiddoc.rosetta"
-    version = "0.0.0-dev"
+    version = rosettaVersion
 }
 
 // The ktlint engine version Spotless drives. Pinned so formatting is

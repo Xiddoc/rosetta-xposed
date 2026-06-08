@@ -82,13 +82,78 @@ With injection off, no unpinned artifacts ever reach the classpath, JAR
 checksum verification stays untouched, and `verify-metadata` remains
 `true`.
 
-## Distribution
+## Publishing
 
-This is an Xposed-family module dependency, **not** an npm package.
-Distribution is via the usual Xposed/LSPosed/LSPatch mechanisms (build the
-module APK and load it through your framework manager) or by depending on
-the Kotlin library once it is published to a Maven coordinate. Maven
-publishing is **planned** — see [Status](status.md).
+The three pure-JVM modules — `:core`, `:xposed`, `:xposed-android` — publish to
+Maven under the group **`io.github.xiddoc.rosetta`**. The optional, native
+`:dexkit` adapter is **not** published (it is kept out of the default build —
+see [Status](status.md)).
+
+### Coordinates
+
+| Coordinate | Module |
+| --- | --- |
+| `io.github.xiddoc.rosetta:xposed:0.1.0` | `:xposed` (depends on `:core`) |
+| `io.github.xiddoc.rosetta:core:0.1.0` | `:core` |
+| `io.github.xiddoc.rosetta:xposed-android:0.1.0` | `:xposed-android` |
+
+Each module publishes a main jar plus `-sources` and `-javadoc` jars and a full
+POM (name, description, URL, MIT license, SCM, developer, issue tracker).
+
+### Version scheme
+
+SemVer, with the **MINOR line deliberately tied to the map `schema_version`**
+the release consumes:
+
+- `0.1.x` consumes `schema_version: 2`.
+- A breaking schema bump (to `schema_version: 3`) moves the library to the next
+  MINOR (`0.2.x`); a breaking *library API* change before 1.0 also moves the
+  MINOR.
+- Once the surface is stable the library graduates to `1.0.0` and ordinary
+  SemVer applies.
+
+The single in-code source of truth is
+`io.github.xiddoc.rosetta.core.BuildInfo` (`GROUP` / `VERSION` /
+`SCHEMA_VERSION`); a unit test pins `VERSION` to the Gradle release line and
+binds `SCHEMA_VERSION` to the loader's `CURRENT_SCHEMA_VERSION`, so the
+published coordinate can never silently drift from the schema it speaks.
+
+The build's `version` defaults to that literal but is overridable for a release
+via `-Prosetta.version=<x.y.z>`; the [release workflow](#tag-driven-release)
+feeds it the git tag (a `v0.1.0` tag publishes `0.1.0`).
+
+### Local install
+
+```sh
+./gradlew publishToMavenLocal   # installs all three modules into ~/.m2
+```
+
+No signing key is needed locally: signing is **required only when a key is
+present** (the publish workflow supplies one). A plain build or
+`publishToMavenLocal` skips it.
+
+### Offline-safe by construction
+
+Publishing uses only the **built-in** `maven-publish` and `signing` Gradle
+plugins — no new artifacts on the classpath, so nothing new to pin in
+`gradle/verification-metadata.xml` and the strict dependency-verification gate
+is untouched. The `-javadoc` jar is an **empty placeholder** rather than a Dokka
+build: Maven Central only requires a `-javadoc` artifact to exist, and pulling
+Dokka would mean network resolution + new verification pins that the offline
+default build cannot do. The human-facing API docs live in the MkDocs site
+([below](#docs)); if rendered Javadoc becomes a requirement, add Dokka behind a
+guard and regenerate the verification metadata, keeping the default `build`
+network-free.
+
+### Tag-driven release
+
+`.github/workflows/release.yml` runs on a pushed `v*` tag. It runs the full
+quality gate (`spotlessCheck detekt test koverVerify build`), then publishes the
+three modules GPG-signed to the Sonatype Central Portal. It reads four CI
+secrets **by name** (never inline): `SIGNING_KEY` (ASCII-armored GPG private
+key), `SIGNING_PASSWORD`, `CENTRAL_USERNAME`, and `CENTRAL_PASSWORD`. Develocity
+auto-injection is disabled the same way as in `ci.yml` so strict dependency
+verification stays green.
 
 ## Docs
 

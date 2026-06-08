@@ -2,8 +2,8 @@
 
 The neutral `:core` (model + loader + resolver + conformance suite), the
 static and dynamic `:xposed` bindings, and the optional `:dexkit` adapter
-are all implemented and tested on the JVM. What remains is on-device /
-native wiring and Maven publishing.
+are all implemented and tested on the JVM. Maven publishing for the three
+pure-JVM modules is wired. What remains is on-device / native wiring.
 
 ## Built
 
@@ -35,6 +35,13 @@ native wiring and Maven publishing.
   integration test that runs real DexKit against a committed obfuscated DEX
   fixture; the test skips automatically when the native `.so` is absent (CI
   builds it from pinned source and caches it).
+- **Maven publishing** — `:core`, `:xposed`, and `:xposed-android` publish
+  under `io.github.xiddoc.rosetta` (`0.1.0`), each with `-sources` /
+  `-javadoc` jars and a full POM. A tag-driven `release.yml` workflow signs
+  and publishes them to the Sonatype Central Portal on a `v*` tag. The
+  optional native `:dexkit` adapter is not published. See
+  [Building → Publishing](building.md#publishing) for coordinates and the
+  version scheme.
 
 ## Remaining work
 
@@ -46,4 +53,3 @@ native wiring and Maven publishing.
   `AppIdentity`; selection and signer enforcement are built, but the
   convenience wiring from a real `PackageManager` lives in the consuming
   module, not here.
-- **Maven publishing** — publishing to a Maven coordinate is pending.

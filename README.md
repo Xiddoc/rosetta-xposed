@@ -46,14 +46,38 @@ source is unchanged.
 
 This is an **Xposed-family module dependency**, not an npm package.
 Distribution is via the usual Xposed/LSPosed/LSPatch mechanisms (build the
-module APK and load it through your framework manager) or by depending on
-the Kotlin library once it is published to a Maven coordinate. Publishing is
-**planned** — see [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/).
-For now, clone and build locally:
+module APK and load it through your framework manager) or by depending on the
+published Kotlin library.
+
+The three pure-JVM modules publish under the group `io.github.xiddoc.rosetta`:
+
+| Coordinate | What it gives you |
+| --- | --- |
+| `io.github.xiddoc.rosetta:xposed:0.1.0` | the layer-4 binding (pulls `core` transitively) |
+| `io.github.xiddoc.rosetta:core:0.1.0` | the framework-neutral map model + resolver |
+| `io.github.xiddoc.rosetta:xposed-android:0.1.0` | pure-JVM Android helpers (bundled-map + `AppIdentity` assembly) |
+
+Most modules want just `:xposed` (it depends on `:core`):
+
+```kotlin
+dependencies {
+    implementation("io.github.xiddoc.rosetta:xposed:0.1.0")
+}
+```
+
+`:dexkit` (the optional, native DexKit adapter) is **not** published — it is
+kept out of the default build (see [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/)).
+
+Or clone and build locally:
 
 ```sh
-./gradlew build          # compile + test both modules (JVM only)
+./gradlew build              # compile + test the JVM modules
+./gradlew publishToMavenLocal  # install 0.1.0 into ~/.m2 to consume locally
 ```
+
+**Versioning:** SemVer, with the MINOR line coordinated to the map
+`schema_version` it consumes — `0.1.x` speaks `schema_version: 2`. See
+[Building → Publishing](https://xiddoc.github.io/rosetta-xposed/reference/building/).
 
 ## Documentation
 
