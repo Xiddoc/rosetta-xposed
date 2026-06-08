@@ -41,7 +41,7 @@ Four-module Gradle (Kotlin/JVM) build:
   the JVM. What remains: end-to-end on-device native wiring (the committed
   DEX fixture in `:dexkit` covers the adapter path, but a physical-device
   run has not been validated) and Maven publishing.
-- **`:xposed-android`** — pure-JVM Android-helper logic (bundled-map
+- **`:android-runtime`** — pure-JVM Android-runtime logic (bundled-map
   loading and signer-hash / `AppIdentity` assembly from `PackageManager`
   primitives). Applies no Android plugin and never compiles against
   `android.jar`, so it builds and tests on a plain JVM and joins the root
@@ -126,7 +126,7 @@ Kotlin resolvers in lockstep.
 ## Building the Android example (Android SDK)
 
 The library and the JVM example builds need **no Android SDK** — `:core`,
-`:xposed`, `:xposed-android`, and `examples/{harness,r8}` all build/test on a
+`:xposed`, `:android-runtime`, and `examples/{harness,r8}` all build/test on a
 plain JVM (R8 in `examples/r8` is just the `com.android.tools:r8` Maven jar
 with `--classfile`). Only the **APKs** under `examples/android` (the victim app
 + the LSPosed module) need the Android SDK / Android Gradle Plugin.

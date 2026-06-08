@@ -13,9 +13,9 @@
  *                   a hookable `Member` and hands it to the developer's chosen
  *                   hook API (libxposed or legacy XposedHelpers). Does NOT own
  *                   the hook call.
- *   :xposed-android — pure-JVM Android-helper logic (bundled-map loading and
- *                   AppIdentity assembly from PackageManager primitives). No
- *                   Android plugin; builds and tests on any JVM.
+ *   :android-runtime — pure-JVM Android-runtime logic (bundled-map loading
+ *                   and AppIdentity assembly from PackageManager primitives).
+ *                   No Android plugin; builds and tests on any JVM.
  *   :dexkit       — OPTIONAL. The thin DexKitBackedIndex adapter wiring the
  *                   DexKitIndex seam to the real DexKitBridge native. Kept out
  *                   of the default :xposed build.
@@ -45,12 +45,12 @@ rootProject.name = "rosetta-xposed"
 include(":core")
 include(":xposed")
 
-// :xposed-android — an OPTIONAL, pure-JVM module of reusable Android-helper
+// :android-runtime — an OPTIONAL, pure-JVM module of reusable Android-runtime
 // LOGIC (bundled-map loading + signer-hash/AppIdentity assembly from
 // PackageManager primitives). It applies NO Android plugin and never compiles
 // against android.jar, so it stays in the plain-JVM build AND in the root 100%
 // coverage gate; the irreducible PackageManager read stays in the consumer.
-include(":xposed-android")
+include(":android-runtime")
 
 // :dexkit — the REAL on-device DexKit adapter that implements the `DexKitIndex`
 // seam (RFC 0001 Decision 5 — DexKit is an OPTIONAL later-phase dependency,

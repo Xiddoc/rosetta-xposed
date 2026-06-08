@@ -100,7 +100,7 @@ The seam is pure-JVM and tiny (`get` / `put` by real name), so `:core` and
 `:xposed` stay `android.jar`-free and fully covered. The default is
 `DiscoveryCache.NOOP` (today's behaviour); `InMemoryDiscoveryCache` is a
 non-persistent reference impl. The on-device, `SharedPreferences`-backed
-`PersistentDiscoveryCache` lives at the Android edge in `:xposed-android`,
+`PersistentDiscoveryCache` lives at the Android edge in `:android-runtime`,
 where it is stamped with a `(app, version_code, signer)` fingerprint at
 construction and **drops every cached entry when that fingerprint changes**
 (an app update, a signer change, or a first run) — so a stale mapping can't

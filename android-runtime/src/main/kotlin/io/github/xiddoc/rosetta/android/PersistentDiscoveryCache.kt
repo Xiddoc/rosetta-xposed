@@ -14,7 +14,7 @@
  * (behind the tiny [KeyValueStore] seam) and hosts the parts that ARE pure and
  * fully testable: JSON (de)serialization of an entry and — the piece a
  * persistent store genuinely needs — INVALIDATION when the app changes. So
- * `:core`/`:xposed`/`:xposed-android` all stay `android.jar`-free and inside the
+ * `:core`/`:xposed`/`:android-runtime` all stay `android.jar`-free and inside the
  * 100% Kover gate; the consumer writes a ~3-line `SharedPreferences` adapter
  * (see the example module's `SharedPreferencesStore`).
  *

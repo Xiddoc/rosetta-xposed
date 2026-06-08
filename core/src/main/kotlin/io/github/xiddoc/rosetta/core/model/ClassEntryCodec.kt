@@ -4,7 +4,7 @@
  * A persistent on-device discovery cache (rosetta-xposed#19) needs to write a
  * discovered [ClassEntry] to durable storage and read it back across process
  * restarts. The cache itself lives in the layer-4 modules (:xposed seam,
- * :xposed-android persistent impl), but the kotlinx-serialization runtime and
+ * :android-runtime persistent impl), but the kotlinx-serialization runtime and
  * the generated `ClassEntry.serializer()` live HERE — `:core` is the only
  * module that applies the serialization plugin and depends on
  * `kotlinx-serialization-json`. Exposing a tiny codec here keeps that

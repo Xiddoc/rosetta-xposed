@@ -1,6 +1,6 @@
 /*
  * Shared Maven-publishing convention, applied via `apply(from = ...)` by each
- * PUBLISHED module (:core, :xposed, :xposed-android). :dexkit is deliberately
+ * PUBLISHED module (:core, :xposed, :android-runtime). :dexkit is deliberately
  * excluded — it is the optional, native-dependent adapter kept out of the
  * default build (CLAUDE.md Decision 5).
  *
@@ -53,7 +53,7 @@ extensions.configure<PublishingExtension> {
             // Coordinates: groupId/version come from the project (root sets
             // group = io.github.xiddoc.rosetta, version = rosetta.version).
             // artifactId defaults to the module name (core / xposed /
-            // xposed-android).
+            // android-runtime).
             pom {
                 name.set("rosetta-${project.name}")
                 description.set(

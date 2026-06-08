@@ -157,7 +157,7 @@ result tag:
 The observer / cache-hit / invalidation **logic** is **not** in the Android
 module — it is pushed down into the libraries behind the `DiscoveryObserver`
 seam (`:xposed`) and `PersistentDiscoveryCache`'s invalidation reporting
-(`:xposed-android`), both pure-JVM and **unit-tested on the always-green
+(`:android-runtime`), both pure-JVM and **unit-tested on the always-green
 `./gradlew build` gate** (`DiscoveryObserverTest`,
 `DynamicDiscoveryCacheWiringTest`, `PersistentDiscoveryCacheTest`,
 `CompositeDiscoveryWiringTest`). The module's `LogcatDiscoveryObserver` is the

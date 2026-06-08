@@ -5,7 +5,7 @@
  *
  * Everything testable about the cache — JSON (de)serialization of a discovered
  * entry and the `(app, version_code, signer)` invalidation — lives in the
- * pure-JVM, 100%-covered `:xposed-android` `PersistentDiscoveryCache`. The ONE
+ * pure-JVM, 100%-covered `:android-runtime` `PersistentDiscoveryCache`. The ONE
  * thing that genuinely needs `android.*` is reading/writing the backing store,
  * so that (and only that) lives here in the consuming module, exactly like
  * `AndroidAppIdentity` keeps the irreducible `PackageManager` read out of the
