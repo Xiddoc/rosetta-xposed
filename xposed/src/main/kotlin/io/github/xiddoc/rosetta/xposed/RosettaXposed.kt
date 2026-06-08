@@ -320,6 +320,7 @@ public class RosettaXposed internal constructor(
                             discovery.sink,
                             static::translateType,
                             discovery.cache,
+                            discovery.observer,
                         ),
                 )
             return RosettaXposed(composite, classLoader, map.app, policy)

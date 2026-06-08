@@ -35,6 +35,7 @@ import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassEntryCodec
 import io.github.xiddoc.rosetta.xposed.AppIdentity
 import io.github.xiddoc.rosetta.xposed.DiscoveryCache
+import io.github.xiddoc.rosetta.xposed.DiscoveryObserver
 
 /**
  * The minimal string key/value store the persistent cache needs. A consumer
@@ -102,12 +103,23 @@ public class PersistentDiscoveryCache private constructor(
          * any entries left over from a DIFFERENT build first (an app update, a
          * signer change, or a first run all invalidate). After this returns the
          * store holds only entries valid for [identity].
+         *
+         * When the stale entries are cleared, [observer]'s
+         * [DiscoveryObserver.onCacheInvalidated] fires once (rosetta-xposed#22)
+         * — the e2e's "version bump → stale entry dropped → re-discovered"
+         * signal. It is NOT called when the fingerprint already matched (a warm
+         * relaunch of the same build), so a "served from cache" launch is
+         * cleanly distinguishable from an "invalidated" one. The flag reports
+         * whether a DIFFERENT build's fingerprint was found (true) versus a
+         * first run with none stored yet (false). [observer] defaults to NOOP,
+         * preserving the existing call sites.
          */
         public fun create(
             store: KeyValueStore,
             identity: AppIdentity,
+            observer: DiscoveryObserver = DiscoveryObserver.NOOP,
         ): PersistentDiscoveryCache {
-            invalidateIfStale(store, fingerprintOf(identity))
+            invalidateIfStale(store, fingerprintOf(identity), observer)
             return PersistentDiscoveryCache(store)
         }
 
@@ -126,8 +138,10 @@ public class PersistentDiscoveryCache private constructor(
         private fun invalidateIfStale(
             store: KeyValueStore,
             fingerprint: String,
+            observer: DiscoveryObserver,
         ) {
-            if (store.getString(FINGERPRINT_KEY) == fingerprint) return
+            val stored = store.getString(FINGERPRINT_KEY)
+            if (stored == fingerprint) return
             // First run or a changed build: drop every cached entry so a stale
             // mapping can't survive, then stamp the new fingerprint. Only the
             // entry keys are cleared (the fingerprint key and any unrelated
@@ -137,6 +151,11 @@ public class PersistentDiscoveryCache private constructor(
                 .filter { it.startsWith(ENTRY_PREFIX) }
                 .forEach { store.remove(it) }
             store.putString(FINGERPRINT_KEY, fingerprint)
+            // Report the invalidation (#22). `stored != null` means a DIFFERENT
+            // build's fingerprint was present — a genuine update / signer change
+            // — versus a first run with nothing stored. Routed through `safe` so
+            // a throwing observer can't break cache construction.
+            DiscoveryObserver.safe(observer) { it.onCacheInvalidated(hadPriorFingerprint = stored != null) }
         }
     }
 }

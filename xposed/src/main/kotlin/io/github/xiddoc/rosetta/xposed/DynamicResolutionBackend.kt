@@ -101,11 +101,15 @@ public data class DiscoveryHints(
  * @property cache the persistence seam consulted before scanning and written
  *   after a successful discovery, so a discovery survives a process restart
  *   (default: NOOP — no persistence, rosetta-xposed#19).
+ * @property observer the observability side-channel reporting whether each
+ *   discovery was a fresh scan or a cache hit (default: NOOP,
+ *   rosetta-xposed#22). A pure side-channel — it never changes resolution.
  */
 public data class DiscoveryConfig(
     val hints: Map<String, DiscoveryHints> = emptyMap(),
     val sink: DiscoverySink = DiscoverySink.NOOP,
     val cache: DiscoveryCache = DiscoveryCache.NOOP,
+    val observer: DiscoveryObserver = DiscoveryObserver.NOOP,
 )
 
 /**
@@ -128,6 +132,12 @@ public data class DiscoveryConfig(
  *   consulted on the first miss for a real name and written after a successful
  *   discovery. Defaults to [DiscoveryCache.NOOP] (no persistence); the
  *   in-process memo still serves repeats within one run.
+ * @property observer the observability side-channel (rosetta-xposed#22):
+ *   notified [DiscoveryOutcome.DISCOVERED] on a fresh scan and
+ *   [DiscoveryOutcome.SERVED_FROM_CACHE] on a persistent-cache hit, exactly
+ *   ONCE per real name per process (the in-process memo is transparent). It
+ *   never affects resolution and never throws through (see [DiscoveryObserver]).
+ *   Defaults to [DiscoveryObserver.NOOP].
  */
 public class DynamicResolutionBackend(
     private val index: DexKitIndex,
@@ -135,6 +145,7 @@ public class DynamicResolutionBackend(
     private val sink: DiscoverySink = DiscoverySink.NOOP,
     private val translateType: (String) -> String = { it },
     private val cache: DiscoveryCache = DiscoveryCache.NOOP,
+    private val observer: DiscoveryObserver = DiscoveryObserver.NOOP,
 ) : DiscoveringBackend {
     /** Memoized discovered class entries, so we scan a real name at most once. */
     private val discovered = mutableMapOf<String, ClassEntry>()
@@ -265,6 +276,12 @@ public class DynamicResolutionBackend(
         // was discovered in an earlier run.
         cache.get(realClass)?.let { cached ->
             discovered[realClass] = cached
+            // Observability (#22): a relaunch served this name from the
+            // persistent cache — no DexKit scan ran. Emitted once per name per
+            // process (the memo above serves later lookups silently).
+            DiscoveryObserver.safe(observer) {
+                it.onOutcome(realClass, cached.obfuscated, DiscoveryOutcome.SERVED_FROM_CACHE)
+            }
             return cached
         }
 
@@ -306,6 +323,13 @@ public class DynamicResolutionBackend(
         discovered[realClass] = entry
         cache.put(realClass, entry)
         sink.record(realClass, entry)
+        // Observability (#22): a fresh DexKit scan located this name (the
+        // expensive path the cache exists to amortise). Emitted once per name
+        // per process, AFTER the entry fully resolved (a partial discovery threw
+        // above and never reaches here, so we never report a half result).
+        DiscoveryObserver.safe(observer) {
+            it.onOutcome(realClass, entry.obfuscated, DiscoveryOutcome.DISCOVERED)
+        }
         return entry
     }
 

@@ -312,6 +312,53 @@ class CompositeDiscoveryWiringTest {
     }
 
     @Test
+    fun `fromMapWithDiscovery threads the observer through - DISCOVERED then SERVED_FROM_CACHE`() {
+        // rosetta-xposed#22: the JVM mirror of the on-device e2e's two launches.
+        // Launch 1 (fresh cache): a static miss falls through to discovery, so
+        // the observer sees DISCOVERED. Launch 2 (same cache, fresh backend):
+        // the entry is served from the cache without an index scan, so the
+        // observer sees SERVED_FROM_CACHE. This pins that the factory wires the
+        // DiscoveryConfig.observer all the way into the dynamic backend.
+        val cache = InMemoryDiscoveryCache()
+        val observer = RecordingDiscoveryObserver()
+        val hints = mapOf(real to DiscoveryHints(aidlDescriptor = "Lcom/example/IFoo;"))
+
+        val firstIndex = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
+        RosettaXposed
+            .fromMapWithDiscovery(
+                map = emptyStaticMap(),
+                index = firstIndex,
+                classLoader = javaClass.classLoader,
+                discovery = DiscoveryConfig(hints = hints, cache = cache, observer = observer),
+                policy = policy,
+            ).useClass(real)
+            .load()
+        assertEquals(
+            listOf(RecordingDiscoveryObserver.Outcome(real, obf, DiscoveryOutcome.DISCOVERED)),
+            observer.outcomes(),
+        )
+
+        val secondIndex = FakeDexKitIndex()
+        RosettaXposed
+            .fromMapWithDiscovery(
+                map = emptyStaticMap(),
+                index = secondIndex,
+                classLoader = javaClass.classLoader,
+                discovery = DiscoveryConfig(hints = hints, cache = cache, observer = observer),
+                policy = policy,
+            ).useClass(real)
+            .load()
+        assertEquals(0, secondIndex.calls)
+        assertEquals(
+            listOf(
+                RecordingDiscoveryObserver.Outcome(real, obf, DiscoveryOutcome.DISCOVERED),
+                RecordingDiscoveryObserver.Outcome(real, obf, DiscoveryOutcome.SERVED_FROM_CACHE),
+            ),
+            observer.outcomes(),
+        )
+    }
+
+    @Test
     fun `fromMapWithDiscovery wires the static map translator into dynamic argTypes`() {
         // F1 end-to-end: the static map maps an arg class real → obf, but the
         // class being hooked is discovered dynamically. The discovered overload
