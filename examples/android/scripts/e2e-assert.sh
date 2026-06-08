@@ -198,9 +198,12 @@ if [ -n "${PATCHED_BUMPED:-}" ]; then
     launch_and_wait invalidation
     DISC_DUMP="$(adb logcat -d -s RosettaDiscovery:I)"
     echo "----- RosettaDiscovery (post-bump) logs -----"; echo "${DISC_DUMP}"
-    assert_marker "${DISC_DUMP}" 'CACHE_INVALIDATED' \
+    # Assert the GENUINE-update marker specifically: a bare CACHE_INVALIDATED
+    # token also matches the first-run marker, so pin the (version-or-signer-change)
+    # variant to prove this was an update, not a fresh install.
+    assert_marker "${DISC_DUMP}" 'CACHE_INVALIDATED (version-or-signer-change)' \
         "E2E PASS (invalidation): version bump dropped the stale cache (CACHE_INVALIDATED)." \
-        "E2E FAIL (invalidation): expected CACHE_INVALIDATED after the version bump."
+        "E2E FAIL (invalidation): expected CACHE_INVALIDATED (version-or-signer-change) after the version bump."
     assert_marker "${DISC_DUMP}" 'DISCOVERED com.example.victim.AuditService' \
         "E2E PASS (invalidation): the name was re-DISCOVERED after invalidation." \
         "E2E FAIL (invalidation): expected a fresh DISCOVERED scan after invalidation."
