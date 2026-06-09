@@ -36,7 +36,6 @@ package io.github.xiddoc.rosetta.xposed
 import io.github.xiddoc.rosetta.core.AmbiguousOverloadException
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassKind
-import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
@@ -313,7 +312,6 @@ public class DynamicResolutionBackend(
                 anchors = hint.anchors.ifEmpty { null },
                 methods = methods,
                 source = RUNTIME_DISCOVERED_TOOL,
-                confidence = Confidence.LOW,
             )
 
         // Memoize + persist + record only AFTER the full entry resolved

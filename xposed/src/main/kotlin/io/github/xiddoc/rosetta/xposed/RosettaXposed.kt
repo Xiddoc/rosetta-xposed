@@ -292,7 +292,7 @@ public class RosettaXposed internal constructor(
         ): RosettaXposed {
             if (identity != null) {
                 SignerGuard.verify(map, identity)
-            } else if (map.signerSha256 != null && !allowUnverified) {
+            } else if (!map.signerSha256s.isNullOrEmpty() && !allowUnverified) {
                 // The map demands authentication but the caller supplied no
                 // identity and did not opt into the unverified path: fail closed
                 // rather than silently skip the guard (xposed#14 M5).
