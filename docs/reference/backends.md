@@ -36,17 +36,37 @@ fixtures.
 
 ### Strategy order
 
-Discovery runs the strategies most-stable-signal-first; the first hit wins:
+The **usual** discovery target is a deep, minified, internal class with **no
+exposed API surface** — no Binder descriptor, no AIDL transaction, no manifest
+entry. For those classes (the general case) the load-bearing signals are
+**string anchors** and **superclass / framework-parent** narrowing; that is the
+path most discoveries actually take.
 
-1. **AIDL descriptor** — the stable cross-version anchor for binder stubs.
-2. **Stable string anchors** — literals the class references.
+The AIDL descriptor is tried *first* only because it is the **cheapest exact
+signal when it happens to exist** — a binder stub's interface descriptor is a
+single stable literal, so an O(1) equals-match settles it without scanning. It
+is **not** the primary or common case: most hook targets are not binder stubs
+and carry no descriptor at all, so this strategy simply doesn't fire for them
+and discovery falls straight through to the anchor / superclass path.
+
+Discovery tries the class-locating strategies cheapest-exact-signal-first; the
+first hit wins, and a strategy that has no hint for a class is skipped:
+
+1. **AIDL descriptor** — tried first *only when present*, because a binder
+   stub's descriptor is the cheapest exact match. Most classes have none; this
+   is the narrow special case, not the common one.
+2. **Stable string anchors** — literals the class references. Together with (3)
+   this is the **general** path for the deep minified classes that are the
+   typical targets.
 3. **Superclass / `extends` narrowing** — find a class by its (obfuscated)
-   parent.
+   parent (e.g. a framework base class the target extends). The other half of
+   the general, no-API-surface path.
 4. **Method signature scan within a found class** — only after 1–3 have
    located the class, so the scan has a known starting point.
 
 A class-only discovery (no method hints) is allowed; a hinted method that
-isn't found is a **partial discovery** and fails closed.
+isn't found is a **partial discovery** and fails closed. A class that exposes
+no descriptor is fully resolvable through (2)/(3) alone.
 
 ### Fail-closed contract
 

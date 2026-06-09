@@ -24,9 +24,20 @@ discovery backend turns into a fail-closed `DiscoveryException`. This mirrors
 the `FakeDexKitIndex` contract exactly, so the same discovery logic behaves
 identically over the fake and the real bridge.
 
-- Class lookups (`findClassByAnchors`, `findClassByAidlDescriptor`) match string
-  literals with `StringMatchType.Equals` (an anchor/descriptor is an exact
-  literal, not a fuzzy substring).
+The deep, minified, internal classes that are the **usual** hook targets expose
+no API surface — no Binder descriptor, no manifest entry — so the load-bearing
+class-locating primitives for the general case are `findClassByAnchors` (string
+literals the class references) and `findClassBySuperclass` (its obfuscated /
+framework parent). `findClassByAidlDescriptor` covers only the narrow subset of
+targets that *are* binder stubs; it is the cheapest exact match when a
+descriptor exists, but most classes carry none and resolve through anchors /
+superclass alone.
+
+- Class lookups (`findClassByAnchors`, `findClassBySuperclass`,
+  `findClassByAidlDescriptor`) match string literals with
+  `StringMatchType.Equals` (an anchor/descriptor is an exact literal, not a
+  fuzzy substring). Anchors and superclass are the general path; the descriptor
+  query only fires for the binder-stub special case.
 - `findMethod` matches on the **return-type, parameter-type, and using-strings**
   facets only. The JVM `MethodQuery.descriptor` is intentionally *not*
   decomposed — DexKit matches by dotted type names, which the discovery hints
