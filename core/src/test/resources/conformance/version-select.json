@@ -1,5 +1,5 @@
 {
-    "description": "Cross-client parity for version selection (RFC 0001 Decision 3; xposed#13 / the f13 twin). Two case kinds: (a) `fuzzySelect` — when no exact version_code or label matches and fuzzy is opt-in enabled, both clients pick the closest registered label by COMPONENT-WISE lexicographic semver distance — NOT the old weighted-sum (major*10000 + minor*100 + patch), which overflowed its positional buckets and tied 1.0.142 with 1.1.42. Each `fuzzySelect` case lists registry `versions` (the available labels), a `target` label with no exact match, and the `expectSelected` label the closest-distance ranking must return. (b) `codeSelect` — exact selection by the authoritative O(1) `version_code` key. Each `codeSelect` case lists registry `versionCodes`, a `targetCode`, and the `expectSelectedCode` the exact-code lookup must return; this pins that a WIDE version_code (> 2^31, the Android `versionCodeMajor` regime) selects exactly with no 32-bit truncation. Both runners build a registry from those codes (each backed by a tiny throwaway map whose `version` label is the code as a string) and run their selector (frida `pickMapForVersion` with `versionCode`; xposed `VersionMatch.select` with that `versionCode`). Provider-neutral; see README.md.",
+    "description": "Cross-client parity for version selection (RFC 0001 Decision 3; xposed#13 / the f13 twin). Three case kinds: (a) `fuzzySelect` — when no exact version_code or label matches and fuzzy is opt-in enabled, both clients pick the closest registered label by COMPONENT-WISE lexicographic semver distance — NOT the old weighted-sum (major*10000 + minor*100 + patch), which overflowed its positional buckets and tied 1.0.142 with 1.1.42. Each `fuzzySelect` case lists registry `versions` (the available labels), a `target` label with no exact match, and the `expectSelected` label the closest-distance ranking must return. (b) `codeSelect` — exact selection by the authoritative O(1) `version_code` key. Each `codeSelect` case lists registry `versionCodes`, a `targetCode`, and the `expectSelectedCode` the exact-code lookup must return; this pins that a WIDE version_code (> 2^31, the Android `versionCodeMajor` regime) selects exactly with no 32-bit truncation. Both runners build a registry from those codes (each backed by a tiny throwaway map whose `version` label is the code as a string) and run their selector (frida `pickMapForVersion` with `versionCode`; xposed `VersionMatch.select` with that `versionCode`). (c) `codeCollision` — two maps sharing the SAME `version_code` (distinct `version` labels as payload markers) prove the FIRST-WINS collision policy, the cross-client canonical rule (frida `versionCodeIndex` putIfAbsent; xposed `MapRegistry.fromCollection` putIfAbsent). Each case lists `maps` (each `{versionCode, version}`, IN INPUT ORDER), a `targetCode`, and the `expectSelectedVersion` label that the first map claiming `targetCode` carries. Provider-neutral; see README.md.",
     "cases": [
         {
             "name": "1.0.142 beats 1.1.42 for target 1.0.0 (lexicographic, not weighted-sum)",
@@ -49,6 +49,16 @@
             "versionCodes": [100, 4294967296],
             "targetCode": 100,
             "expectSelectedCode": 100
+        },
+        {
+            "name": "duplicate version_code resolves FIRST-WINS (cross-client canonical collision policy)",
+            "kind": "codeCollision",
+            "maps": [
+                { "versionCode": 100, "version": "1.0.0-first" },
+                { "versionCode": 100, "version": "1.0.0-second" }
+            ],
+            "targetCode": 100,
+            "expectSelectedVersion": "1.0.0-first"
         }
     ]
 }

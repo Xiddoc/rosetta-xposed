@@ -189,10 +189,12 @@ class CoreTest {
     }
 
     @Test
-    fun `MapRegistry fromCollection is last-write-wins on a duplicate version_code`() {
-        // F3 + S4: two maps share version_code 100. The LAST one fed in wins the
-        // index slot, the registry collapses to one entry, and the collapse is
-        // observable via inputCount > size (hasVersionCodeCollision).
+    fun `MapRegistry fromCollection is first-wins on a duplicate version_code`() {
+        // F3 + S4: two maps share version_code 100. The FIRST one fed in wins the
+        // index slot (the cross-client canonical collision policy that the frida
+        // twin's putIfAbsent versionCodeIndex also implements), the registry
+        // collapses to one entry, and the collapse is observable via
+        // inputCount > size (hasVersionCodeCollision).
         val first = MapLoader.fromJson(minimalMap)
         val second =
             MapLoader.fromJson(
@@ -201,11 +203,33 @@ class CoreTest {
             )
         val registry = MapRegistry.fromCollection(listOf(first, second))
 
-        // Collapsed to one version_code slot, last-write-wins.
+        // Collapsed to one version_code slot, first-wins.
         assertEquals(1, registry.size)
-        assertSame(second, registry.byVersionCode(100))
+        assertSame(first, registry.byVersionCode(100))
+        assertEquals("1.0.0", registry.byVersionCode(100)!!.version)
         // The collision is surfaced (the documented inputCount-vs-size signal).
         assertEquals(2, registry.inputCount)
         assertEquals(true, registry.hasVersionCodeCollision)
+    }
+
+    @Test
+    fun `MapRegistry fromCollection is first-wins on a duplicate version label`() {
+        // The label fallback index is first-wins too: two maps share the
+        // version label "1.0.0" (distinct version_codes), and the FIRST fed in
+        // keeps the label slot. Mirrors the version_code first-wins policy so
+        // the human-label fallback can never silently flip to a later map.
+        val first = MapLoader.fromJson(minimalMap)
+        val second =
+            MapLoader.fromJson(
+                // Same label ("1.0.0"), different version_code, so we can tell which won.
+                minimalMap.replace("\"version_code\": 100", "\"version_code\": 200"),
+            )
+        val registry = MapRegistry.fromCollection(listOf(first, second))
+
+        // Both version_codes are distinct, so both are indexed by code.
+        assertEquals(2, registry.size)
+        // The shared label resolves to the FIRST map (version_code 100).
+        assertSame(first, registry.byLabel("1.0.0"))
+        assertEquals(100, registry.byLabel("1.0.0")!!.versionCode)
     }
 }

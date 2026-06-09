@@ -154,6 +154,10 @@ class ConformanceTest {
             runCodeSelectCase(case)
             return
         }
+        if (kind == "codeCollision") {
+            runCodeCollisionCase(case)
+            return
+        }
 
         if (expectError != null) {
             assertExpectedError(expectError, case["expectMessageIncludes"]?.jsonPrimitive?.content) {
@@ -384,6 +388,39 @@ class ConformanceTest {
             )
         assertEquals(MatchedBy.VERSION_CODE, selected?.matchedBy, "expected an exact version_code pick")
         assertEquals(case["expectSelectedCode"]!!.jsonPrimitive.long, selected?.map?.versionCode)
+    }
+
+    /**
+     * Run a `codeCollision`-kind case (version-select.json): build a
+     * [MapRegistry] from the case's `maps` (each `{versionCode, version}`, IN
+     * INPUT ORDER, so two maps can share a `version_code`) and assert that exact
+     * selection by `targetCode` returns the FIRST map that claimed the code.
+     * Pins the cross-client canonical FIRST-WINS collision policy
+     * ([MapRegistry.fromCollection] putIfAbsent); the frida twin builds the
+     * registry keyed by label and runs `pickMapForVersion` (putIfAbsent
+     * versionCodeIndex). The distinct `version` labels are payload markers so we
+     * can tell which of the two colliding maps won.
+     */
+    private fun runCodeCollisionCase(case: JsonObject) {
+        val maps =
+            (case["maps"] as JsonArray).map { entry ->
+                val obj = entry.jsonObject
+                RosettaMap(
+                    schemaVersion = 2,
+                    app = "com.example.app",
+                    version = obj["version"]!!.jsonPrimitive.content,
+                    versionCode = obj["versionCode"]!!.jsonPrimitive.long,
+                    classes = emptyMap(),
+                )
+            }
+        val registry = MapRegistry.fromCollection(maps)
+        val selected =
+            VersionMatch.select(
+                registry = registry,
+                versionCode = case["targetCode"]!!.jsonPrimitive.long,
+            )
+        assertEquals(MatchedBy.VERSION_CODE, selected?.matchedBy, "expected an exact version_code pick")
+        assertEquals(case["expectSelectedVersion"]!!.jsonPrimitive.content, selected?.map?.version)
     }
 
     private fun invoke(
