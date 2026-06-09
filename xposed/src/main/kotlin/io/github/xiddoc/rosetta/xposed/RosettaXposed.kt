@@ -22,7 +22,9 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.RetractedMapException
 import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
+import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.VersionMatch
@@ -137,6 +139,32 @@ public class RosettaXposed internal constructor(
             identity: AppIdentity,
         ): HealthCheckReport = HealthCheck.run(map, identity)
 
+        /**
+         * Fail-closed construction gate (maps#40): refuse a `status: retracted`
+         * [map] before any binding is built. This is the AUTHORITATIVE,
+         * UNIFORM retraction gate — invoked at the TOP of every construction
+         * factory below, beside (but ORTHOGONAL to) the signer guard, so a
+         * retracted map can never bind through ANY path. It fires even on
+         * [fromMapUnverified] (which only skips the SIGNER check), mirroring the
+         * frida client: a retracted map's obfuscated names were withdrawn
+         * upstream and must never bind, regardless of signer verification.
+         *
+         * Distinct from the SUPERSEDED warning, which stays an opt-in
+         * health-check signal ([healthCheck]) and is deliberately NOT moved to
+         * construction (CLAUDE.md Decision 5: the factories do not run the
+         * health check).
+         *
+         * @throws RetractedMapException if [map] declares `status: retracted`.
+         */
+        private fun refuseIfRetracted(map: RosettaMap) {
+            if (map.status == MapStatus.RETRACTED) {
+                throw RetractedMapException(
+                    "Map for ${map.app}@${map.version} (version_code=${map.versionCode}) is RETRACTED " +
+                        "and must not be used; its obfuscated names were withdrawn upstream.",
+                )
+            }
+        }
+
         /*
          * SECURITY-POSTURE MATRIX for the four construction factories
          * (xposed#14 M5). Each names a different point on the
@@ -177,6 +205,7 @@ public class RosettaXposed internal constructor(
             identity: AppIdentity,
             policy: TargetPolicy = TargetPolicy(),
         ): RosettaXposed {
+            refuseIfRetracted(map)
             SignerGuard.verify(map, identity)
             return RosettaXposed(StaticResolutionBackend(map, policy), classLoader, map.app, policy)
         }
@@ -197,7 +226,14 @@ public class RosettaXposed internal constructor(
             map: RosettaMap,
             classLoader: ClassLoader,
             policy: TargetPolicy = TargetPolicy(),
-        ): RosettaXposed = RosettaXposed(StaticResolutionBackend(map, policy), classLoader, map.app, policy)
+        ): RosettaXposed {
+            // Retraction is a fail-closed gate ORTHOGONAL to the signer check:
+            // it fires even here, where the signer guard is deliberately skipped
+            // (mirroring frida — a retracted map is refused even with the signer
+            // guard disabled).
+            refuseIfRetracted(map)
+            return RosettaXposed(StaticResolutionBackend(map, policy), classLoader, map.app, policy)
+        }
 
         /**
          * Select a map from a registry by the running app's identity, then
@@ -290,6 +326,7 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
             allowUnverified: Boolean = false,
         ): RosettaXposed {
+            refuseIfRetracted(map)
             if (identity != null) {
                 SignerGuard.verify(map, identity)
             } else if (!map.signerSha256s.isNullOrEmpty() && !allowUnverified) {
