@@ -19,7 +19,7 @@ class FuzzyVersionMatchTest {
 
     private fun mapAt(label: String): RosettaMap =
         RosettaMap(
-            schemaVersion = 2,
+            schemaVersion = 3,
             app = "com.example.app",
             version = label,
             versionCode = nextCode++,

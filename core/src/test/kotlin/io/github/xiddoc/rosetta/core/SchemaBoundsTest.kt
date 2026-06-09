@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 class SchemaBoundsTest {
     private val base =
         RosettaMap(
-            schemaVersion = 2,
+            schemaVersion = 3,
             app = "com.example.app",
             version = "1.0.0",
             versionCode = 100,
@@ -357,13 +357,13 @@ class SchemaBoundsTest {
         val map =
             base.copy(
                 capturedAt = long,
-                signerSha256 = long,
+                signerSha256s = listOf(long),
                 clientHints = ClientHints(fridaMinVersion = long, fridaMaxVersion = long),
                 sources = listOf(MapSource(tool = long, config = long, notes = long)),
             )
         val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
         assertTrue(ex.issues.any { it.path == "captured_at" })
-        assertTrue(ex.issues.any { it.path == "signer_sha256" })
+        assertTrue(ex.issues.any { it.path == "signer_sha256[0]" })
         assertTrue(ex.issues.any { it.path == "client_hints.frida_min_version" })
         assertTrue(ex.issues.any { it.path == "client_hints.frida_max_version" })
         assertTrue(ex.issues.any { it.path == "sources[0].tool" })
@@ -444,7 +444,7 @@ class SchemaBoundsTest {
         // `client_hints`; a well-formed sub-object must load under strict parsing.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0","version_code":100,
              "client_hints":{"frida_min_version":"16.0.0","frida_max_version":"17.0.0"},"classes":{}}
             """.trimIndent()
         val loaded = MapLoader.fromJson(json)
@@ -458,7 +458,7 @@ class SchemaBoundsTest {
         // is now an unknown key and must be rejected under strict parsing.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0","version_code":100,
              "frida_min_version":"16.0.0","classes":{}}
             """.trimIndent()
         val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
@@ -471,7 +471,7 @@ class SchemaBoundsTest {
         // inside it is a hard parse failure, matching the Frida twin.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0","version_code":100,
              "client_hints":{"frida_min_version":"16.0.0","mystery":true},"classes":{}}
             """.trimIndent()
         val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
@@ -485,7 +485,7 @@ class SchemaBoundsTest {
         // string is nowhere near the cap, so the guard must not reject it.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0-😀","version_code":100,"classes":{}}
+            {"schema_version":3,"app":"com.example.app","version":"1.0-😀","version_code":100,"classes":{}}
             """.trimIndent()
         val loaded = MapLoader.fromJson(json)
         assertEquals("1.0-😀", loaded.version)
@@ -552,7 +552,7 @@ class SchemaBoundsTest {
         // branches; the input is well under the cap so it loads cleanly.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0-é€",
+            {"schema_version":3,"app":"com.example.app","version":"1.0-é€",
              "version_code":100,"classes":{}}
             """.trimIndent()
         val loaded = MapLoader.fromJson(json)
@@ -576,7 +576,7 @@ class SchemaBoundsTest {
         // hard parse failure surfaced as a MapValidationException.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0",
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0",
              "version_code":100,"classes":{},"totallyUnknownKey":true}
             """.trimIndent()
         val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
@@ -589,7 +589,7 @@ class SchemaBoundsTest {
         // mistyped field can never silently become a no-op default.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":100,
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0","version_code":100,
              "classes":{"com.example.Foo":{"obfuscated":"a","mystery":1}}}
             """.trimIndent()
         assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
@@ -608,7 +608,7 @@ class SchemaBoundsTest {
         // must NOT count toward structural depth: this in-bounds map loads.
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":1,
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0","version_code":1,
              "classes":{"com.example.Foo":{"obfuscated":"a","dex":"[[[ {\" }]]]"}}}
             """.trimIndent()
         val map = MapLoader.fromJson(json)
@@ -628,7 +628,7 @@ class SchemaBoundsTest {
     fun `a normal map sits well under the nesting cap`() {
         val json =
             """
-            {"schema_version":2,"app":"com.example.app","version":"1.0.0","version_code":1,
+            {"schema_version":3,"app":"com.example.app","version":"1.0.0","version_code":1,
              "classes":{"com.example.Foo":{"obfuscated":"a",
               "methods":{"m":[{"obfuscated":"c","signature":"()V"}]}}}}
             """.trimIndent()

@@ -25,7 +25,7 @@ class CoreTest {
     private val minimalMap =
         """
         {
-          "schema_version": 2,
+          "schema_version": 3,
           "app": "com.example.app",
           "version": "1.0.0",
           "version_code": 100,
@@ -34,7 +34,7 @@ class CoreTest {
         """.trimIndent()
 
     @Test
-    fun `loads a valid schema-2 map`() {
+    fun `loads a valid schema-3 map`() {
         val map = MapLoader.fromJson(minimalMap)
         assertEquals("com.example.app", map.app)
         assertEquals(100, map.versionCode)
@@ -43,7 +43,9 @@ class CoreTest {
 
     @Test
     fun `rejects a non-current schema version`() {
-        val bad = minimalMap.replace("\"schema_version\": 2", "\"schema_version\": 1")
+        // schema_version 2 is the PREVIOUS version; after the v3 migration it is
+        // no longer current and must be rejected by the hard gate.
+        val bad = minimalMap.replace("\"schema_version\": 3", "\"schema_version\": 2")
         val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(bad) }
         assertTrue(ex.issues.any { it.path == "schema_version" })
     }
@@ -112,12 +114,12 @@ class CoreTest {
     fun `method overloads round-trip single-object and array forms faithfully`() {
         val single =
             """
-            {"schema_version":2,"app":"a","version":"1","version_code":1,
+            {"schema_version":3,"app":"a","version":"1","version_code":1,
              "classes":{"C":{"obfuscated":"c","methods":{"m":{"obfuscated":"a","signature":"()V"}}}}}
             """.trimIndent()
         val multi =
             """
-            {"schema_version":2,"app":"a","version":"1","version_code":1,
+            {"schema_version":3,"app":"a","version":"1","version_code":1,
              "classes":{"C":{"obfuscated":"c","methods":{"m":[{"obfuscated":"a","signature":"()V"},
              {"obfuscated":"b","signature":"(I)V"}]}}}}
             """.trimIndent()

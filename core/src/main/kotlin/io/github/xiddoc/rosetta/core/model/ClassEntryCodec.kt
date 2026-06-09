@@ -9,7 +9,7 @@
  * module that applies the serialization plugin and depends on
  * `kotlinx-serialization-json`. Exposing a tiny codec here keeps that
  * dependency confined to `:core` (the layer-4 modules stay free of a direct
- * serialization dependency) while reusing the exact same `schema_version: 2`
+ * serialization dependency) while reusing the exact same `schema_version: 3`
  * field shapes (incl. the [MethodOverloads] object/array form) the map loader
  * uses, so a cached entry round-trips identically to one read from a map file.
  *

@@ -23,7 +23,7 @@ class ResolverGuardTest {
         app: String = "com.example.app",
     ): RosettaMap =
         RosettaMap(
-            schemaVersion = 2,
+            schemaVersion = 3,
             app = app,
             version = "1.0.0",
             versionCode = 100,

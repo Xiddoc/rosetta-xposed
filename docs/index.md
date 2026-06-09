@@ -17,7 +17,7 @@ does **not** own the hook call. This mirrors rosetta-frida's "just makes
 
 ## Where it fits
 
-rosetta-xposed is the JVM/Xposed **client** of the `schema_version: 2` map
+rosetta-xposed is the JVM/Xposed **client** of the `schema_version: 3` map
 format. That format is **owned** by
 [rosetta-maps](https://github.com/Xiddoc/rosetta-maps)
 (`schema/rosetta-map.schema.json` is the single source of truth);

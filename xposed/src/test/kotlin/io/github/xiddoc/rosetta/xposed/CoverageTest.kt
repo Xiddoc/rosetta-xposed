@@ -28,7 +28,7 @@ class CoverageTest {
         MapLoader.fromJson(
             """
             {
-              "schema_version": 2,
+              "schema_version": 3,
               "app": "com.example.app",
               "version": "1.0.0",
               "version_code": 100,

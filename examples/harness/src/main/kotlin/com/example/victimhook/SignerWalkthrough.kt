@@ -11,11 +11,12 @@
  *              SignerMismatchException (fail-closed).
  *   MISSING  — map demands a signer but identity carries no hashes →
  *              MissingSignerException (fail-closed).
- *   MALFORMED — map's signer_sha256 is not 64 hex chars after normalization →
+ *   MALFORMED — map's signer_sha256 is not canonical bare-lowercase 64 hex →
  *              MalformedSignerException (fail-closed).
  *
- * An optional normalization case shows that a hash carrying uppercase letters
- * or colon separators is treated as identical to the canonical lowercase form.
+ * An optional normalization case shows that an APP-PRESENTED hash carrying
+ * uppercase letters or colon separators is normalized to match the canonical
+ * bare-lowercase form stored in the map.
  *
  * ---- How the cert hash is produced ----
  *
@@ -97,7 +98,7 @@ public object SignerWalkthrough {
     private fun mapJsonWithSigner(signerSha256: String): String =
         """
         {
-          "schema_version": 2,
+          "schema_version": 3,
           "app": "$APP",
           "version": "$VERSION",
           "version_code": $VERSION_CODE,
@@ -212,16 +213,21 @@ public object SignerWalkthrough {
         }
 
         // ------------------------------------------------------------------ //
-        // NORMALIZATION: uppercase + colon-separated hash must match          //
+        // NORMALIZATION: the APP-PRESENTED hash may arrive uppercase + colon- //
+        // separated (PackageManager often renders it that way). The guard     //
+        // normalizes the identity's hashes before the match-any comparison,   //
+        // while the MAP value stays canonical bare-lowercase 64-hex (schema   //
+        // v3 / SignerGuard require canonical map values; a colon/uppercase    //
+        // value in the map is MalformedSignerException, not normalized).      //
         // ------------------------------------------------------------------ //
-        // Build the colon-separated uppercase form of the same cert hash.
+        // The map carries the canonical lowercase hash...
+        val normMap = MapLoader.fromJson(mapJsonWithSigner(certHash))
+        // ...and the identity presents the same hash in uppercase + colon form.
         val colonUpperHash = certHash.chunked(2).joinToString(":") { it.uppercase() }
-        val normMap = MapLoader.fromJson(mapJsonWithSigner(colonUpperHash))
-        // Identity carries the plain lowercase form — the guard normalizes both.
         val normIdentity = AppIdentity(
             packageName = APP,
             versionCode = VERSION_CODE,
-            signerSha256s = setOf(certHash),
+            signerSha256s = setOf(colonUpperHash),
         )
         val normalizationMatched: Boolean = try {
             RosettaXposed.fromMap(normMap, SignerWalkthrough::class.java.classLoader!!, normIdentity, policy)

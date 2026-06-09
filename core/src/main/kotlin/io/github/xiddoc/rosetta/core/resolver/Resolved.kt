@@ -52,8 +52,8 @@ public data class ResolvedClass(
  *
  * It carries exactly the fields the resolver needs to re-resolve the class,
  * its methods, and its fields — and nothing else. Provenance (kind / source /
- * confidence / anchors) is the discovery sink's concern, not the resolver's,
- * so it is intentionally absent here.
+ * anchors) is the discovery sink's concern, not the resolver's, so it is
+ * intentionally absent here.
  *
  * NOTE: unlike [ResolvedClass] (the read side), this write-back contract DOES
  * reference the model value types [Methods] and [FieldEntry] — it has to, to

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "app": "com.example.victim",
   "version": "1.0.1",
   "version_code": 101,

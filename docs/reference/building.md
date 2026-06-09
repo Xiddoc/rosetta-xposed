@@ -93,9 +93,9 @@ see [Status](status.md)).
 
 | Coordinate | Module |
 | --- | --- |
-| `io.github.xiddoc.rosetta:xposed:0.1.0` | `:xposed` (depends on `:core`) |
-| `io.github.xiddoc.rosetta:core:0.1.0` | `:core` |
-| `io.github.xiddoc.rosetta:android-runtime:0.1.0` | `:android-runtime` |
+| `io.github.xiddoc.rosetta:xposed:0.2.0` | `:xposed` (depends on `:core`) |
+| `io.github.xiddoc.rosetta:core:0.2.0` | `:core` |
+| `io.github.xiddoc.rosetta:android-runtime:0.2.0` | `:android-runtime` |
 
 Each module publishes a main jar plus `-sources` and `-javadoc` jars and a full
 POM (name, description, URL, MIT license, SCM, developer, issue tracker).
@@ -105,9 +105,9 @@ POM (name, description, URL, MIT license, SCM, developer, issue tracker).
 SemVer, with the **MINOR line deliberately tied to the map `schema_version`**
 the release consumes:
 
-- `0.1.x` consumes `schema_version: 2`.
-- A breaking schema bump (to `schema_version: 3`) moves the library to the next
-  MINOR (`0.2.x`); a breaking *library API* change before 1.0 also moves the
+- `0.2.x` consumes `schema_version: 3`. (`0.1.x` consumed `schema_version: 2`.)
+- A breaking schema bump (e.g. to `schema_version: 4`) moves the library to the
+  next MINOR (`0.3.x`); a breaking *library API* change before 1.0 also moves the
   MINOR.
 - Once the surface is stable the library graduates to `1.0.0` and ordinary
   SemVer applies.
@@ -124,9 +124,9 @@ Maven coordinate and `BuildInfo.VERSION`. A unit test (`BuildInfoTest`) asserts
 `SCHEMA_VERSION` to the loader's `CURRENT_SCHEMA_VERSION`, so a tag↔constant or
 schema↔coordinate mismatch **fails the gate**.
 
-The build's `version` defaults to `0.1.0` but is overridable for a release via
+The build's `version` defaults to `0.2.0` but is overridable for a release via
 `-Prosetta.version=<x.y.z>`; the [release workflow](#tag-driven-release) feeds it
-the git tag (a `v0.1.0` tag publishes `0.1.0`).
+the git tag (a `v0.2.0` tag publishes `0.2.0`).
 
 ### Local install
 

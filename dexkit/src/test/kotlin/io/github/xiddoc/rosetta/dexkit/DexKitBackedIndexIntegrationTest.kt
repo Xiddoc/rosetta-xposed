@@ -482,11 +482,11 @@ class DexKitBackedIndexIntegrationTest {
         val counting = CountingDexKitIndex(index)
         val signedMap =
             RosettaMap(
-                schemaVersion = 2,
+                schemaVersion = 3,
                 app = "com.rosetta.dexfixture",
                 version = "1.0.0",
                 versionCode = 1L,
-                signerSha256 = "a".repeat(64),
+                signerSha256s = listOf("a".repeat(64)),
                 classes = emptyMap(),
             )
         val mismatched =
@@ -520,7 +520,7 @@ class DexKitBackedIndexIntegrationTest {
     /** An empty, well-formed schema-2 map for the running fixture app. */
     private fun emptyFixtureMap(): RosettaMap =
         RosettaMap(
-            schemaVersion = 2,
+            schemaVersion = 3,
             app = "com.rosetta.dexfixture",
             version = "1.0.0",
             versionCode = 1L,

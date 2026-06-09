@@ -36,6 +36,7 @@
 package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.RosettaException
+import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 
 /** A blocking problem found by the [HealthCheck]: the map must not be used as-is. */
@@ -81,6 +82,13 @@ public enum class HealthCheckWarningKind {
 
     /** A class entry carries a blank obfuscated name. */
     BLANK_OBFUSCATED_NAME,
+
+    /**
+     * The map declares `status: superseded` (schema 3, maps#40): a newer map
+     * exists (`superseded_by`). Usable, but the caller should prefer the newer
+     * one. (A `retracted` map never reaches here — it is refused at load time.)
+     */
+    SUPERSEDED_MAP,
 }
 
 /**
@@ -152,6 +160,18 @@ public object HealthCheck {
 
         val warnings =
             buildList {
+                if (map.status == MapStatus.SUPERSEDED) {
+                    val supersededBy = map.supersededBy
+                    val by = if (supersededBy != null) " by version_code $supersededBy" else ""
+                    add(
+                        HealthCheckWarning(
+                            kind = HealthCheckWarningKind.SUPERSEDED_MAP,
+                            message =
+                                "Map for ${map.app} (version_code=${map.versionCode}) is SUPERSEDED$by; " +
+                                    "a newer map exists — prefer it if available.",
+                        ),
+                    )
+                }
                 if (map.classes.isEmpty()) {
                     add(
                         HealthCheckWarning(
