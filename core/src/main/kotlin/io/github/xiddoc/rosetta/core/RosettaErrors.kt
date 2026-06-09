@@ -47,6 +47,16 @@ public class MapInputTooLargeException(
     message: String,
 ) : RosettaException(message)
 
+/**
+ * A map declares `status: retracted` (schema 3, maps#40) and was refused at
+ * load time. Fail-closed: a retracted map was withdrawn upstream (e.g. found to
+ * mis-resolve), so its obfuscated names must never bind. Distinct from a
+ * validation failure: the map is well-formed but deliberately withdrawn.
+ */
+public class RetractedMapException(
+    message: String,
+) : RosettaException(message)
+
 /** Which kind of symbol a [ResolveException] failed to resolve. */
 public enum class ResolveTarget {
     CLASS,

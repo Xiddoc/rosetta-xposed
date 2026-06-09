@@ -25,6 +25,7 @@ package io.github.xiddoc.rosetta.core
 
 import io.github.xiddoc.rosetta.core.model.CURRENT_SCHEMA_VERSION
 import io.github.xiddoc.rosetta.core.model.ClassEntry
+import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -120,6 +121,16 @@ public object MapLoader {
      */
     private val APP_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
+    /**
+     * The `captured_at` ISO `date` shape (`YYYY-MM-DD`), a lightweight check
+     * consistent with the canonical schema's `format: date` (schema 3, maps#39).
+     * This pins the SHAPE, not calendar validity — `:core` does not parse the
+     * value into an instant (it is data), so e.g. `2026-13-40` passes the shape
+     * but a `2026/05/11` or free-text value is rejected. A null `captured_at`
+     * is a no-op (the field stays optional).
+     */
+    private val CAPTURED_AT_PATTERN: Regex = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+
     /** Highest code point encoded as 1 UTF-8 byte (U+007F). See [utf8ByteLength]. */
     private const val UTF8_1BYTE_MAX = 0x7F
 
@@ -132,10 +143,17 @@ public object MapLoader {
     /**
      * Parse and validate a JSON map.
      *
+     * A schema-3 `status: retracted` map is REFUSED here, fail-closed
+     * (maps#40): it parses and validates structurally, but the map was
+     * withdrawn upstream so its names must never bind. A `superseded` map loads
+     * normally — that is a soft signal surfaced at health-check time, not a
+     * load-time refusal.
+     *
      * @throws MapInputTooLargeException if the raw text exceeds
      *   [MAX_INPUT_BYTES] or is nested deeper than [MAX_NESTING_DEPTH].
      * @throws MapValidationException if the text is not valid JSON, does
      *   not match the schema, or violates a hardening bound.
+     * @throws RetractedMapException if the map declares `status: retracted`.
      */
     public fun fromJson(text: String): RosettaMap {
         guardInput(text)
@@ -155,7 +173,25 @@ public object MapLoader {
                     ex,
                 )
             }
-        return validate(map)
+        val validated = validate(map)
+        refuseIfRetracted(validated)
+        return validated
+    }
+
+    /**
+     * Fail-closed refusal of a `status: retracted` map (maps#40). Called from
+     * [fromJson] AFTER structural validation, so a malformed retracted map still
+     * reports its structural issues first. A valid, retracted map throws
+     * [RetractedMapException] — its names are deliberately withdrawn and must
+     * never bind.
+     */
+    private fun refuseIfRetracted(map: RosettaMap) {
+        if (map.status == MapStatus.RETRACTED) {
+            throw RetractedMapException(
+                "Map for ${map.app}@${map.version} (version_code=${map.versionCode}) is RETRACTED " +
+                    "and must not be used; its obfuscated names were withdrawn upstream.",
+            )
+        }
     }
 
     /**
@@ -300,13 +336,23 @@ public object MapLoader {
                         "must be at most $MAX_VERSION_CODE (2^53 - 1, Number.MAX_SAFE_INTEGER)",
                     )
             }
-            free("captured_at", map.capturedAt)
-            // Bound the signer hash length too (every other free string is
+            // captured_at: length-bound it (every free string is capped) AND
+            // pin its ISO-date shape (schema 3, maps#39). A null value is a
+            // no-op; the field stays optional.
+            map.capturedAt?.let { capturedAt ->
+                free("captured_at", capturedAt)
+                if (!CAPTURED_AT_PATTERN.matches(capturedAt)) {
+                    issues += ValidationIssue("captured_at", "must be an ISO date (YYYY-MM-DD)")
+                }
+            }
+            // Bound EACH signer hash length too (every other free string is
             // capped) so an absurdly long value can't slip past the DoS bounds
-            // even on the unverified path. The canonical 64-hex FORMAT/regex
-            // stays in the maps schema by design (xposed is a client, not the
-            // schema owner); this is purely a length guard.
-            free("signer_sha256", map.signerSha256)
+            // even on the unverified path. The canonical bare-lowercase-64-hex
+            // FORMAT/regex stays in the maps schema by design (xposed is a
+            // client, not the schema owner); this is purely a length guard, and
+            // it iterates the match-any list (schema 3 accepts one OR many).
+            map.signerSha256s?.forEachIndexed { i, h -> free("signer_sha256[$i]", h) }
+            free("generated_from.signatures_rev", map.generatedFrom?.signaturesRev)
             free("client_hints.frida_min_version", map.clientHints?.fridaMinVersion)
             free("client_hints.frida_max_version", map.clientHints?.fridaMaxVersion)
             checkSources()
