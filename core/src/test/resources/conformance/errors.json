@@ -1,7 +1,7 @@
 {
     "description": "Error-taxonomy parity cases that pin behaviour the two resolvers must agree on: (1) parseSignatureArgs rejects an unknown descriptor char (e.g. 'Q') as a malformed-input IllegalArgument; (2) overload disambiguation against an unmapped class-name arg type raises the DISTINCT UnknownArgType error (a Resolve subtype) rather than the generic no-overload-matches Resolve, while a legitimate no-match still raises the generic Resolve; (3) the canonical miss WORDING both resolvers emit, pinned via `expectMessageIncludes`: a class miss reads `class '<name>' not found in map for <app>@<version>.` and a member miss reads `<kind> '<name>' not found on class '<class>' in map for <app>@<version>.`. The asserted substring deliberately EXCLUDES the per-client brand prefix (`rosetta-frida:` / `rosetta-xposed:`), which is intentionally different; everything after the prefix is byte-identical across clients. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 2,
+        "schema_version": 3,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

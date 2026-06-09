@@ -5,7 +5,7 @@
             "name": "a well-formed minimal map validates (baseline)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -21,7 +21,7 @@
             "name": "empty class obfuscated is rejected (minLength:1)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -37,7 +37,7 @@
             "name": "empty method obfuscated is rejected (minLength:1)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -59,7 +59,7 @@
             "name": "empty field obfuscated is rejected (minLength:1)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -97,7 +97,7 @@
             "name": "a 2^32 version_code validates (longVersionCode, not int32-masked: xposed#8/f8 accept)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 4294967296,
@@ -113,7 +113,7 @@
             "name": "a 2^53 version_code is rejected (over Number.MAX_SAFE_INTEGER: xposed#8/f8 reject)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 9007199254740992,
@@ -129,7 +129,7 @@
             "name": "an empty version label is rejected (minLength:1)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "",
                 "version_code": 100,
@@ -145,7 +145,7 @@
             "name": "a non-dotted app id is rejected (package-name pattern)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "not a package name",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -161,7 +161,7 @@
             "name": "a reserved __proto__ class key is rejected (prototype-pollution guard)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -177,7 +177,7 @@
             "name": "empty method signature is rejected (minLength:1)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -199,7 +199,7 @@
             "name": "empty field type is rejected (minLength:1)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -221,7 +221,7 @@
             "name": "a negative version_code is rejected (lower-bound, nonnegative)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": -1,
@@ -237,7 +237,7 @@
             "name": "a reserved constructor class key is rejected (prototype-pollution guard)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -253,7 +253,7 @@
             "name": "a reserved prototype class key is rejected (prototype-pollution guard)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "1.0.0",
                 "version_code": 100,
@@ -269,7 +269,7 @@
             "name": "a whitespace-only version label is rejected (non-whitespace pattern)",
             "kind": "validate",
             "inputMap": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "app": "com.example.app",
                 "version": "   ",
                 "version_code": 100,

@@ -1,7 +1,7 @@
 {
     "description": "Cross-client parity for the `unknownArgTypeOrNull` / `isClassNameForm` arg-type heuristic (xposed#10 / the maps#10 KEEP-IN-SYNC banner). The heuristic is duplicated by VALUE in both clients (frida `src/resolver/resolver.ts`, xposed `core/.../resolver/Resolver.kt`); a one-sided edit would make the two raise DIFFERENT errors for the same input. These cases pin the exclusion classification for a representative descriptor set by driving each arg type through method-overload resolution and asserting the resulting error taxonomy: an arg type the heuristic treats as a CLASS-NAME FORM that the map does not know yields the precise UnknownArgType; any descriptor / primitive / lone-letter / array form the heuristic EXCLUDES is passed verbatim and (matching no overload) yields the generic Resolve miss instead. The single method `m` has exactly one overload whose only arg is the mapped class `com.example.app.Known` (descriptor `Lkkkk;`), so only that exact type resolves. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 2,
+        "schema_version": 3,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

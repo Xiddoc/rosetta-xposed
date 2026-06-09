@@ -1,7 +1,7 @@
 {
     "description": "Shared Rosetta resolver conformance cases. The same fixture format is intended to drive both the TypeScript (rosetta-frida) and Kotlin (rosetta-xposed) resolvers so the two implementations stay behaviour-identical (RFC 0001, Decision 1). Keep this provider-neutral: no Frida- or Xposed-specific fields.",
     "map": {
-        "schema_version": 2,
+        "schema_version": 3,
         "app": "com.example.app",
         "version": "3.4.5",
         "version_code": 30405,
