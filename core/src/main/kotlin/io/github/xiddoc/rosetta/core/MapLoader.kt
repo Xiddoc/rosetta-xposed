@@ -301,6 +301,12 @@ public object MapLoader {
                     )
             }
             free("captured_at", map.capturedAt)
+            // Bound the signer hash length too (every other free string is
+            // capped) so an absurdly long value can't slip past the DoS bounds
+            // even on the unverified path. The canonical 64-hex FORMAT/regex
+            // stays in the maps schema by design (xposed is a client, not the
+            // schema owner); this is purely a length guard.
+            free("signer_sha256", map.signerSha256)
             free("client_hints.frida_min_version", map.clientHints?.fridaMinVersion)
             free("client_hints.frida_max_version", map.clientHints?.fridaMaxVersion)
             checkSources()
