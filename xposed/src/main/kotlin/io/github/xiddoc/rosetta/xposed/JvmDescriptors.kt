@@ -13,6 +13,17 @@ import io.github.xiddoc.rosetta.core.resolver.Descriptors
 
 internal object JvmDescriptors {
     /**
+     * The JVM internal name every constructor is compiled to (`<init>`). Named
+     * here rather than spelled as a bare literal at the bind site (xposed#32) so
+     * the constructor-dispatch fallback in [MethodTarget.member] reads against a
+     * documented constant. The authoritative constructor signal is the schema's
+     * `is_constructor` flag ([io.github.xiddoc.rosetta.core.resolver.ResolvedMethod.isConstructor]);
+     * a name equal to this constant is the belt-and-braces fallback for a map
+     * that names a constructor `<init>` without setting the flag.
+     */
+    const val CONSTRUCTOR_NAME: String = "<init>"
+
+    /**
      * JVM descriptor for a (possibly primitive / array) reflected type.
      *
      * The primitive table and the object-element rendering are NOT re-declared

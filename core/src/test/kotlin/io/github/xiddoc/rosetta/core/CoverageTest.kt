@@ -139,6 +139,29 @@ class CoverageTest {
     }
 
     @Test
+    fun `miss messages use the canonical wording (xposed#32)`() {
+        // Aligned to the rosetta-frida twin: class -> "class '<name>' not
+        // found"; method/field -> "<kind> '<name>' not found on class
+        // '<class>'". Asserts the load-bearing fragments, not the full string,
+        // so app@version formatting stays free to evolve.
+        val resolver = Resolver(map)
+        val cls = assertFailsWith<ResolveException> { resolver.resolveClass("com.example.Nope") }
+        assertTrue(cls.message!!.contains("class 'com.example.Nope' not found"), cls.message)
+
+        val method = assertFailsWith<ResolveException> { resolver.resolveMethod("com.example.Foo", "ghost") }
+        assertTrue(
+            method.message!!.contains("method 'ghost' not found on class 'com.example.Foo'"),
+            method.message,
+        )
+
+        val field = assertFailsWith<ResolveException> { resolver.resolveField("com.example.Foo", "ghost") }
+        assertTrue(
+            field.message!!.contains("field 'ghost' not found on class 'com.example.Foo'"),
+            field.message,
+        )
+    }
+
+    @Test
     fun `an unmapped real-name arg type raises a distinct UnknownArgTypeException`() {
         // A class with one overload taking an obf-mapped arg type `Lobf;` (the
         // obf of a mapped real name "com.example.Arg"), so a KNOWN real arg type
