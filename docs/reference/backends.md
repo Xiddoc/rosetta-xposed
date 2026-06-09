@@ -100,10 +100,10 @@ chokepoint that neutralises this with two fail-closed layers:
 
 A successful discovery is handed to a `DiscoverySink`. The in-memory
 `MapDiscoverySink` records each entry and renders a
-`MapSource(tool = "rosetta-runtime-discovered", confidence = LOW, …)` so a
-discovered name is never mistaken for a vetted, high-confidence static
-mapping — the same provenance the Frida side emits. (An upstream-contribution
-path is interface-only for now.)
+`MapSource(tool = "rosetta-runtime-discovered", …)` so a discovered name is
+attributed to runtime discovery rather than a vetted static mapping — the same
+provenance the Frida side emits. (An upstream-contribution path is
+interface-only for now.)
 
 ### Persistence (`DiscoveryCache`)
 

@@ -16,7 +16,7 @@ not a hook framework**: it resolves a real name to a
 `java.lang.reflect.Member` and hands it to *your* hook API — you still own
 the hook call.
 
-It is the JVM/Xposed **client** of the same `schema_version: 2` maps used by
+It is the JVM/Xposed **client** of the same `schema_version: 3` maps used by
 [rosetta-frida](https://github.com/Xiddoc/rosetta-frida). The map schema is
 owned by [rosetta-maps](https://github.com/Xiddoc/rosetta-maps); this repo
 tracks and consumes it from the Kotlin side.
@@ -82,7 +82,7 @@ Or clone and build locally:
 ```
 
 **Versioning:** SemVer, with the MINOR line coordinated to the map
-`schema_version` it consumes — `0.1.x` speaks `schema_version: 2`. See
+`schema_version` it consumes — `0.2.x` speaks `schema_version: 3`. See
 [Building → Publishing](https://xiddoc.github.io/rosetta-xposed/reference/building/).
 
 ## Documentation

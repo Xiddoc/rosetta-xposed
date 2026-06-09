@@ -17,11 +17,11 @@ JVM layer-4 binding:
 | Layer | What | Here |
 |---|---|---|
 | 1. Signature authoring | sigmatcher / DexKit | shared (lives in `rosetta-maps`) |
-| 2. Canonical map artifact | `schema_version: 2` JSON, keyed by `(app, version_code)` | `:core` model + loader |
+| 2. Canonical map artifact | `schema_version: 3` JSON, keyed by `(app, version_code)` | `:core` model + loader |
 | 3. Resolution semantics | real + version → obf + overload | `:core` resolver (conformance-tested) |
 | 4. Runtime binding | apply the resolved name to actually hook | **`:xposed`** (this repo) |
 
-The `schema_version: 2` format is **owned by**
+The `schema_version: 3` format is **owned by**
 [rosetta-maps](https://github.com/Xiddoc/rosetta-maps); rosetta-xposed is a
 client that tracks it. See [Related repos](../reference/related.md).
 
