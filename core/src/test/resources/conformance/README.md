@@ -89,9 +89,15 @@ Notes on inputs:
   (the map must pass) or `expectError: "MapValidation"` (the map must be
   rejected — e.g. an empty `obfuscated`, violating `minLength: 1`). NOTE: the
   shared `validate` cases pin only the constraints BOTH clients' map
-  validators enforce — `signer_sha256`'s `^[0-9a-f]{64}$` regex is NOT among
-  them (the Xposed `:core` `MapLoader.validate` does not check it), so it is
-  pinned by the rosetta-maps `schema/samples/*signer*` instead.
+  validators enforce. Two constraints are intentionally NOT pinned here and
+  are delegated to rosetta-maps `schema/samples/`: (1) `signer_sha256`'s
+  `^[0-9a-f]{64}$` regex, because the Xposed `:core` `MapLoader.validate` does
+  not check it — pinned by `schema/samples/*signer*`; and (2)
+  `additionalProperties:false` / unknown-key rejection, because the Kotlin
+  `validate` harness decodes `inputMap` with `ignoreUnknownKeys=true`, so a
+  stray key is dropped at decode and never reaches `validate` — it cannot be
+  expressed through this harness, and is instead pinned by the rosetta-maps
+  `schema/samples/invalid/unknown-*-key.json` samples.
 - **`bound`** / **`value`** — for the `bound` kind ONLY (`bounds.json`):
   `bound` names a shared DoS/cardinality constant (e.g. `MAX_CLASSES`,
   `MAX_VERSION_CODE`) and `value` is its required exact value. Each client
@@ -204,8 +210,14 @@ case is asserted to be exactly that subtype.
 - **Validation** (`validation.json`): each `validate` case runs its inline
   `inputMap` through the client's map validator, pinning the constraints
   BOTH validators enforce (`schema_version` hard gate, non-empty
-  `obfuscated`/`version`, `app` pattern, `version_code` width incl. the
-  2^32-accept / 2^53-reject boundary, reserved record keys).
+  `obfuscated`/method `signature`/field `type`, non-empty AND whitespace-only
+  `version` rejection, `app` pattern, `version_code` width incl. the
+  2^32-accept / 2^53-reject boundary AND the negative lower-bound reject, and
+  the reserved record keys `__proto__`/`constructor`/`prototype`).
+  `additionalProperties:false` / unknown-key rejection is intentionally NOT
+  pinned here (the Kotlin `validate` harness decodes leniently with
+  `ignoreUnknownKeys=true`, so it cannot express it); it is pinned by the
+  rosetta-maps `schema/samples/invalid/unknown-*-key.json` samples instead.
 - **Arg-type heuristic** (`heuristic.json`): the `unknownArgTypeOrNull` /
   `isClassNameForm` exclusion classification — a class-name-form unmapped
   arg yields the precise `UnknownArgType`; any descriptor / primitive /
