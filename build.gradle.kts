@@ -43,11 +43,11 @@ plugins {
 // it at build time (and a unit test pins the constant back to it), so the
 // in-code coordinate can never drift from what is published. The release
 // workflow overrides it from the pushed git tag via
-// `-Prosetta.version=<tag-without-v>` so a `v0.1.0` tag publishes `0.1.0`; an
+// `-Prosetta.version=<tag-without-v>` so a `v0.2.0` tag publishes `0.2.0`; an
 // ordinary local build uses the default below. Version scheme: SemVer with the
-// MINOR line coordinated to the map `schema_version` (0.1.x ⇄ schema 2) — see
+// MINOR line coordinated to the map `schema_version` (0.2.x ⇄ schema 3) — see
 // docs/reference/building.md.
-val rosettaVersion: String = (findProperty("rosetta.version") as String?)?.takeIf { it.isNotBlank() } ?: "0.1.0"
+val rosettaVersion: String = (findProperty("rosetta.version") as String?)?.takeIf { it.isNotBlank() } ?: "0.2.0"
 
 allprojects {
     group = "io.github.xiddoc.rosetta"
