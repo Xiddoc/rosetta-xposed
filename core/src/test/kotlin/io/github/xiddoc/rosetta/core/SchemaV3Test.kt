@@ -93,6 +93,43 @@ class SchemaV3Test {
         assertNull(MapLoader.fromJson(mapJson()).capturedAt)
     }
 
+    @Test
+    fun `an impossible month captured_at is rejected`() {
+        // Shape-valid (YYYY-MM-DD) but month 13 does not exist — LocalDate rejects.
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"captured_at": "2026-13-40","""))
+            }
+        assertTrue(ex.issues.any { it.path == "captured_at" })
+    }
+
+    @Test
+    fun `an impossible day captured_at is rejected`() {
+        // Feb 30 never exists — shape passes, calendar parse fails.
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"captured_at": "2026-02-30","""))
+            }
+        assertTrue(ex.issues.any { it.path == "captured_at" })
+    }
+
+    @Test
+    fun `a leap-day captured_at on a non-leap year is rejected`() {
+        // 2025 is not a leap year, so 2025-02-29 is not a real date.
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"captured_at": "2025-02-29","""))
+            }
+        assertTrue(ex.issues.any { it.path == "captured_at" })
+    }
+
+    @Test
+    fun `a leap-day captured_at on a leap year is accepted`() {
+        // 2024 IS a leap year, so 2024-02-29 is a real date.
+        val map = MapLoader.fromJson(mapJson(extra = """"captured_at": "2024-02-29","""))
+        assertEquals("2024-02-29", map.capturedAt)
+    }
+
     // ---- signer_sha256 single string OR array (#38, #32) --------------------
 
     @Test
@@ -108,6 +145,16 @@ class SchemaV3Test {
         val b = "b".repeat(64)
         val map = MapLoader.fromJson(mapJson(extra = """"signer_sha256": ["$a", "$b"],"""))
         assertEquals(listOf(a, b), map.signerSha256s)
+    }
+
+    @Test
+    fun `an empty signer_sha256 array is rejected`() {
+        // The schema pins minItems: 1; an empty array pins no signer and is meaningless.
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"signer_sha256": [],"""))
+            }
+        assertTrue(ex.issues.any { it.path == "signer_sha256" })
     }
 
     @Test
@@ -159,8 +206,28 @@ class SchemaV3Test {
 
     @Test
     fun `a well-formed generated_from is accepted`() {
-        val map = MapLoader.fromJson(mapJson(extra = """"generated_from": { "signatures_rev": "abc123" },"""))
-        assertEquals(GeneratedFrom("abc123"), map.generatedFrom)
+        // A valid abbreviated git hash is 7-40 lowercase hex chars.
+        val map = MapLoader.fromJson(mapJson(extra = """"generated_from": { "signatures_rev": "abc1234" },"""))
+        assertEquals(GeneratedFrom("abc1234"), map.generatedFrom)
+    }
+
+    @Test
+    fun `a too-short signatures_rev is rejected`() {
+        // 6 chars is below the 7-char minimum the canonical schema + frida pin.
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"generated_from": { "signatures_rev": "abc123" },"""))
+            }
+        assertTrue(ex.issues.any { it.path == "generated_from.signatures_rev" })
+    }
+
+    @Test
+    fun `a non-hex signatures_rev is rejected`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"generated_from": { "signatures_rev": "zzzzzzz" },"""))
+            }
+        assertTrue(ex.issues.any { it.path == "generated_from.signatures_rev" })
     }
 
     @Test
@@ -211,6 +278,70 @@ class SchemaV3Test {
         assertTrue(ex.message!!.contains("parse"))
     }
 
+    // ---- status / superseded_by cross-field rule (#40, both directions) -----
+
+    @Test
+    fun `superseded status with superseded_by is accepted`() {
+        val map = MapLoader.fromJson(mapJson(extra = """"status": "superseded", "superseded_by": 200,"""))
+        assertEquals(MapStatus.SUPERSEDED, map.status)
+        assertEquals(200L, map.supersededBy)
+    }
+
+    @Test
+    fun `superseded status without superseded_by is rejected`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"status": "superseded","""))
+            }
+        assertTrue(ex.issues.any { it.path == "superseded_by" })
+    }
+
+    @Test
+    fun `superseded_by on an active (absent-status) map is rejected`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"superseded_by": 200,"""))
+            }
+        assertTrue(ex.issues.any { it.path == "superseded_by" })
+    }
+
+    @Test
+    fun `superseded_by on an explicit active map is rejected`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"status": "active", "superseded_by": 200,"""))
+            }
+        assertTrue(ex.issues.any { it.path == "superseded_by" })
+    }
+
+    // ---- superseded_by numeric bounds (both directions) ---------------------
+
+    @Test
+    fun `a negative superseded_by is rejected`() {
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"status": "superseded", "superseded_by": -1,"""))
+            }
+        assertTrue(ex.issues.any { it.path == "superseded_by" })
+    }
+
+    @Test
+    fun `an over-max superseded_by is rejected`() {
+        val tooBig = MapLoader.MAX_VERSION_CODE + 1
+        val ex =
+            assertFailsWith<MapValidationException> {
+                MapLoader.fromJson(mapJson(extra = """"status": "superseded", "superseded_by": $tooBig,"""))
+            }
+        assertTrue(ex.issues.any { it.path == "superseded_by" })
+    }
+
+    @Test
+    fun `a superseded_by at the max bound is accepted`() {
+        val max = MapLoader.MAX_VERSION_CODE
+        val map = MapLoader.fromJson(mapJson(extra = """"status": "superseded", "superseded_by": $max,"""))
+        assertEquals(max, map.supersededBy)
+    }
+
     // ---- retracted refused / superseded loads -------------------------------
 
     @Test
@@ -225,8 +356,8 @@ class SchemaV3Test {
     @Test
     fun `a superseded map loads without refusal`() {
         // Superseded is a soft signal (warned at health-check), not a load-time
-        // refusal — it must load.
-        val map = MapLoader.fromJson(mapJson(extra = """"status": "superseded","""))
+        // refusal — it must load. (The cross-field rule requires superseded_by.)
+        val map = MapLoader.fromJson(mapJson(extra = """"status": "superseded", "superseded_by": 200,"""))
         assertEquals(MapStatus.SUPERSEDED, map.status)
     }
 

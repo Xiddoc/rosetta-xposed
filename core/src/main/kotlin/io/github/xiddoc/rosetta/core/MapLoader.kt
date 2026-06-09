@@ -11,7 +11,7 @@
  *     client loads on all. (`ignoreUnknownKeys = false`.)
  *   - `schema_version` is a hard gate: a map declaring anything other than
  *     the current version is rejected with a structured issue, exactly as
- *     the Frida side rejects non-`2` maps via `z.literal(2)`.
+ *     the Frida side rejects non-`3` maps via `z.literal(3)`.
  *
  * Beyond the schema gate, [validate] enforces a set of hardening BOUNDS
  * (entry counts, string lengths, the `app` package-name shape) and rejects
@@ -122,14 +122,23 @@ public object MapLoader {
     private val APP_PATTERN: Regex = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
     /**
-     * The `captured_at` ISO `date` shape (`YYYY-MM-DD`), a lightweight check
+     * The `captured_at` ISO `date` shape (`YYYY-MM-DD`), the FIRST gate
      * consistent with the canonical schema's `format: date` (schema 3, maps#39).
-     * This pins the SHAPE, not calendar validity — `:core` does not parse the
-     * value into an instant (it is data), so e.g. `2026-13-40` passes the shape
-     * but a `2026/05/11` or free-text value is rejected. A null `captured_at`
+     * This pins the SHAPE; true calendar validity is then enforced by parsing
+     * with [java.time.LocalDate] (which rejects impossible dates like `2026-13-40`
+     * or `2026-02-30`), matching the canonical `format: date` and the frida
+     * client. A `2026/05/11` or free-text value fails the shape gate; a
+     * `2026-13-40` passes the shape but fails the parse. A null `captured_at`
      * is a no-op (the field stays optional).
      */
     private val CAPTURED_AT_PATTERN: Regex = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+
+    /**
+     * The `generated_from.signatures_rev` format (schema 3, maps#36): an
+     * abbreviated-or-full git commit hash, 7–40 lowercase hex characters. Mirrors
+     * the canonical schema + rosetta-frida's `SIGNATURES_REV_PATTERN`.
+     */
+    private val SIGNATURES_REV_PATTERN: Regex = Regex("^[0-9a-f]{7,40}$")
 
     /** Highest code point encoded as 1 UTF-8 byte (U+007F). See [utf8ByteLength]. */
     private const val UTF8_1BYTE_MAX = 0x7F
@@ -336,28 +345,95 @@ public object MapLoader {
                         "must be at most $MAX_VERSION_CODE (2^53 - 1, Number.MAX_SAFE_INTEGER)",
                     )
             }
-            // captured_at: length-bound it (every free string is capped) AND
-            // pin its ISO-date shape (schema 3, maps#39). A null value is a
-            // no-op; the field stays optional.
-            map.capturedAt?.let { capturedAt ->
-                free("captured_at", capturedAt)
-                if (!CAPTURED_AT_PATTERN.matches(capturedAt)) {
-                    issues += ValidationIssue("captured_at", "must be an ISO date (YYYY-MM-DD)")
-                }
-            }
-            // Bound EACH signer hash length too (every other free string is
-            // capped) so an absurdly long value can't slip past the DoS bounds
-            // even on the unverified path. The canonical bare-lowercase-64-hex
-            // FORMAT/regex stays in the maps schema by design (xposed is a
-            // client, not the schema owner); this is purely a length guard, and
-            // it iterates the match-any list (schema 3 accepts one OR many).
-            map.signerSha256s?.forEachIndexed { i, h -> free("signer_sha256[$i]", h) }
-            free("generated_from.signatures_rev", map.generatedFrom?.signaturesRev)
-            free("client_hints.frida_min_version", map.clientHints?.fridaMinVersion)
-            free("client_hints.frida_max_version", map.clientHints?.fridaMaxVersion)
+            checkSchema3Fields()
+            len("client_hints.frida_min_version", map.clientHints?.fridaMinVersion, MAX_FREE_STRING_LEN)
+            len("client_hints.frida_max_version", map.clientHints?.fridaMaxVersion, MAX_FREE_STRING_LEN)
             checkSources()
             checkClasses()
             return issues
+        }
+
+        /**
+         * The schema-3 optional metadata fields (maps#36/#38/#39/#40). Each is a
+         * no-op when its field is absent (all are optional):
+         *  - `captured_at` (#39): `YYYY-MM-DD` SHAPE first, then real-calendar
+         *    validity via [java.time.LocalDate] (rejects `2026-13-40`,
+         *    `2026-02-30`, a non-leap `2025-02-29`), matching `format: date`.
+         *  - `signer_sha256` (#38/#32): length-bound EACH hash (the canonical
+         *    bare-hex FORMAT stays in the maps schema + `SignerGuard`; this is a
+         *    DoS length guard over the match-any list) and reject an EMPTY array
+         *    (the schema pins `minItems: 1`).
+         *  - `generated_from.signatures_rev` (#36): length-bound AND pin its
+         *    abbreviated-or-full git-hash FORMAT ([SIGNATURES_REV_PATTERN]).
+         *  - `status` / `superseded_by` (#40): the cross-field lifecycle rule
+         *    (`superseded_by` allowed ONLY when `status == superseded`, REQUIRED
+         *    then; absent status ⇒ active ⇒ forbidden) plus the
+         *    `[0, MAX_VERSION_CODE]` numeric bound on `superseded_by`.
+         */
+        private fun checkSchema3Fields() {
+            map.capturedAt?.let { capturedAt ->
+                len("captured_at", capturedAt, MAX_FREE_STRING_LEN)
+                if (!CAPTURED_AT_PATTERN.matches(capturedAt)) {
+                    issues += ValidationIssue("captured_at", "must be an ISO date (YYYY-MM-DD)")
+                } else {
+                    // Shape is sound; verify it names a real calendar date.
+                    // LocalDate.parse throws on a non-existent day (Feb 30, month 13).
+                    try {
+                        java.time.LocalDate.parse(capturedAt)
+                    } catch (_: java.time.format.DateTimeParseException) {
+                        issues += ValidationIssue("captured_at", "must be a real calendar date (YYYY-MM-DD)")
+                    }
+                }
+            }
+            map.signerSha256s?.let { hashes ->
+                if (hashes.isEmpty()) {
+                    issues += ValidationIssue("signer_sha256", "must declare at least one hash (minItems: 1)")
+                } else {
+                    hashes.forEachIndexed { i, h -> len("signer_sha256[$i]", h, MAX_FREE_STRING_LEN) }
+                }
+            }
+            map.generatedFrom?.let { generatedFrom ->
+                // signaturesRev is a non-null required field of GeneratedFrom, so
+                // a single safe-call on the optional `generated_from` suffices (a
+                // second `?.` on the rev would add an unreachable null branch).
+                val rev = generatedFrom.signaturesRev
+                len("generated_from.signatures_rev", rev, MAX_FREE_STRING_LEN)
+                if (!SIGNATURES_REV_PATTERN.matches(rev)) {
+                    issues +=
+                        ValidationIssue(
+                            "generated_from.signatures_rev",
+                            "must be 7-40 lowercase hex characters (a git commit hash)",
+                        )
+                }
+            }
+            // Cross-field lifecycle rule (#40), matching the maps Python
+            // validator + frida Zod: `superseded_by` is meaningful ONLY for a
+            // superseded map (absent status ⇒ active):
+            //   - status == SUPERSEDED  ⇒  superseded_by REQUIRED.
+            //   - any other status (active / absent / retracted)  ⇒  forbidden.
+            // Its value, when present, is bounded to [0, MAX_VERSION_CODE] like
+            // `version_code` (it names a replacement map's version_code).
+            val isSuperseded = map.status == MapStatus.SUPERSEDED
+            when (val supersededBy = map.supersededBy) {
+                null ->
+                    if (isSuperseded) {
+                        issues += ValidationIssue("superseded_by", "is required when status is 'superseded'")
+                    }
+                else -> {
+                    if (!isSuperseded) {
+                        issues += ValidationIssue("superseded_by", "is only allowed when status is 'superseded'")
+                    }
+                    if (supersededBy < 0) {
+                        issues += ValidationIssue("superseded_by", "must be a non-negative integer")
+                    } else if (supersededBy > MAX_VERSION_CODE) {
+                        issues +=
+                            ValidationIssue(
+                                "superseded_by",
+                                "must be at most $MAX_VERSION_CODE (2^53 - 1, Number.MAX_SAFE_INTEGER)",
+                            )
+                    }
+                }
+            }
         }
 
         private fun checkApp() {
@@ -376,9 +452,9 @@ public object MapLoader {
             cap("sources", sources.size, MAX_SOURCES, "entries")
             sources.forEachIndexed { i, src ->
                 nonEmpty("sources[$i].tool", src.tool)
-                free("sources[$i].tool", src.tool)
-                free("sources[$i].config", src.config)
-                free("sources[$i].notes", src.notes)
+                len("sources[$i].tool", src.tool, MAX_FREE_STRING_LEN)
+                len("sources[$i].config", src.config, MAX_FREE_STRING_LEN)
+                len("sources[$i].notes", src.notes, MAX_FREE_STRING_LEN)
             }
         }
 
@@ -397,13 +473,13 @@ public object MapLoader {
             val path = "classes[$realName]"
             nonEmpty("$path.obfuscated", entry.obfuscated)
             len("$path.obfuscated", entry.obfuscated, MAX_SHORT_NAME_LEN)
-            free("$path.extends", entry.extends)
-            free("$path.dex", entry.dex)
-            free("$path.aidl_descriptor", entry.aidlDescriptor)
-            free("$path.source", entry.source)
+            len("$path.extends", entry.extends, MAX_FREE_STRING_LEN)
+            len("$path.dex", entry.dex, MAX_FREE_STRING_LEN)
+            len("$path.aidl_descriptor", entry.aidlDescriptor, MAX_FREE_STRING_LEN)
+            len("$path.source", entry.source, MAX_FREE_STRING_LEN)
             entry.anchors?.let { anchors ->
                 cap("$path.anchors", anchors.size, MAX_ANCHORS_PER_CLASS, "entries")
-                anchors.forEachIndexed { i, a -> free("$path.anchors[$i]", a) }
+                anchors.forEachIndexed { i, a -> len("$path.anchors[$i]", a, MAX_FREE_STRING_LEN) }
             }
             entry.methods?.let { methods ->
                 cap("$path.methods", methods.size, MAX_METHODS_PER_CLASS, "entries")
@@ -463,7 +539,10 @@ public object MapLoader {
             if (value.isEmpty()) issues += ValidationIssue(path, "must not be empty")
         }
 
-        /** Length cap for a (possibly null) string; null is a no-op. */
+        /**
+         * Length cap for a (possibly null) string; null is a no-op. Free-form
+         * strings (the former `free` helper) pass [MAX_FREE_STRING_LEN] here.
+         */
         private fun len(
             path: String,
             value: String?,
@@ -471,10 +550,5 @@ public object MapLoader {
         ) {
             if (value != null && value.length > max) issues += ValidationIssue(path, "exceeds $max characters")
         }
-
-        private fun free(
-            path: String,
-            value: String?,
-        ) = len(path, value, MAX_FREE_STRING_LEN)
     }
 }
