@@ -1,5 +1,5 @@
 {
-    "description": "VALIDATION-semantics parity cases (not resolution): each case carries its own inline `inputMap` that the client runs through its map validator (Frida `validateMap` / Xposed `:core` `MapLoader.validate`), asserting the schema-enforced constraints BOTH clients agree on. This closes the systemic gap that let resolution divergences through unnoticed. Pins, in both accept/reject directions, every constraint both core validators enforce: `schema_version` (const 2 hard gate), non-empty (`minLength: 1`) `obfuscated` (class/method/field), non-empty `version`, `app` dotted-package pattern, `version_code` width (accept 2^32 = 4294967296, reject 2^53 = 9007199254740992 — xposed#8/f8 boundary), and reserved record keys (`__proto__`). NOTE: `signer_sha256`'s `^[0-9a-f]{64}$` regex is NOT pinned here because the Xposed `:core` `MapLoader.validate` does not check it (only the full schema and the Frida Zod / Xposed `SignerGuard` paths do); it is pinned by the rosetta-maps `schema/samples/{valid,invalid}/*signer*` instead. Provider-neutral; see README.md.",
+    "description": "VALIDATION-semantics parity cases (not resolution): each case carries its own inline `inputMap` that the client runs through its map validator (Frida `validateMap` / Xposed `:core` `MapLoader.validate`), asserting the schema-enforced constraints BOTH clients agree on. This closes the systemic gap that let resolution divergences through unnoticed. Pins, in both accept/reject directions, the constraints both core validators enforce: `schema_version` (const 2 hard gate), non-empty (`minLength: 1`) `obfuscated` (class/method/field), non-empty method `signature` and field `type`, non-empty `version` AND whitespace-only `version` rejection, `app` dotted-package pattern, `version_code` width (accept 2^32 = 4294967296, reject 2^53 = 9007199254740992 — xposed#8/f8 boundary) AND `version_code` lower bound (reject negative), and the reserved record keys (`__proto__`, `constructor`, `prototype`). NOTE: two constraints are intentionally NOT pinned here and are delegated to rosetta-maps `schema/samples/`: (1) `signer_sha256`'s `^[0-9a-f]{64}$` regex, because the Xposed `:core` `MapLoader.validate` does not check it (only the full schema and the Frida Zod / Xposed `SignerGuard` paths do) — pinned by `schema/samples/{valid,invalid}/*signer*`; and (2) `additionalProperties:false` / unknown-key rejection, because the Kotlin `validate` harness decodes `inputMap` with `ignoreUnknownKeys=true`, so a stray key is dropped at decode and never reaches `validate` — it cannot be expressed through this validate harness, and is instead pinned by the rosetta-maps `schema/samples/invalid/unknown-*-key.json` samples (the same delegation already given to `signer_sha256`). Provider-neutral; see README.md.",
     "cases": [
         {
             "name": "a well-formed minimal map validates (baseline)",
@@ -167,6 +167,114 @@
                 "version_code": 100,
                 "classes": {
                     "__proto__": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "empty method signature is rejected (minLength:1)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa",
+                        "methods": {
+                            "bar": {
+                                "obfuscated": "b",
+                                "signature": ""
+                            }
+                        }
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "empty field type is rejected (minLength:1)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa",
+                        "fields": {
+                            "baz": {
+                                "obfuscated": "f",
+                                "type": ""
+                            }
+                        }
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a negative version_code is rejected (lower-bound, nonnegative)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": -1,
+                "classes": {
+                    "com.example.app.Foo": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a reserved constructor class key is rejected (prototype-pollution guard)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "constructor": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a reserved prototype class key is rejected (prototype-pollution guard)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "1.0.0",
+                "version_code": 100,
+                "classes": {
+                    "prototype": {
+                        "obfuscated": "aaaa"
+                    }
+                }
+            },
+            "expectError": "MapValidation"
+        },
+        {
+            "name": "a whitespace-only version label is rejected (non-whitespace pattern)",
+            "kind": "validate",
+            "inputMap": {
+                "schema_version": 2,
+                "app": "com.example.app",
+                "version": "   ",
+                "version_code": 100,
+                "classes": {
+                    "com.example.app.Foo": {
                         "obfuscated": "aaaa"
                     }
                 }
