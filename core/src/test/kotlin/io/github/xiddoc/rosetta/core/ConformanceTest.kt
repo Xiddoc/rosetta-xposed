@@ -150,9 +150,15 @@ class ConformanceTest {
             runFuzzySelectCase(case)
             return
         }
+        if (kind == "codeSelect") {
+            runCodeSelectCase(case)
+            return
+        }
 
         if (expectError != null) {
-            assertExpectedError(expectError) { invoke(resolver, kind, case) }
+            assertExpectedError(expectError, case["expectMessageIncludes"]?.jsonPrimitive?.content) {
+                invoke(resolver, kind, case)
+            }
             return
         }
 
@@ -256,33 +262,48 @@ class ConformanceTest {
 
     private fun assertExpectedError(
         expectError: String,
+        expectMessageIncludes: String?,
         block: () -> Unit,
     ) {
-        when (expectError) {
-            "AmbiguousOverload" -> assertFailsWith<AmbiguousOverloadException> { block() }
-            // UnknownArgType is the DISTINCT precise subtype; assert it before
-            // the generic Resolve so a generic ResolveException can't satisfy
-            // an UnknownArgType case (it is a ResolveException subtype).
-            "UnknownArgType" -> assertFailsWith<UnknownArgTypeException> { block() }
-            // A generic Resolve case must NOT be the precise UnknownArgType
-            // subtype: because UnknownArgTypeException IS-A ResolveException,
-            // a bare assertFailsWith<ResolveException> would also accept the
-            // subtype and mask a resolver that wrongly fired UnknownArgType
-            // here. Assert the negative explicitly, mirroring the Frida
-            // runner's `expect(thrown).not.toBeInstanceOf(UnknownArgTypeError)`.
-            "Resolve" -> {
-                val ex = assertFailsWith<ResolveException> { block() }
-                assertFalse(
-                    ex is UnknownArgTypeException,
-                    "Resolve case must not fire the distinct UnknownArgType subtype",
-                )
+        val thrown =
+            when (expectError) {
+                "AmbiguousOverload" -> assertFailsWith<AmbiguousOverloadException> { block() }
+                // UnknownArgType is the DISTINCT precise subtype; assert it before
+                // the generic Resolve so a generic ResolveException can't satisfy
+                // an UnknownArgType case (it is a ResolveException subtype).
+                "UnknownArgType" -> assertFailsWith<UnknownArgTypeException> { block() }
+                // A generic Resolve case must NOT be the precise UnknownArgType
+                // subtype: because UnknownArgTypeException IS-A ResolveException,
+                // a bare assertFailsWith<ResolveException> would also accept the
+                // subtype and mask a resolver that wrongly fired UnknownArgType
+                // here. Assert the negative explicitly, mirroring the Frida
+                // runner's `expect(thrown).not.toBeInstanceOf(UnknownArgTypeError)`.
+                "Resolve" -> {
+                    val ex = assertFailsWith<ResolveException> { block() }
+                    assertFalse(
+                        ex is UnknownArgTypeException,
+                        "Resolve case must not fire the distinct UnknownArgType subtype",
+                    )
+                    ex
+                }
+                "IllegalArgument" -> assertFailsWith<IllegalArgumentException> { block() }
+                // The target-namespace guard (target-policy.json / xposed#11): a
+                // forbidden obfuscated target is rejected at the resolver chokepoint
+                // before any Class.forName. Frida twin: TargetPolicyError.
+                "TargetPolicy" -> assertFailsWith<TargetPolicyException> { block() }
+                else -> error("unknown expectError '$expectError'")
             }
-            "IllegalArgument" -> assertFailsWith<IllegalArgumentException> { block() }
-            // The target-namespace guard (target-policy.json / xposed#11): a
-            // forbidden obfuscated target is rejected at the resolver chokepoint
-            // before any Class.forName. Frida twin: TargetPolicyError.
-            "TargetPolicy" -> assertFailsWith<TargetPolicyException> { block() }
-            else -> error("unknown expectError '$expectError'")
+        // Canonical-wording parity: when the fixture pins `expectMessageIncludes`,
+        // the thrown message must CONTAIN that byte-identical substring. The
+        // substring deliberately excludes the per-client brand prefix
+        // (`rosetta-xposed:` here, `rosetta-frida:` on the twin), which differs
+        // by design; everything after the prefix is identical across clients.
+        if (expectMessageIncludes != null) {
+            val message = thrown.message ?: ""
+            kotlin.test.assertTrue(
+                message.contains(expectMessageIncludes),
+                "expected error message to contain:\n  $expectMessageIncludes\nbut was:\n  $message",
+            )
         }
     }
 
@@ -332,6 +353,37 @@ class ConformanceTest {
             )
         assertEquals(MatchedBy.FUZZY_LABEL, selected?.matchedBy, "expected a fuzzy pick")
         assertEquals(case.str("expectSelected"), selected?.map?.version)
+    }
+
+    /**
+     * Run a `codeSelect`-kind case (version-select.json): build a [MapRegistry]
+     * from the case's `versionCodes` (each backed by a throwaway map whose
+     * `version` label is the code as a string) and assert that exact selection
+     * by `targetCode` returns the map with `expectSelectedCode`. Pins that a
+     * WIDE version_code (> 2^31, the Android `versionCodeMajor` regime) selects
+     * exactly with no 32-bit truncation. The frida twin runs `pickMapForVersion`
+     * with `versionCode`; here it is [VersionMatch.select] with that code.
+     */
+    private fun runCodeSelectCase(case: JsonObject) {
+        val codes = (case["versionCodes"] as JsonArray).map { it.jsonPrimitive.long }
+        val maps =
+            codes.map { code ->
+                RosettaMap(
+                    schemaVersion = 2,
+                    app = "com.example.app",
+                    version = code.toString(),
+                    versionCode = code,
+                    classes = emptyMap(),
+                )
+            }
+        val registry = MapRegistry.fromCollection(maps)
+        val selected =
+            VersionMatch.select(
+                registry = registry,
+                versionCode = case["targetCode"]!!.jsonPrimitive.long,
+            )
+        assertEquals(MatchedBy.VERSION_CODE, selected?.matchedBy, "expected an exact version_code pick")
+        assertEquals(case["expectSelectedCode"]!!.jsonPrimitive.long, selected?.map?.versionCode)
     }
 
     private fun invoke(
