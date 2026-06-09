@@ -20,6 +20,7 @@ import io.github.xiddoc.rosetta.core.MissingSignerException
 import io.github.xiddoc.rosetta.core.SignerMismatchException
 import io.github.xiddoc.rosetta.core.model.CURRENT_SCHEMA_VERSION
 import io.github.xiddoc.rosetta.core.model.ClassEntry
+import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,6 +35,8 @@ class HealthCheckTest {
         app: String = "com.example.app",
         versionCode: Long = 100L,
         signer: String? = null,
+        status: MapStatus = MapStatus.ACTIVE,
+        supersededBy: Long? = null,
         classes: Map<String, ClassEntry> = mapOf("com.example.RealClient" to ClassEntry(obfuscated = "aaaa")),
     ): RosettaMap =
         RosettaMap(
@@ -41,7 +44,9 @@ class HealthCheckTest {
             app = app,
             version = "1.0.0",
             versionCode = versionCode,
-            signerSha256 = signer,
+            signerSha256s = signer?.let { listOf(it) },
+            status = status,
+            supersededBy = supersededBy,
             classes = classes,
         )
 
@@ -239,5 +244,31 @@ class HealthCheckTest {
             listOf(HealthCheckFailureKind.APP_MISMATCH),
             report.hardFailures.map { it.kind },
         )
+    }
+
+    // ---- schema 3: superseded status warns (retracted is refused at load) ----
+
+    @Test
+    fun `a superseded map produces a SUPERSEDED_MAP warning but stays ok`() {
+        val report = HealthCheck.run(map(status = MapStatus.SUPERSEDED, supersededBy = 200L), identity())
+        // Warnings never affect ok; a superseded map is still usable.
+        assertTrue(report.ok)
+        assertEquals(1, report.warnings.size)
+        val warning = report.warnings.single()
+        assertEquals(HealthCheckWarningKind.SUPERSEDED_MAP, warning.kind)
+        assertTrue(warning.message.contains("SUPERSEDED"))
+        assertTrue(warning.message.contains("200"))
+    }
+
+    @Test
+    fun `a superseded map with no superseded_by still warns`() {
+        val report = HealthCheck.run(map(status = MapStatus.SUPERSEDED), identity())
+        assertEquals(1, report.warnings.count { it.kind == HealthCheckWarningKind.SUPERSEDED_MAP })
+    }
+
+    @Test
+    fun `an active map produces no superseded warning`() {
+        val report = HealthCheck.run(map(status = MapStatus.ACTIVE), identity())
+        assertTrue(report.warnings.none { it.kind == HealthCheckWarningKind.SUPERSEDED_MAP })
     }
 }

@@ -31,9 +31,10 @@ package io.github.xiddoc.rosetta.core
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.ClientHints
-import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.FieldEntry
+import io.github.xiddoc.rosetta.core.model.GeneratedFrom
 import io.github.xiddoc.rosetta.core.model.MapSource
+import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.model.RosettaMap
@@ -138,18 +139,16 @@ class DataClassSemanticsTest {
                 config = "cfg",
                 classes = 3,
                 notes = "n",
-                confidence = Confidence.HIGH,
             )
         assertValueSemantics(
             base = base,
-            identical = MapSource("sigmatcher", "cfg", 3, "n", Confidence.HIGH),
+            identical = MapSource("sigmatcher", "cfg", 3, "n"),
             variants =
                 listOf(
                     base.copy(tool = "hand-authored"),
                     base.copy(config = "other"),
                     base.copy(classes = 4),
                     base.copy(notes = "m"),
-                    base.copy(confidence = Confidence.LOW),
                 ),
         )
         assertEquals(4, base.copy(classes = 4).classes)
@@ -194,7 +193,6 @@ class DataClassSemanticsTest {
                 methods = mapOf("m" to MethodOverloads(listOf(MethodEntry("a", "()V")))),
                 fields = mapOf("f" to FieldEntry("a", "I")),
                 source = "sigmatcher",
-                confidence = Confidence.MEDIUM,
             )
         assertValueSemantics(
             base = base,
@@ -209,7 +207,6 @@ class DataClassSemanticsTest {
                     methods = mapOf("m" to MethodOverloads(listOf(MethodEntry("a", "()V")))),
                     fields = mapOf("f" to FieldEntry("a", "I")),
                     source = "sigmatcher",
-                    confidence = Confidence.MEDIUM,
                 ),
             variants =
                 listOf(
@@ -222,7 +219,6 @@ class DataClassSemanticsTest {
                     base.copy(methods = mapOf("n" to MethodOverloads(listOf(MethodEntry("a", "()V"))))),
                     base.copy(fields = mapOf("g" to FieldEntry("a", "I"))),
                     base.copy(source = "hand-authored"),
-                    base.copy(confidence = Confidence.LOW),
                 ),
         )
         assertEquals("b", base.copy(obfuscated = "b").obfuscated)
@@ -232,13 +228,16 @@ class DataClassSemanticsTest {
     fun `RosettaMap has value semantics across every field`() {
         val base =
             RosettaMap(
-                schemaVersion = 2,
+                schemaVersion = 3,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
                 capturedAt = "2026-01-01",
-                signerSha256 = "deadbeef",
+                signerSha256s = listOf("deadbeef"),
                 clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
+                generatedFrom = GeneratedFrom(signaturesRev = "abc123"),
+                status = MapStatus.ACTIVE,
+                supersededBy = null,
                 sources = listOf(MapSource("sigmatcher")),
                 classes = mapOf("com.example.Foo" to ClassEntry("a")),
             )
@@ -246,26 +245,33 @@ class DataClassSemanticsTest {
             base = base,
             identical =
                 RosettaMap(
-                    schemaVersion = 2,
+                    schemaVersion = 3,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
                     capturedAt = "2026-01-01",
-                    signerSha256 = "deadbeef",
+                    signerSha256s = listOf("deadbeef"),
                     clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
+                    generatedFrom = GeneratedFrom(signaturesRev = "abc123"),
+                    status = MapStatus.ACTIVE,
+                    supersededBy = null,
                     sources = listOf(MapSource("sigmatcher")),
                     classes = mapOf("com.example.Foo" to ClassEntry("a")),
                 ),
             variants =
                 listOf(
-                    base.copy(schemaVersion = 3),
+                    base.copy(schemaVersion = 4),
                     base.copy(app = "com.other.app"),
                     base.copy(version = "2.0.0"),
                     base.copy(versionCode = 200),
                     base.copy(capturedAt = "2026-02-02"),
-                    base.copy(signerSha256 = "beefdead"),
+                    base.copy(signerSha256s = listOf("beefdead")),
+                    base.copy(signerSha256s = listOf("deadbeef", "beefdead")),
                     base.copy(clientHints = ClientHints(fridaMinVersion = "15.0.0")),
                     base.copy(clientHints = ClientHints(fridaMaxVersion = "18.0.0")),
+                    base.copy(generatedFrom = GeneratedFrom(signaturesRev = "def456")),
+                    base.copy(status = MapStatus.SUPERSEDED),
+                    base.copy(supersededBy = 200L),
                     base.copy(sources = listOf(MapSource("hand-authored"))),
                     base.copy(classes = mapOf("com.example.Bar" to ClassEntry("b"))),
                 ),
@@ -433,7 +439,7 @@ class DataClassSemanticsTest {
         assertWriteSelfBranches(
             MapSource.serializer(),
             allDefaults = MapSource("sigmatcher"),
-            allSet = MapSource("sigmatcher", config = "cfg", classes = 3, notes = "n", confidence = Confidence.HIGH),
+            allSet = MapSource("sigmatcher", config = "cfg", classes = 3, notes = "n"),
         )
     }
 
@@ -453,7 +459,6 @@ class DataClassSemanticsTest {
                     methods = mapOf("m" to MethodOverloads(listOf(MethodEntry("a", "()V")))),
                     fields = mapOf("f" to FieldEntry("a", "I")),
                     source = "sigmatcher",
-                    confidence = Confidence.MEDIUM,
                 ),
         )
     }
@@ -464,7 +469,7 @@ class DataClassSemanticsTest {
             RosettaMap.serializer(),
             allDefaults =
                 RosettaMap(
-                    schemaVersion = 2,
+                    schemaVersion = 3,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
@@ -472,13 +477,16 @@ class DataClassSemanticsTest {
                 ),
             allSet =
                 RosettaMap(
-                    schemaVersion = 2,
+                    schemaVersion = 3,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
                     capturedAt = "2026-01-01",
-                    signerSha256 = "deadbeef",
+                    signerSha256s = listOf("deadbeef"),
                     clientHints = ClientHints(fridaMinVersion = "16.0.0", fridaMaxVersion = "17.0.0"),
+                    generatedFrom = GeneratedFrom(signaturesRev = "abc123"),
+                    status = MapStatus.SUPERSEDED,
+                    supersededBy = 200L,
                     sources = listOf(MapSource("sigmatcher")),
                     classes = mapOf("com.example.Foo" to ClassEntry("a")),
                 ),

@@ -9,7 +9,7 @@
  *   - method discovery within a found class;
  *   - misses + partial discovery → DiscoveryException (fail-closed);
  *   - memoization (a discovered class is scanned at most once);
- *   - provenance emit (tool = "rosetta-runtime-discovered", LOW confidence);
+ *   - provenance emit (tool = "rosetta-runtime-discovered");
  *   - the ReDoS / bounds cases (over-length signature, over-count anchors, a
  *     pathological backtracking pattern that RE2 handles promptly);
  *   - the discovery value types.
@@ -22,7 +22,6 @@ package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassKind
-import io.github.xiddoc.rosetta.core.model.Confidence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -349,7 +348,7 @@ class DynamicResolutionBackendTest {
     // ---- Provenance emit ----------------------------------------------------
 
     @Test
-    fun `discovery records a runtime-discovered LOW-confidence source`() {
+    fun `discovery records a runtime-discovered source`() {
         val sink = MapDiscoverySink()
         val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
         val backend =
@@ -370,13 +369,6 @@ class DynamicResolutionBackendTest {
                 .entry.obfuscated,
         )
         assertEquals(
-            Confidence.LOW,
-            sink
-                .entries()
-                .single()
-                .entry.confidence,
-        )
-        assertEquals(
             RUNTIME_DISCOVERED_TOOL,
             sink
                 .entries()
@@ -386,7 +378,6 @@ class DynamicResolutionBackendTest {
 
         val prov = sink.provenance()
         assertEquals("rosetta-runtime-discovered", prov.tool)
-        assertEquals(Confidence.LOW, prov.confidence)
         assertEquals(1, prov.classes)
         assertNotNull(prov.notes)
     }

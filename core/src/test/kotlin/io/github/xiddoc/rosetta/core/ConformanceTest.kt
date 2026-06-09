@@ -341,7 +341,7 @@ class ConformanceTest {
                 // index never collapses two labels; the codes are otherwise
                 // irrelevant (fuzzy ranks on the version LABEL, not the code).
                 RosettaMap(
-                    schemaVersion = 2,
+                    schemaVersion = 3,
                     app = "com.example.app",
                     version = label,
                     versionCode = (i + 1).toLong(),
@@ -373,7 +373,7 @@ class ConformanceTest {
         val maps =
             codes.map { code ->
                 RosettaMap(
-                    schemaVersion = 2,
+                    schemaVersion = 3,
                     app = "com.example.app",
                     version = code.toString(),
                     versionCode = code,
@@ -406,7 +406,7 @@ class ConformanceTest {
             (case["maps"] as JsonArray).map { entry ->
                 val obj = entry.jsonObject
                 RosettaMap(
-                    schemaVersion = 2,
+                    schemaVersion = 3,
                     app = "com.example.app",
                     version = obj["version"]!!.jsonPrimitive.content,
                     versionCode = obj["versionCode"]!!.jsonPrimitive.long,

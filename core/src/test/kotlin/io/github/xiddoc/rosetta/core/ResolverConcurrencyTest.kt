@@ -37,7 +37,7 @@ class ResolverConcurrencyTest {
                     )
             }
         return RosettaMap(
-            schemaVersion = 2,
+            schemaVersion = 3,
             app = "com.example.app",
             version = "1.0.0",
             versionCode = 100,

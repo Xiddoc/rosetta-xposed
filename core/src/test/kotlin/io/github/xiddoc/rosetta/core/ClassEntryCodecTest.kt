@@ -11,7 +11,6 @@ package io.github.xiddoc.rosetta.core
 import io.github.xiddoc.rosetta.core.model.ClassEntry
 import io.github.xiddoc.rosetta.core.model.ClassEntryCodec
 import io.github.xiddoc.rosetta.core.model.ClassKind
-import io.github.xiddoc.rosetta.core.model.Confidence
 import io.github.xiddoc.rosetta.core.model.FieldEntry
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
@@ -54,7 +53,6 @@ class ClassEntryCodecTest {
                     ),
                 fields = mapOf("id" to FieldEntry(obfuscated = "a", type = "Ljava/lang/String;")),
                 source = "rosetta-runtime-discovered",
-                confidence = Confidence.LOW,
             )
         val decoded = ClassEntryCodec.decodeOrNull(ClassEntryCodec.encode(entry))
         assertEquals(entry, decoded)
