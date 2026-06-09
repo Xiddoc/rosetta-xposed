@@ -357,11 +357,13 @@ class SchemaBoundsTest {
         val map =
             base.copy(
                 capturedAt = long,
+                signerSha256 = long,
                 clientHints = ClientHints(fridaMinVersion = long, fridaMaxVersion = long),
                 sources = listOf(MapSource(tool = long, config = long, notes = long)),
             )
         val ex = assertFailsWith<MapValidationException> { MapLoader.validate(map) }
         assertTrue(ex.issues.any { it.path == "captured_at" })
+        assertTrue(ex.issues.any { it.path == "signer_sha256" })
         assertTrue(ex.issues.any { it.path == "client_hints.frida_min_version" })
         assertTrue(ex.issues.any { it.path == "client_hints.frida_max_version" })
         assertTrue(ex.issues.any { it.path == "sources[0].tool" })

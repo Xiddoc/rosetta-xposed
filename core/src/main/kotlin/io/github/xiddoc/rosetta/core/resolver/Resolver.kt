@@ -215,7 +215,7 @@ public class Resolver(
         val methodOverloads =
             entry.methods?.get(methodName)
                 ?: throw ResolveException(
-                    missMessage(ResolveTarget.METHOD, "$className.$methodName"),
+                    missMessage(ResolveTarget.METHOD, methodName, className),
                     methodName,
                     map.app,
                     map.version,
@@ -282,7 +282,7 @@ public class Resolver(
         val entry =
             classEntry.fields?.get(fieldName)
                 ?: throw ResolveException(
-                    missMessage(ResolveTarget.FIELD, "$className.$fieldName"),
+                    missMessage(ResolveTarget.FIELD, fieldName, className),
                     fieldName,
                     map.app,
                     map.version,
@@ -384,10 +384,23 @@ public class Resolver(
     /** Reverse-lookup an obfuscated class short name to its real FQN. */
     public fun reverseLookup(obfName: String): String? = reverseClassIndex[obfName]
 
+    /**
+     * Canonical miss message — mirrors the rosetta-frida twin
+     * (`resolver.ts#missMessage`): `<kind> '<name>' not found in map for
+     * <app>@<version>`. For a member miss ([className] non-null) the declaring
+     * class is named too — `<kind> '<name>' not found on class '<class>' …` —
+     * the canonical "on class '<class>'" detail (xposed#32). The two clients
+     * keep the same wording so a hook author reads identical diagnostics
+     * whichever resolver fired.
+     */
     private fun missMessage(
         target: ResolveTarget,
         name: String,
-    ): String = "rosetta-xposed: no ${target.name.lowercase()} mapping for '$name' in map for ${map.app}@${map.version}."
+        className: String? = null,
+    ): String {
+        val on = if (className != null) " on class '$className'" else ""
+        return "rosetta-xposed: ${target.name.lowercase()} '$name' not found$on in map for ${map.app}@${map.version}."
+    }
 }
 
 /**

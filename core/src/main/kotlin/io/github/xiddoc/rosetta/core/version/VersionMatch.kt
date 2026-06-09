@@ -40,11 +40,17 @@ import io.github.xiddoc.rosetta.core.model.RosettaMap
  * the human-label fallback.
  *
  * Build it once from the maps you bundled ([of] / [fromCollection]); both
- * indices are last-write-wins on a duplicate key. A `version_code` collision
- * (two bundled maps sharing one code — an authoring mistake for the
- * community-maps use case) is therefore silent in the *result*, but observable:
- * [inputCount] (the number of maps fed in) exceeding [size] (the number of
- * distinct `version_code`s indexed) tells a caller that a collapse happened.
+ * indices are FIRST-WINS on a duplicate key — the first map to claim a
+ * `version_code` (or label) keeps it. This is the CROSS-CLIENT CANONICAL
+ * collision policy: the frida `versionCodeIndex` in
+ * `src/session/version-match.ts` uses the same putIfAbsent rule, so a
+ * duplicate-laden bundle selects the same map on both clients. Do not flip
+ * this to last-wins without changing the frida twin in lockstep. A
+ * `version_code` collision (two bundled maps sharing one code — an authoring
+ * mistake for the community-maps use case) is therefore silent in the
+ * *result*, but observable: [inputCount] (the number of maps fed in) exceeding
+ * [size] (the number of distinct `version_code`s indexed) tells a caller that a
+ * collapse happened.
  */
 public class MapRegistry private constructor(
     private val byVersionCode: Map<Long, RosettaMap>,
@@ -82,14 +88,18 @@ public class MapRegistry private constructor(
 
         /**
          * Build a registry from [maps]: index every map by its `version_code`
-         * (primary) and `version` label (fallback). Last-write-wins per key.
+         * (primary) and `version` label (fallback). FIRST-WINS per key — the
+         * first map to claim a code (or label) keeps it. This is the
+         * cross-client canonical collision policy that the frida twin
+         * (`versionCodeIndex`, putIfAbsent) also implements, so a duplicate
+         * `version_code` resolves to the same map on both clients.
          */
         public fun fromCollection(maps: Collection<RosettaMap>): MapRegistry {
             val byCode = LinkedHashMap<Long, RosettaMap>(maps.size)
             val byLabel = LinkedHashMap<String, RosettaMap>(maps.size)
             for (m in maps) {
-                byCode[m.versionCode] = m
-                byLabel[m.version] = m
+                byCode.putIfAbsent(m.versionCode, m)
+                byLabel.putIfAbsent(m.version, m)
             }
             return MapRegistry(byCode, byLabel, inputCount = maps.size)
         }
