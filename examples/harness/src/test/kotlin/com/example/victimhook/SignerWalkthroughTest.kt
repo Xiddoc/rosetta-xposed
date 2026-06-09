@@ -9,8 +9,8 @@
  *   - MISSING      — map demands a signer; identity has no hashes →
  *                    MissingSignerException.
  *   - MALFORMED    — map's signer_sha256 is not 64 hex chars → MalformedSignerException.
- *   - NORMALIZATION — hash supplied in uppercase + colon form in the map still
- *                    matches the plain lowercase form in the identity set.
+ *   - NORMALIZATION — hash supplied in uppercase + colon form in the IDENTITY
+ *                    still matches the canonical lowercase form stored in the map.
  */
 package com.example.victimhook
 
@@ -103,7 +103,7 @@ class SignerWalkthroughTest {
     // ---- NORMALIZATION ---------------------------------------------------- //
 
     @Test
-    fun `NORMALIZATION - uppercase colon-separated hash in map matches lowercase form in identity`() {
+    fun `NORMALIZATION - uppercase colon-separated hash in identity matches canonical lowercase form in map`() {
         assertTrue(
             result.normalizationMatched,
             "SignerGuard must normalize colons and case before comparing hashes",
