@@ -1,7 +1,7 @@
 {
-    "description": "Single-method resolution: lone overload auto-pick (with and without argTypes), metadata propagation (static, aidl_txn, obf class name, overload count), and method/methods-map misses. Provider-neutral; see README.md.",
+    "description": "Single-method resolution: lone overload auto-pick (with and without argTypes), metadata propagation (static, obf class name, overload count), and method/methods-map misses. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 3,
+        "schema_version": 4,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,
@@ -16,8 +16,7 @@
                     "create": {
                         "obfuscated": "d",
                         "signature": "()Lcom/example/Obj;",
-                        "static": true,
-                        "aidl_txn": 7
+                        "static": true
                     },
                     "consume": {
                         "obfuscated": "e",
@@ -62,13 +61,12 @@
             "expectError": "UnknownArgType"
         },
         {
-            "name": "static + aidl_txn metadata propagates",
+            "name": "static metadata propagates",
             "kind": "method",
             "class": "com.example.app.Api",
             "method": "create",
             "expectObf": "d",
-            "expectStatic": true,
-            "expectAidlTxn": 7
+            "expectStatic": true
         },
         {
             "name": "non-static method defaults static=false",

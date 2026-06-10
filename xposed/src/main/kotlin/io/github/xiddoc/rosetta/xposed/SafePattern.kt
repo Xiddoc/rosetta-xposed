@@ -42,10 +42,13 @@ import io.github.xiddoc.rosetta.core.MapLoader
 /**
  * Schema-cap-aligned bounds and the RE2-only compiler for contributor input.
  *
- * The constants intentionally mirror the canonical schema caps so the
- * discovery path rejects exactly what the map loader would reject
- * (`MapLoader.MAX_SIGNATURE_LEN` / `MapLoader.MAX_ANCHORS_PER_CLASS`),
- * keeping the runtime-discovered path and the static map under one budget.
+ * The signature-length cap mirrors the canonical schema cap
+ * (`MapLoader.MAX_SIGNATURE_LEN`) so the discovery path rejects strings the map
+ * loader would also reject. The anchors cap is a DISCOVERY-only bound: stable
+ * string anchors are runtime-discovery evidence (a `DiscoveryHints` facet), not
+ * a map-schema field — `schema_version: 4` removed `anchors` from the map — so
+ * this cap lives here, decoupled from the map model, alongside the other
+ * discovery-evidence guards.
  */
 public object SafePattern {
     /**
@@ -56,10 +59,11 @@ public object SafePattern {
     public const val MAX_SIGNATURE_LEN: Int = MapLoader.MAX_SIGNATURE_LEN
 
     /**
-     * Max number of anchors (or pattern entries) in one discovery request.
-     * Sourced from the canonical map cap ([MapLoader.MAX_ANCHORS_PER_CLASS]).
+     * Max number of anchors (or pattern entries) in one discovery request. This
+     * is a discovery-evidence bound (anchors are a [DiscoveryHints] facet, not a
+     * map field), so it is declared here rather than sourced from a map cap.
      */
-    public const val MAX_ANCHORS: Int = MapLoader.MAX_ANCHORS_PER_CLASS
+    public const val MAX_ANCHORS: Int = 1_000
 
     /**
      * Compile [pattern] (a contributor-supplied string) to a linear-time RE2

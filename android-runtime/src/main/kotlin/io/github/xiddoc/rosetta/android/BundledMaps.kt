@@ -20,7 +20,7 @@ package io.github.xiddoc.rosetta.android
 import io.github.xiddoc.rosetta.core.MapLoader
 import io.github.xiddoc.rosetta.core.model.RosettaMap
 
-/** Loads `schema_version: 3` maps bundled as Java resources under `maps/`. */
+/** Loads `schema_version: 4` maps bundled as Java resources under `maps/`. */
 public object BundledMaps {
     /**
      * Loads the bundled map named [fileName] (e.g. `"100.json"`) from

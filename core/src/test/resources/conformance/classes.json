@@ -1,7 +1,7 @@
 {
     "description": "Class resolution: hits and misses across top-level, inner ($-nested), and short-name entries. Provider-neutral; see README.md for the fixture schema.",
     "map": {
-        "schema_version": 3,
+        "schema_version": 4,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,
@@ -12,7 +12,7 @@
             },
             "com.example.app.Service$Stub": {
                 "obfuscated": "a$a",
-                "kind": "aidl_stub",
+                "kind": "class",
                 "extends": "com.example.app.Service"
             },
             "com.example.app.Service$Stub$Proxy": {

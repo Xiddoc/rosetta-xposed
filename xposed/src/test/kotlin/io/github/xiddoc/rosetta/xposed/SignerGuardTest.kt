@@ -38,7 +38,7 @@ class SignerGuardTest {
         val signerLine = if (signer == null) "" else """"signer_sha256": "$signer","""
         return """
             {
-              "schema_version": 3,
+              "schema_version": 4,
               "app": "com.example.app",
               "version": "1.0.0",
               "version_code": 100,
@@ -62,7 +62,7 @@ class SignerGuardTest {
         val arr = signers.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
         return """
             {
-              "schema_version": 3,
+              "schema_version": 4,
               "app": "com.example.app",
               "version": "1.0.0",
               "version_code": 100,

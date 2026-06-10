@@ -21,7 +21,6 @@
 package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.model.ClassEntry
-import io.github.xiddoc.rosetta.core.model.ClassKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -117,7 +116,6 @@ class DynamicResolutionBackendTest {
                                     MethodDiscoveryHint(
                                         realName = "single",
                                         descriptor = "(Ljava/lang/String;)Ljava/lang/String;",
-                                        aidlTxn = 2,
                                     ),
                                 ),
                         ),
@@ -126,7 +124,6 @@ class DynamicResolutionBackendTest {
         val m = backend.resolveMethod(real, "single")
         assertEquals("c", m.obfName)
         assertEquals(obf, m.className)
-        assertEquals(2, m.aidlTxn)
     }
 
     @Test
@@ -394,7 +391,11 @@ class DynamicResolutionBackendTest {
     }
 
     @Test
-    fun `discovered entry carries anchors and extends when hinted`() {
+    fun `discovered entry carries extends but not the anchors used to locate it`() {
+        // schema_version: 4 made the map a pure real→obfuscated mapping: the
+        // anchors that LOCATE a class are runtime-discovery evidence (a
+        // DiscoveryHints facet), not a map field, so the synthesized ClassEntry
+        // must NOT round-trip them. It still carries the pure-mapping `extends`.
         val anchors = listOf("a1", "a2")
         val index = FakeDexKitIndex(byAnchors = mapOf(anchors to obf))
         val sink = MapDiscoverySink()
@@ -406,15 +407,16 @@ class DynamicResolutionBackendTest {
             )
         backend.resolveClass(real)
         val entry = sink.entries().single().entry
-        assertEquals(anchors, entry.anchors)
         assertEquals("zzzz", entry.extends)
+        assertEquals(obf, entry.obfuscated)
     }
 
     @Test
-    fun `a descriptor-discovered entry has kind AIDL_STUB`() {
-        // When the locating strategy was the AIDL descriptor, the backend
-        // already knew the class is an AIDL binder stub — set kind so the
-        // fact round-trips upstream rather than being silently dropped.
+    fun `a descriptor-discovered entry has kind null (v4 dropped aidl_stub)`() {
+        // The AIDL descriptor is still the strongest LOCATING strategy (it lives
+        // in the DiscoveryHints), but schema_version: 4 removed the aidl_stub /
+        // aidl_callback class kinds: the synthesized map ClassEntry is a pure
+        // real→obfuscated mapping, so it carries no implied kind.
         val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf))
         val sink = MapDiscoverySink()
         val backend =
@@ -424,8 +426,7 @@ class DynamicResolutionBackendTest {
                 sink,
             )
         backend.resolveClass(real)
-        assertEquals(
-            ClassKind.AIDL_STUB,
+        assertNull(
             sink
                 .entries()
                 .single()
@@ -484,11 +485,14 @@ class DynamicResolutionBackendTest {
     }
 
     @Test
-    fun `SafePattern bounds are sourced from the core map caps (no drift)`() {
-        // The discovery caps must equal the canonical map-loader caps so the
-        // runtime-discovered path and the static map share one budget.
+    fun `SafePattern signature cap is sourced from the core map cap (no drift)`() {
+        // The signature-length cap must equal the canonical map-loader cap so the
+        // runtime-discovered path and the static map share one budget. The
+        // anchors cap is a discovery-only bound (schema_version: 4 dropped the
+        // map `anchors` field — anchors are now DiscoveryHints evidence), so it
+        // is SafePattern-owned and just has to be a sane positive bound.
         assertEquals(io.github.xiddoc.rosetta.core.MapLoader.MAX_SIGNATURE_LEN, SafePattern.MAX_SIGNATURE_LEN)
-        assertEquals(io.github.xiddoc.rosetta.core.MapLoader.MAX_ANCHORS_PER_CLASS, SafePattern.MAX_ANCHORS)
+        assertEquals(1_000, SafePattern.MAX_ANCHORS)
     }
 
     @Test
@@ -608,14 +612,12 @@ class DynamicResolutionBackendTest {
                 returnType = "V",
                 paramTypes = listOf("I"),
                 usingStrings = listOf("s"),
-                aidlTxn = 7,
             )
         assertEquals("m", mh.realName)
         assertEquals("()V", mh.descriptor)
         assertEquals("V", mh.returnType)
         assertEquals(listOf("I"), mh.paramTypes)
         assertEquals(listOf("s"), mh.usingStrings)
-        assertEquals(7, mh.aidlTxn)
 
         val h = DiscoveryHints(aidlDescriptor = "d", anchors = listOf("a"), superclass = "s", methods = listOf(mh))
         assertEquals("d", h.aidlDescriptor)

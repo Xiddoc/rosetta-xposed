@@ -3,8 +3,8 @@
  * cache (rosetta-xposed#19) round-trips a discovered [ClassEntry] through.
  *
  * Covers a full-fidelity round-trip (incl. the MethodOverloads object/array
- * form, fields, anchors, kind, and provenance), and the FAIL-SOFT decode: a
- * corrupt or schema-drifted string is a `null` (a cache miss), never a throw.
+ * form, fields, kind, and provenance), and the FAIL-SOFT decode: a corrupt or
+ * schema-drifted string is a `null` (a cache miss), never a throw.
  */
 package io.github.xiddoc.rosetta.core
 
@@ -27,20 +27,18 @@ class ClassEntryCodecTest {
     }
 
     @Test
-    fun `a rich entry round-trips with methods fields anchors kind and provenance`() {
+    fun `a rich entry round-trips with methods fields kind and provenance`() {
         val entry =
             ClassEntry(
                 obfuscated = "aaaa",
                 extends = "zzzz",
-                kind = ClassKind.AIDL_STUB,
-                aidlDescriptor = "Lcom/example/IFoo;",
-                anchors = listOf("login_token", "session_id"),
+                kind = ClassKind.INTERFACE,
                 methods =
                     mapOf(
                         // One overload → object form on the wire.
                         "single" to
                             MethodOverloads(
-                                listOf(MethodEntry(obfuscated = "c", signature = "(Ljava/lang/String;)V", aidlTxn = 2)),
+                                listOf(MethodEntry(obfuscated = "c", signature = "(Ljava/lang/String;)V")),
                             ),
                         // Two overloads → array form on the wire.
                         "multi" to

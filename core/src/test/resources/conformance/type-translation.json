@@ -1,7 +1,7 @@
 {
     "description": "translateType semantics: a mapped real class name becomes its obfuscated short name; anything else (framework class, primitive name, unknown class) passes through unchanged. translateType operates on bare type names only (no array/descriptor wrappers). Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 3,
+        "schema_version": 4,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

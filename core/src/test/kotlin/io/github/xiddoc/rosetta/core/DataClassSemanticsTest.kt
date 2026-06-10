@@ -98,15 +98,14 @@ class DataClassSemanticsTest {
 
     @Test
     fun `MethodEntry has value semantics across every field`() {
-        val base = MethodEntry("m", "()V", aidlTxn = 1, static = true, synthetic = true, isConstructor = true)
+        val base = MethodEntry("m", "()V", static = true, synthetic = true, isConstructor = true)
         assertValueSemantics(
             base = base,
-            identical = MethodEntry("m", "()V", aidlTxn = 1, static = true, synthetic = true, isConstructor = true),
+            identical = MethodEntry("m", "()V", static = true, synthetic = true, isConstructor = true),
             variants =
                 listOf(
                     base.copy(obfuscated = "x"),
                     base.copy(signature = "(I)V"),
-                    base.copy(aidlTxn = 2),
                     base.copy(static = false),
                     base.copy(synthetic = false),
                     base.copy(isConstructor = false),
@@ -188,8 +187,6 @@ class DataClassSemanticsTest {
                 extends = "com.example.Base",
                 kind = ClassKind.CLASS,
                 dex = "shard-1",
-                aidlDescriptor = "com.example.IFoo",
-                anchors = listOf("anchor"),
                 methods = mapOf("m" to MethodOverloads(listOf(MethodEntry("a", "()V")))),
                 fields = mapOf("f" to FieldEntry("a", "I")),
                 source = "sigmatcher",
@@ -202,8 +199,6 @@ class DataClassSemanticsTest {
                     extends = "com.example.Base",
                     kind = ClassKind.CLASS,
                     dex = "shard-1",
-                    aidlDescriptor = "com.example.IFoo",
-                    anchors = listOf("anchor"),
                     methods = mapOf("m" to MethodOverloads(listOf(MethodEntry("a", "()V")))),
                     fields = mapOf("f" to FieldEntry("a", "I")),
                     source = "sigmatcher",
@@ -214,8 +209,6 @@ class DataClassSemanticsTest {
                     base.copy(extends = "com.example.Other"),
                     base.copy(kind = ClassKind.INTERFACE),
                     base.copy(dex = "shard-2"),
-                    base.copy(aidlDescriptor = "com.example.IBar"),
-                    base.copy(anchors = listOf("other")),
                     base.copy(methods = mapOf("n" to MethodOverloads(listOf(MethodEntry("a", "()V"))))),
                     base.copy(fields = mapOf("g" to FieldEntry("a", "I"))),
                     base.copy(source = "hand-authored"),
@@ -228,7 +221,7 @@ class DataClassSemanticsTest {
     fun `RosettaMap has value semantics across every field`() {
         val base =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -245,7 +238,7 @@ class DataClassSemanticsTest {
             base = base,
             identical =
                 RosettaMap(
-                    schemaVersion = 3,
+                    schemaVersion = 4,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
@@ -260,7 +253,7 @@ class DataClassSemanticsTest {
                 ),
             variants =
                 listOf(
-                    base.copy(schemaVersion = 4),
+                    base.copy(schemaVersion = 3),
                     base.copy(app = "com.other.app"),
                     base.copy(version = "2.0.0"),
                     base.copy(versionCode = 200),
@@ -300,7 +293,6 @@ class DataClassSemanticsTest {
                 obfName = "c",
                 className = "a",
                 signature = "()V",
-                aidlTxn = 7,
                 static = true,
                 synthetic = false,
                 isConstructor = false,
@@ -314,7 +306,6 @@ class DataClassSemanticsTest {
                     obfName = "c",
                     className = "a",
                     signature = "()V",
-                    aidlTxn = 7,
                     static = true,
                     synthetic = false,
                     isConstructor = false,
@@ -326,7 +317,6 @@ class DataClassSemanticsTest {
                     rm.copy(obfName = "d"),
                     rm.copy(className = "b"),
                     rm.copy(signature = "(I)V"),
-                    rm.copy(aidlTxn = 8),
                     rm.copy(static = false),
                     // Tri-state flags are distinct values: null != false != true.
                     rm.copy(static = null),
@@ -421,7 +411,7 @@ class DataClassSemanticsTest {
         assertWriteSelfBranches(
             MethodEntry.serializer(),
             allDefaults = MethodEntry("m", "()V"),
-            allSet = MethodEntry("m", "()V", aidlTxn = 7, static = true, synthetic = true, isConstructor = true),
+            allSet = MethodEntry("m", "()V", static = true, synthetic = true, isConstructor = true),
         )
     }
 
@@ -454,8 +444,6 @@ class DataClassSemanticsTest {
                     extends = "com.example.Base",
                     kind = ClassKind.CLASS,
                     dex = "shard-1",
-                    aidlDescriptor = "com.example.IFoo",
-                    anchors = listOf("anchor"),
                     methods = mapOf("m" to MethodOverloads(listOf(MethodEntry("a", "()V")))),
                     fields = mapOf("f" to FieldEntry("a", "I")),
                     source = "sigmatcher",
@@ -469,7 +457,7 @@ class DataClassSemanticsTest {
             RosettaMap.serializer(),
             allDefaults =
                 RosettaMap(
-                    schemaVersion = 3,
+                    schemaVersion = 4,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
@@ -477,7 +465,7 @@ class DataClassSemanticsTest {
                 ),
             allSet =
                 RosettaMap(
-                    schemaVersion = 3,
+                    schemaVersion = 4,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,

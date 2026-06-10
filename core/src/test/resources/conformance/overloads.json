@@ -1,7 +1,7 @@
 {
     "description": "Multi-overload resolution: disambiguation by arg arity (0/1/2/3+) and arg types, ambiguous-without-argTypes error, no-matching-overload miss, selected-overload-first ordering, and overload count. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 3,
+        "schema_version": 4,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,
@@ -45,7 +45,7 @@
             },
             "com.example.app.Callback": {
                 "obfuscated": "bbbb",
-                "kind": "aidl_callback"
+                "kind": "interface"
             }
         }
     },

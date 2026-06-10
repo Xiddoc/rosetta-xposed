@@ -5,7 +5,6 @@
         { "name": "MAX_METHODS_PER_CLASS", "kind": "bound", "bound": "MAX_METHODS_PER_CLASS", "value": 5000 },
         { "name": "MAX_FIELDS_PER_CLASS", "kind": "bound", "bound": "MAX_FIELDS_PER_CLASS", "value": 5000 },
         { "name": "MAX_METHOD_OVERLOADS", "kind": "bound", "bound": "MAX_METHOD_OVERLOADS", "value": 200 },
-        { "name": "MAX_ANCHORS", "kind": "bound", "bound": "MAX_ANCHORS", "value": 1000 },
         { "name": "MAX_SOURCES", "kind": "bound", "bound": "MAX_SOURCES", "value": 100 },
         { "name": "MAX_SHORT_NAME_LEN", "kind": "bound", "bound": "MAX_SHORT_NAME_LEN", "value": 512 },
         { "name": "MAX_SIGNATURE_LEN", "kind": "bound", "bound": "MAX_SIGNATURE_LEN", "value": 4096 },

@@ -36,7 +36,7 @@ class CoverageTest {
     // path below.
     private val map =
         RosettaMap(
-            schemaVersion = 3,
+            schemaVersion = 4,
             app = "com.example.app",
             version = "1.0.0",
             versionCode = 100,
@@ -50,7 +50,7 @@ class CoverageTest {
                                     "single" to
                                         MethodOverloads(
                                             listOf(
-                                                MethodEntry("m", "()V", aidlTxn = 7, static = true),
+                                                MethodEntry("m", "()V", static = true),
                                             ),
                                         ),
                                     "over" to
@@ -169,7 +169,7 @@ class CoverageTest {
         // distinctly rather than misattributed to "no overload matches".
         val m =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -210,7 +210,7 @@ class CoverageTest {
         // an unknown arg type — it is a legitimate no-overload-match.
         val m =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -239,7 +239,7 @@ class CoverageTest {
         // so the precise unknown-arg error fires (a ResolveException subtype).
         val m =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -299,7 +299,7 @@ class CoverageTest {
         // wanted[i] in knownDescriptors branch).
         val m =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -360,12 +360,11 @@ class CoverageTest {
     }
 
     @Test
-    fun `resolveMethod surfaces static flag and aidl transaction code`() {
+    fun `resolveMethod surfaces the static flag`() {
         val resolver = Resolver(map)
         val m = resolver.resolveMethod("com.example.Foo", "single")
         // Tri-state: an asserted true stays true (not folded away).
         assertEquals(true, m.static)
-        assertEquals(7, m.aidlTxn)
         // The multi-overload method omits `static`, so it stays null
         // (asserted-vs-unknown preserved — NOT folded to false).
         assertNull(resolver.resolveMethod("com.example.Foo", "over", listOf("int")).static)
@@ -429,7 +428,7 @@ class CoverageTest {
         // reverse entry deterministically, not last-write-wins.
         val colliding =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -456,7 +455,7 @@ class CoverageTest {
         // the deterministic first-write-wins both Rosetta clients standardize on.
         val colliding =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -475,7 +474,7 @@ class CoverageTest {
         // previousObf == entry.obfuscated → the stale-clean branch is skipped.
         val base =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -494,7 +493,7 @@ class CoverageTest {
         // stale-clean must NOT remove Beta's entry.
         val base =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -517,7 +516,7 @@ class CoverageTest {
         // intentional re-point, so it claims the obf even on a collision.
         val base =
             RosettaMap(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,

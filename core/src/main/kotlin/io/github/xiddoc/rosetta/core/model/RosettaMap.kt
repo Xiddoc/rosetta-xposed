@@ -2,7 +2,7 @@
  * Mapping-file model — the on-disk schema, loaded into memory.
  *
  * This is the Kotlin twin of rosetta-frida's `src/types/map.ts`. The
- * shapes are LOCKED to the same `schema_version: 3` contract so the same
+ * shapes are LOCKED to the same `schema_version: 4` contract so the same
  * JSON artifact deserializes identically on both sides. Do not diverge
  * field names or optionality without a matching change on the Frida side
  * (and a schema bump).
@@ -36,7 +36,7 @@ import kotlinx.serialization.json.put
  * Kotlin side. Kept in lockstep with rosetta-frida's
  * `CURRENT_SCHEMA_VERSION`. The loader hard-gates on this value.
  */
-public const val CURRENT_SCHEMA_VERSION: Int = 3
+public const val CURRENT_SCHEMA_VERSION: Int = 4
 
 /**
  * Lifecycle status of a published map (schema 3, maps#40). A map with no
@@ -72,12 +72,6 @@ public enum class ClassKind {
     @SerialName("enum")
     ENUM,
 
-    @SerialName("aidl_stub")
-    AIDL_STUB,
-
-    @SerialName("aidl_callback")
-    AIDL_CALLBACK,
-
     @SerialName("synthetic")
     SYNTHETIC,
 
@@ -108,8 +102,6 @@ public data class MethodEntry(
      * e.g. `(Landroid/os/Bundle;Lbbbb;)V`.
      */
     val signature: String,
-    /** AIDL transaction code, if this is a binder dispatch target. */
-    @SerialName("aidl_txn") val aidlTxn: Int? = null,
     /** Whether the method is static. */
     val static: Boolean? = null,
     /** Whether the method is synthetic (compiler-generated). */
@@ -146,10 +138,6 @@ public data class ClassEntry(
     val kind: ClassKind? = null,
     /** DEX shard (optional debugging metadata). */
     val dex: String? = null,
-    /** AIDL interface descriptor — the stable cross-version anchor. */
-    @SerialName("aidl_descriptor") val aidlDescriptor: String? = null,
-    /** Stable string literals contained in this class, for self-healing discovery. */
-    val anchors: List<String>? = null,
     /** Methods keyed by real name (see [Methods]). */
     val methods: Methods? = null,
     /** Fields keyed by real name. */

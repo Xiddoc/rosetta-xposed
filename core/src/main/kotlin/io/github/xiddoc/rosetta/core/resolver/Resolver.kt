@@ -257,7 +257,6 @@ public class Resolver(
                 obfName = picked.obfuscated,
                 className = cls.obfName,
                 signature = picked.signature,
-                aidlTxn = picked.aidlTxn,
                 static = picked.static,
                 synthetic = picked.synthetic,
                 isConstructor = picked.isConstructor,
