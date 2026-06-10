@@ -1,9 +1,12 @@
 /*
- * schema_version: 3 migration tests (rosetta-maps#36/#38/#39/#40, #43, #32).
+ * schema_version: 4 migration tests (rosetta-maps#36/#38/#39/#40, #43, #32 plus
+ * the v4 pure-real→obfuscated-mapping bump).
  *
- * Pins, in BOTH directions, every field change the v3 bump introduced on the
- * Kotlin client:
- *   - the version gate (3 accepted, 2 rejected),
+ * Pins, in BOTH directions, the version gate plus every field invariant the
+ * Kotlin client still carries:
+ *   - the version gate (4 accepted, 3 rejected — v4 dropped the AIDL facets
+ *     `aidl_descriptor` / `aidl_txn` / `anchors` and the AIDL `kind` values,
+ *     leaving the map a pure real→obfuscated mapping),
  *   - `confidence` removed (a map carrying it is rejected under strict parsing),
  *   - `captured_at` ISO-date shape check,
  *   - `signer_sha256` accepts a single string OR an array (match-any),
@@ -24,10 +27,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class SchemaV3Test {
+class SchemaV4Test {
     private fun mapJson(
         extra: String = "",
-        schemaVersion: Int = 3,
+        schemaVersion: Int = 4,
     ): String =
         """
         {
@@ -43,14 +46,61 @@ class SchemaV3Test {
     // ---- version gate (both directions) -------------------------------------
 
     @Test
-    fun `schema_version 3 is accepted`() {
-        assertEquals(3, MapLoader.fromJson(mapJson()).schemaVersion)
+    fun `schema_version 4 is accepted`() {
+        assertEquals(4, MapLoader.fromJson(mapJson()).schemaVersion)
     }
 
     @Test
-    fun `schema_version 2 is rejected (previous version)`() {
-        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(mapJson(schemaVersion = 2)) }
+    fun `schema_version 3 is rejected (previous version)`() {
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(mapJson(schemaVersion = 3)) }
         assertTrue(ex.issues.any { it.path == "schema_version" })
+    }
+
+    // ---- v4 dropped the AIDL facets (strict-parse rejection) ----------------
+
+    @Test
+    fun `a class-entry aidl_descriptor key is rejected under strict parsing`() {
+        // v4 made the map a pure real→obfuscated mapping; aidl_descriptor is no
+        // longer a class field, so a map carrying it is rejected (a stale v3 map
+        // must be re-emitted at v4). The AIDL anchor stays runtime-discovery
+        // evidence (DiscoveryHints), never a map field.
+        val json =
+            mapJson()
+                .replace("\"obfuscated\": \"a\"", "\"obfuscated\": \"a\", \"aidl_descriptor\": \"Lcom/example/IFoo;\"")
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
+    }
+
+    @Test
+    fun `a class-entry anchors key is rejected under strict parsing`() {
+        val json =
+            mapJson()
+                .replace("\"obfuscated\": \"a\"", "\"obfuscated\": \"a\", \"anchors\": [\"login_token\"]")
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
+    }
+
+    @Test
+    fun `a method-entry aidl_txn key is rejected under strict parsing`() {
+        val json =
+            mapJson()
+                .replace(
+                    "\"classes\": { \"com.example.Foo\": { \"obfuscated\": \"a\" } }",
+                    "\"classes\": { \"com.example.Foo\": { \"obfuscated\": \"a\", \"methods\": " +
+                        "{ \"m\": [{ \"obfuscated\": \"c\", \"signature\": \"()V\", \"aidl_txn\": 2 }] } } }",
+                )
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
+    }
+
+    @Test
+    fun `the aidl_stub class kind value is rejected under strict parsing`() {
+        // v4's `kind` enum is class|interface|enum|synthetic|anonymous — the old
+        // aidl_stub / aidl_callback values are gone.
+        val json =
+            mapJson()
+                .replace("\"obfuscated\": \"a\"", "\"obfuscated\": \"a\", \"kind\": \"aidl_stub\"")
+        assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
     }
 
     // ---- confidence removed (#43) -------------------------------------------

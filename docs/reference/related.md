@@ -9,7 +9,7 @@ schema it does not own.
 knowledge base of signatures and generated maps, and the **owner** of the
 canonical, language-neutral map schema
 (`schema/rosetta-map.schema.json`) — the single source of truth for the
-`schema_version: 3` format. Changing the format means bumping that schema
+`schema_version: 4` format. Changing the format means bumping that schema
 first, then updating the client adapters.
 
 The schema is **language-neutral JSON Schema**, so the Kotlin side consumes
@@ -27,7 +27,7 @@ JVM twin: a faithful Kotlin port of the neutral core, kept honest by a
 
 ## How rosetta-xposed relates
 
-- **Client, not owner.** It tracks the `schema_version: 3` format from the
+- **Client, not owner.** It tracks the `schema_version: 4` format from the
   Kotlin side; `CURRENT_SCHEMA_VERSION` is hard-gated in `MapLoader`.
 - **Consumer, not producer.** It loads maps; it does not author signatures
   or generate maps. Those live in rosetta-maps.

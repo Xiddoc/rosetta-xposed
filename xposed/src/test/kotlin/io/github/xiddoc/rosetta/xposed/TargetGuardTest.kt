@@ -297,7 +297,7 @@ class TargetGuardTest {
             MapLoader.fromJson(
                 """
                 {
-                  "schema_version": 3,
+                  "schema_version": 4,
                   "app": "java.lang.app",
                   "version": "1.0.0",
                   "version_code": 100,
@@ -322,7 +322,7 @@ class TargetGuardTest {
     ) = MapLoader.fromJson(
         """
         {
-          "schema_version": 3,
+          "schema_version": 4,
           "app": "$app",
           "version": "1.0.0",
           "version_code": 100,

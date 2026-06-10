@@ -1,25 +1,23 @@
 {
     "description": "Shared Rosetta resolver conformance cases. The same fixture format is intended to drive both the TypeScript (rosetta-frida) and Kotlin (rosetta-xposed) resolvers so the two implementations stay behaviour-identical (RFC 0001, Decision 1). Keep this provider-neutral: no Frida- or Xposed-specific fields.",
     "map": {
-        "schema_version": 3,
+        "schema_version": 4,
         "app": "com.example.app",
         "version": "3.4.5",
         "version_code": 30405,
         "classes": {
             "com.example.app.IRemoteService$Stub": {
                 "obfuscated": "aaaa",
-                "kind": "aidl_stub",
+                "kind": "class",
                 "methods": {
                     "requestTicket": [
                         {
                             "obfuscated": "c",
-                            "signature": "(Landroid/os/Bundle;Lbbbb;)V",
-                            "aidl_txn": 2
+                            "signature": "(Landroid/os/Bundle;Lbbbb;)V"
                         },
                         {
                             "obfuscated": "d",
-                            "signature": "(Landroid/os/Bundle;Ljava/lang/String;Lbbbb;)V",
-                            "aidl_txn": 4
+                            "signature": "(Landroid/os/Bundle;Ljava/lang/String;Lbbbb;)V"
                         }
                     ],
                     "requestPrompt": {
@@ -37,7 +35,7 @@
             },
             "com.example.app.IServiceCallback": {
                 "obfuscated": "bbbb",
-                "kind": "aidl_callback"
+                "kind": "interface"
             }
         }
     },

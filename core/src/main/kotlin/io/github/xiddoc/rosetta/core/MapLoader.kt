@@ -10,8 +10,9 @@
  *     or stray key is a hard parse failure here too — a map that loads on one
  *     client loads on all. (`ignoreUnknownKeys = false`.)
  *   - `schema_version` is a hard gate: a map declaring anything other than
- *     the current version is rejected with a structured issue, exactly as
- *     the Frida side rejects non-`3` maps via `z.literal(3)`.
+ *     the current version (now 4) is rejected with a structured issue, exactly
+ *     as the Frida side rejects non-`4` maps via `z.literal(4)`. A legacy
+ *     `schema_version: 3` map is therefore refused and must be re-emitted at v4.
  *
  * Beyond the schema gate, [validate] enforces a set of hardening BOUNDS
  * (entry counts, string lengths, the `app` package-name shape) and rejects
@@ -55,9 +56,6 @@ public object MapLoader {
 
     /** Maximum number of overloads registered under one method name. */
     public const val MAX_OVERLOADS_PER_METHOD: Int = 200
-
-    /** Maximum number of `anchors` strings per class. */
-    public const val MAX_ANCHORS_PER_CLASS: Int = 1_000
 
     /** Maximum number of `sources` provenance entries. */
     public const val MAX_SOURCES: Int = 100
@@ -328,7 +326,12 @@ public object MapLoader {
 
         fun run(): List<ValidationIssue> {
             if (map.schemaVersion != CURRENT_SCHEMA_VERSION) {
-                issues += ValidationIssue("schema_version", "expected $CURRENT_SCHEMA_VERSION, got ${map.schemaVersion}")
+                issues +=
+                    ValidationIssue(
+                        "schema_version",
+                        "expected $CURRENT_SCHEMA_VERSION, got ${map.schemaVersion} — " +
+                            "re-emit the map at schema_version $CURRENT_SCHEMA_VERSION",
+                    )
             }
             checkApp()
             if (map.version.isBlank()) {
@@ -475,12 +478,7 @@ public object MapLoader {
             len("$path.obfuscated", entry.obfuscated, MAX_SHORT_NAME_LEN)
             len("$path.extends", entry.extends, MAX_FREE_STRING_LEN)
             len("$path.dex", entry.dex, MAX_FREE_STRING_LEN)
-            len("$path.aidl_descriptor", entry.aidlDescriptor, MAX_FREE_STRING_LEN)
             len("$path.source", entry.source, MAX_FREE_STRING_LEN)
-            entry.anchors?.let { anchors ->
-                cap("$path.anchors", anchors.size, MAX_ANCHORS_PER_CLASS, "entries")
-                anchors.forEachIndexed { i, a -> len("$path.anchors[$i]", a, MAX_FREE_STRING_LEN) }
-            }
             entry.methods?.let { methods ->
                 cap("$path.methods", methods.size, MAX_METHODS_PER_CLASS, "entries")
                 for ((name, overloads) in methods) {

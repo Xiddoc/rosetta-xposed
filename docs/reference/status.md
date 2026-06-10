@@ -7,7 +7,7 @@ pure-JVM modules is wired. What remains is on-device / native wiring.
 
 ## Built
 
-- `:core` — `schema_version: 3` map model, strict JSON loader/validator,
+- `:core` — `schema_version: 4` map model, strict JSON loader/validator,
   and resolver, kept in lockstep with the shared conformance suite.
 - `:xposed` static path — `RosettaXposed`, the static resolution backend,
   bind targets, the `Hooker` seam, and `AppIdentity`.

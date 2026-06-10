@@ -86,7 +86,6 @@ class ConformanceTest {
             "MAX_METHODS_PER_CLASS" to MapLoader.MAX_METHODS_PER_CLASS.toLong(),
             "MAX_FIELDS_PER_CLASS" to MapLoader.MAX_FIELDS_PER_CLASS.toLong(),
             "MAX_METHOD_OVERLOADS" to MapLoader.MAX_OVERLOADS_PER_METHOD.toLong(),
-            "MAX_ANCHORS" to MapLoader.MAX_ANCHORS_PER_CLASS.toLong(),
             "MAX_SOURCES" to MapLoader.MAX_SOURCES.toLong(),
             "MAX_SHORT_NAME_LEN" to MapLoader.MAX_SHORT_NAME_LEN.toLong(),
             "MAX_SIGNATURE_LEN" to MapLoader.MAX_SIGNATURE_LEN.toLong(),
@@ -207,7 +206,6 @@ class ConformanceTest {
         // keeps cross-language parity at the fixture boundary while the Kotlin
         // resolved type stays asserted-vs-unknown.
         case["expectStatic"]?.let { assertEquals(it.jsonPrimitive.boolean, m.static == true) }
-        case["expectAidlTxn"]?.let { assertEquals((it as JsonPrimitive).int, m.aidlTxn) }
         case["expectOverloadCount"]?.let { assertEquals(it.jsonPrimitive.int, m.allOverloads.size) }
     }
 

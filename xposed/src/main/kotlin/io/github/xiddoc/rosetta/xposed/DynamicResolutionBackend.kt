@@ -35,7 +35,6 @@ package io.github.xiddoc.rosetta.xposed
 
 import io.github.xiddoc.rosetta.core.AmbiguousOverloadException
 import io.github.xiddoc.rosetta.core.model.ClassEntry
-import io.github.xiddoc.rosetta.core.model.ClassKind
 import io.github.xiddoc.rosetta.core.model.MethodEntry
 import io.github.xiddoc.rosetta.core.model.MethodOverloads
 import io.github.xiddoc.rosetta.core.resolver.DiscoveredClass
@@ -56,7 +55,6 @@ import io.github.xiddoc.rosetta.core.resolver.toJvmDescriptor
  * @property paramTypes obfuscated FQNs / descriptors of the parameters.
  * @property usingStrings stable string literals the method references
  *   (contributor input; RE2-bounded via [SafePattern] before use).
- * @property aidlTxn AIDL transaction code to carry onto the resolved entry.
  */
 public data class MethodDiscoveryHint(
     val realName: String,
@@ -64,7 +62,6 @@ public data class MethodDiscoveryHint(
     val returnType: String? = null,
     val paramTypes: List<String>? = null,
     val usingStrings: List<String> = emptyList(),
-    val aidlTxn: Int? = null,
 )
 
 /**
@@ -229,7 +226,6 @@ public class DynamicResolutionBackend(
             obfName = methodEntry.obfuscated,
             className = classEntry.obfuscated,
             signature = methodEntry.signature,
-            aidlTxn = methodEntry.aidlTxn,
             static = methodEntry.static,
             synthetic = methodEntry.synthetic,
             isConstructor = methodEntry.isConstructor,
@@ -300,16 +296,15 @@ public class DynamicResolutionBackend(
 
         val methods = discoverMethods(obfClass, hint.methods)
 
+        // The synthesized map ClassEntry carries only the pure real→obf mapping
+        // fields the schema_version: 4 model still has (obfuscated / extends /
+        // methods / source). The hint's aidlDescriptor / anchors are runtime
+        // DISCOVERY EVIDENCE used by locateClass(...) to FIND the class — they
+        // are not map fields, so they are deliberately not round-tripped here.
         val entry =
             ClassEntry(
                 obfuscated = obfClass,
                 extends = hint.superclass,
-                // Preserve the fact the backend already knew: a descriptor-located
-                // class is an AIDL binder stub, so the entry round-trips that kind
-                // back upstream rather than losing it.
-                kind = if (hint.aidlDescriptor != null) ClassKind.AIDL_STUB else null,
-                aidlDescriptor = hint.aidlDescriptor,
-                anchors = hint.anchors.ifEmpty { null },
                 methods = methods,
                 source = RUNTIME_DISCOVERED_TOOL,
             )
@@ -408,7 +403,6 @@ public class DynamicResolutionBackend(
                     MethodEntry(
                         obfuscated = match.obfName,
                         signature = match.descriptor,
-                        aidlTxn = mh.aidlTxn,
                     )
             }
         }

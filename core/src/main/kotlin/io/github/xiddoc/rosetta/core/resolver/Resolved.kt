@@ -91,8 +91,6 @@ public data class ResolvedMethod(
     val className: String,
     /** Method signature in JVM descriptor form (obfuscated class refs). */
     val signature: String,
-    /** Optional AIDL transaction code. */
-    val aidlTxn: Int?,
     /** Static flag, or `null` when the map did not assert it. */
     val static: Boolean?,
     /** Synthetic (compiler-generated) flag, or `null` when not asserted. */

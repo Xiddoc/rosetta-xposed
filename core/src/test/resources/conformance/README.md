@@ -16,13 +16,13 @@ assertions.
 ```jsonc
 {
   "description": "human-readable note about what this file covers",
-  "map": { /* a schema_version:2 RosettaMap, optional — see below */ },
+  "map": { /* a schema_version:4 RosettaMap, optional — see below */ },
   "cases": [ /* one or more case objects */ ]
 }
 ```
 
 - **`description`** — free text, ignored by the runner.
-- **`map`** — an inline `schema_version: 2` map (same shape consumed by
+- **`map`** — an inline `schema_version: 4` map (same shape consumed by
   both clients). It is loaded and validated, then a single `Resolver` is
   built from it and shared by every case in the file. It is **optional**:
   a file whose cases are all pure utilities (`parseSignatureArgs`) needs
@@ -45,7 +45,7 @@ Every case has:
 | `kind`               | inputs                              | success expectation                                  |
 | -------------------- | ----------------------------------- | ---------------------------------------------------- |
 | `class`              | `class`                             | `expectObf`, optional `expectExtends`                |
-| `method`             | `class`, `method`, optional `argTypes` | `expectObf`, optional `expectSignature`, `expectClassName`, `expectStatic`, `expectAidlTxn`, `expectOverloadCount` |
+| `method`             | `class`, `method`, optional `argTypes` | `expectObf`, optional `expectSignature`, `expectClassName`, `expectStatic`, `expectOverloadCount` |
 | `field`              | `class`, `field`                    | `expectObf`, optional `expectStatic`, `expectType`, `expectClassName` |
 | `hasClass`           | `class`                             | `expectResult` (boolean)                             |
 | `reverseLookup`      | `obf`                               | `expectResult` (string FQN, or JSON `null`)          |
@@ -138,7 +138,6 @@ Notes on inputs:
   > assert only `true` or `false` for these flags, never `null`** — a `null`
   > expectation has no consistent meaning across the two runners. (An absent
   > flag in the source map projects to `false`.)
-- **`expectAidlTxn`** (number) — resolved AIDL transaction code.
 - **`expectOverloadCount`** (number) — number of overloads carried in the
   result; the **selected** overload is always first.
 - **`expectType`** (string) — resolved field JVM-descriptor type.
