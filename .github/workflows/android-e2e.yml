@@ -95,16 +95,16 @@ jobs:
             EMU_OPTIONS: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Set up JDK 17
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v5
               with:
                   distribution: temurin
                   java-version: '17'
 
             - name: Set up Gradle (with build cache)
-              uses: gradle/actions/setup-gradle@v4
+              uses: gradle/actions/setup-gradle@v5
               with:
                   develocity-injection-enabled: false
 
@@ -137,7 +137,7 @@ jobs:
             # build above needs JDK 17. Install 21 too and invoke LSPatch with it
             # explicitly (via $JAVA_HOME_21_X64) so the JDK-17 build is untouched.
             - name: Set up JDK 21 (for the LSPatch CLI)
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v5
               with:
                   distribution: temurin
                   java-version: '21'
@@ -145,7 +145,7 @@ jobs:
             # Cache the ~11 MB LSPatch CLI so we skip the download on a cache hit.
             - name: Cache LSPatch CLI
               id: lspatch-cache
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: lspatch
                   key: lspatch-${{ env.LSPATCH_TAG }}
@@ -224,7 +224,7 @@ jobs:
 
             - name: Cache AVD snapshot
               id: avd-cache
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: |
                       ~/.android/avd/*
@@ -275,7 +275,7 @@ jobs:
 
             - name: Upload e2e artifacts
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               with:
                   name: android-e2e-artifacts
                   path: |

@@ -36,16 +36,16 @@ jobs:
                 java: ['17', '21']
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Set up JDK ${{ matrix.java }}
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v5
               with:
                   distribution: temurin
                   java-version: ${{ matrix.java }}
 
             - name: Set up Gradle (with build cache)
-              uses: gradle/actions/setup-gradle@v4
+              uses: gradle/actions/setup-gradle@v5
               with:
                   # Opt out of Develocity auto-injection. setup-gradle@v4
                   # otherwise injects the Develocity (build-scan) plugin onto
@@ -88,7 +88,7 @@ jobs:
             # skip). See docs/reference/dexkit-integration.md.
             - name: Cache DexKit host native
               id: dexkit-native
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: dexkit/src/test/resources/native/linux-x86_64/libdexkit.so
                   key: dexkit-native-${{ runner.os }}-x86_64-2.2.0-${{ hashFiles('tools/dexkit-native/build-libdexkit.sh') }}
@@ -125,7 +125,7 @@ jobs:
 
             - name: Upload test reports
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               with:
                   name: test-reports-jdk${{ matrix.java }}
                   path: '**/build/reports/tests/'
@@ -143,16 +143,16 @@ jobs:
                 java: ['17', '21']
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Set up JDK ${{ matrix.java }}
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v5
               with:
                   distribution: temurin
                   java-version: ${{ matrix.java }}
 
             - name: Set up Gradle (with build cache)
-              uses: gradle/actions/setup-gradle@v4
+              uses: gradle/actions/setup-gradle@v5
               with:
                   develocity-injection-enabled: false
 
@@ -169,7 +169,7 @@ jobs:
 
             - name: Upload harness test reports
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               with:
                   name: test-reports-examples-harness-jdk${{ matrix.java }}
                   path: 'examples/harness/build/reports/tests/'
@@ -193,16 +193,16 @@ jobs:
                 java: ['17', '21']
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Set up JDK ${{ matrix.java }}
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v5
               with:
                   distribution: temurin
                   java-version: ${{ matrix.java }}
 
             - name: Set up Gradle (with build cache)
-              uses: gradle/actions/setup-gradle@v4
+              uses: gradle/actions/setup-gradle@v5
               with:
                   develocity-injection-enabled: false
 
@@ -217,7 +217,7 @@ jobs:
 
             - name: Upload r8 test reports
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               with:
                   name: test-reports-examples-r8-jdk${{ matrix.java }}
                   path: 'examples/r8/build/reports/tests/'
@@ -239,17 +239,17 @@ jobs:
             DEVELOCITY_INJECTION_ENABLED: 'false'
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             # AGP requires JDK 17.
             - name: Set up JDK 17
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v5
               with:
                   distribution: temurin
                   java-version: '17'
 
             - name: Set up Gradle (with build cache)
-              uses: gradle/actions/setup-gradle@v4
+              uses: gradle/actions/setup-gradle@v5
               with:
                   develocity-injection-enabled: false
 
@@ -269,7 +269,7 @@ jobs:
 
             - name: Upload example APKs
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v6
               with:
                   name: example-apks
                   path: 'examples/android/**/build/outputs/apk/**/*.apk'
