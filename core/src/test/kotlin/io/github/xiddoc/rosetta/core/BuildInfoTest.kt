@@ -51,13 +51,13 @@ class BuildInfoTest {
         // The coordinate's schema line is bound to the loader constant so the
         // published artifact and the gate it enforces can never disagree.
         assertEquals(CURRENT_SCHEMA_VERSION, BuildInfo.SCHEMA_VERSION)
-        assertEquals(4, BuildInfo.SCHEMA_VERSION)
+        assertEquals(5, BuildInfo.SCHEMA_VERSION)
     }
 
     @Test
     fun `minor floor moves with the schema version`() {
         // Documented scheme: a breaking schema bump MUST move the MINOR line
-        // forward (0.3.x ⇄ schema 4). A library-only breaking change may ALSO
+        // forward (0.4.x ⇄ schema 5). A library-only breaking change may ALSO
         // bump MINOR while schema_version holds, so the genuine invariant is a
         // floor (>=), not strict equality — encoding `minor == schema - 1`
         // would fail spuriously on a library-only minor bump.

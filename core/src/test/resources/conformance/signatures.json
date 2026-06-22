@@ -1,7 +1,7 @@
 {
     "description": "Signature-utility semantics: JVM-descriptor argument splitting (parseSignatureArgs) and type-name -> descriptor conversion (toJvmDescriptor). Covers primitives, all single-letter descriptors, object types, single/multi-dim arrays, arrays of objects, empty arg lists, malformed-signature errors, and the raw-descriptor / lone-primitive-letter passthroughs. A 'map' is present only so toJvmDescriptor's real->obf translator has something to consult. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 4,
+        "schema_version": 5,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

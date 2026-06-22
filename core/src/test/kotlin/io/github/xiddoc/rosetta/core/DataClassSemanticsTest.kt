@@ -137,17 +137,15 @@ class DataClassSemanticsTest {
                 tool = "sigmatcher",
                 config = "cfg",
                 classes = 3,
-                notes = "n",
             )
         assertValueSemantics(
             base = base,
-            identical = MapSource("sigmatcher", "cfg", 3, "n"),
+            identical = MapSource("sigmatcher", "cfg", 3),
             variants =
                 listOf(
                     base.copy(tool = "hand-authored"),
                     base.copy(config = "other"),
                     base.copy(classes = 4),
-                    base.copy(notes = "m"),
                 ),
         )
         assertEquals(4, base.copy(classes = 4).classes)
@@ -221,7 +219,7 @@ class DataClassSemanticsTest {
     fun `RosettaMap has value semantics across every field`() {
         val base =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -238,7 +236,7 @@ class DataClassSemanticsTest {
             base = base,
             identical =
                 RosettaMap(
-                    schemaVersion = 4,
+                    schemaVersion = 5,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
@@ -429,7 +427,7 @@ class DataClassSemanticsTest {
         assertWriteSelfBranches(
             MapSource.serializer(),
             allDefaults = MapSource("sigmatcher"),
-            allSet = MapSource("sigmatcher", config = "cfg", classes = 3, notes = "n"),
+            allSet = MapSource("sigmatcher", config = "cfg", classes = 3),
         )
     }
 
@@ -457,7 +455,7 @@ class DataClassSemanticsTest {
             RosettaMap.serializer(),
             allDefaults =
                 RosettaMap(
-                    schemaVersion = 4,
+                    schemaVersion = 5,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,
@@ -465,7 +463,7 @@ class DataClassSemanticsTest {
                 ),
             allSet =
                 RosettaMap(
-                    schemaVersion = 4,
+                    schemaVersion = 5,
                     app = "com.example.app",
                     version = "1.0.0",
                     versionCode = 100,

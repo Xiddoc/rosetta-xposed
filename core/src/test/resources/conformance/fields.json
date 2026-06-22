@@ -1,7 +1,7 @@
 {
     "description": "Field resolution: static vs instance, type and obf-class-name propagation, and field/fields-map/class misses. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 4,
+        "schema_version": 5,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

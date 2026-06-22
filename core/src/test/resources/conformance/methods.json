@@ -1,7 +1,7 @@
 {
     "description": "Single-method resolution: lone overload auto-pick (with and without argTypes), metadata propagation (static, obf class name, overload count), and method/methods-map misses. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 4,
+        "schema_version": 5,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

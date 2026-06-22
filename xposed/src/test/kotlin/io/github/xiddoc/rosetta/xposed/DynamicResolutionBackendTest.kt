@@ -24,7 +24,6 @@ import io.github.xiddoc.rosetta.core.model.ClassEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -376,7 +375,6 @@ class DynamicResolutionBackendTest {
         val prov = sink.provenance()
         assertEquals("rosetta-runtime-discovered", prov.tool)
         assertEquals(1, prov.classes)
-        assertNotNull(prov.notes)
     }
 
     @Test

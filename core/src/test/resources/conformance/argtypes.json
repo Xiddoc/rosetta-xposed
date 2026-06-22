@@ -1,7 +1,7 @@
 {
     "description": "argType -> JVM descriptor translation as exercised through method overload matching: arrays, multi-dimensional arrays, primitive arrays, inner-class ($) arg types, short vs fully-qualified names, and the raw-descriptor / lone-primitive-letter escape hatches. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 4,
+        "schema_version": 5,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

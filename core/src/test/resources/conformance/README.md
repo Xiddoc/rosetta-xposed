@@ -16,13 +16,13 @@ assertions.
 ```jsonc
 {
   "description": "human-readable note about what this file covers",
-  "map": { /* a schema_version:4 RosettaMap, optional — see below */ },
+  "map": { /* a schema_version:5 RosettaMap, optional — see below */ },
   "cases": [ /* one or more case objects */ ]
 }
 ```
 
 - **`description`** — free text, ignored by the runner.
-- **`map`** — an inline `schema_version: 4` map (same shape consumed by
+- **`map`** — an inline `schema_version: 5` map (same shape consumed by
   both clients). It is loaded and validated, then a single `Resolver` is
   built from it and shared by every case in the file. It is **optional**:
   a file whose cases are all pure utilities (`parseSignatureArgs`) needs

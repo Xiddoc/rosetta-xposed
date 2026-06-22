@@ -36,7 +36,7 @@ class CoverageTest {
     // path below.
     private val map =
         RosettaMap(
-            schemaVersion = 4,
+            schemaVersion = 5,
             app = "com.example.app",
             version = "1.0.0",
             versionCode = 100,
@@ -169,7 +169,7 @@ class CoverageTest {
         // distinctly rather than misattributed to "no overload matches".
         val m =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -210,7 +210,7 @@ class CoverageTest {
         // an unknown arg type — it is a legitimate no-overload-match.
         val m =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -239,7 +239,7 @@ class CoverageTest {
         // so the precise unknown-arg error fires (a ResolveException subtype).
         val m =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -299,7 +299,7 @@ class CoverageTest {
         // wanted[i] in knownDescriptors branch).
         val m =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -428,7 +428,7 @@ class CoverageTest {
         // reverse entry deterministically, not last-write-wins.
         val colliding =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -455,7 +455,7 @@ class CoverageTest {
         // the deterministic first-write-wins both Rosetta clients standardize on.
         val colliding =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -474,7 +474,7 @@ class CoverageTest {
         // previousObf == entry.obfuscated → the stale-clean branch is skipped.
         val base =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -493,7 +493,7 @@ class CoverageTest {
         // stale-clean must NOT remove Beta's entry.
         val base =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
@@ -516,7 +516,7 @@ class CoverageTest {
         // intentional re-point, so it claims the obf even on a collision.
         val base =
             RosettaMap(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 app = "com.example.app",
                 version = "1.0.0",
                 versionCode = 100,
