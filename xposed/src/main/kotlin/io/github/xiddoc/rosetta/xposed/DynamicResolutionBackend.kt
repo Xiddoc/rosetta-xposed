@@ -297,7 +297,7 @@ public class DynamicResolutionBackend(
         val methods = discoverMethods(obfClass, hint.methods)
 
         // The synthesized map ClassEntry carries only the pure real→obf mapping
-        // fields the schema_version: 4 model still has (obfuscated / extends /
+        // fields the schema_version: 5 model still has (obfuscated / extends /
         // methods / source). The hint's aidlDescriptor / anchors are runtime
         // DISCOVERY EVIDENCE used by locateClass(...) to FIND the class — they
         // are not map fields, so they are deliberately not round-tripped here.

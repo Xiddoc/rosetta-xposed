@@ -2,7 +2,7 @@
  * Mapping-file model — the on-disk schema, loaded into memory.
  *
  * This is the Kotlin twin of rosetta-frida's `src/types/map.ts`. The
- * shapes are LOCKED to the same `schema_version: 4` contract so the same
+ * shapes are LOCKED to the same `schema_version: 5` contract so the same
  * JSON artifact deserializes identically on both sides. Do not diverge
  * field names or optionality without a matching change on the Frida side
  * (and a schema bump).
@@ -36,7 +36,7 @@ import kotlinx.serialization.json.put
  * Kotlin side. Kept in lockstep with rosetta-frida's
  * `CURRENT_SCHEMA_VERSION`. The loader hard-gates on this value.
  */
-public const val CURRENT_SCHEMA_VERSION: Int = 4
+public const val CURRENT_SCHEMA_VERSION: Int = 5
 
 /**
  * Lifecycle status of a published map (schema 3, maps#40). A map with no
@@ -88,8 +88,6 @@ public data class MapSource(
     val config: String? = null,
     /** Optional count of classes attributed to this source. */
     val classes: Int? = null,
-    /** Free-form notes (e.g. "verified via runtime trace"). */
-    val notes: String? = null,
 )
 
 /** One method overload. */

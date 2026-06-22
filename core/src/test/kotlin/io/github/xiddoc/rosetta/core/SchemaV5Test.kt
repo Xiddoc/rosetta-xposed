@@ -1,12 +1,14 @@
 /*
- * schema_version: 4 migration tests (rosetta-maps#36/#38/#39/#40, #43, #32 plus
- * the v4 pure-real→obfuscated-mapping bump).
+ * schema_version: 5 migration tests (rosetta-maps#36/#38/#39/#40, #43, #32, the
+ * v4 pure-real→obfuscated-mapping bump, plus the v5 `sources[].notes` removal).
  *
  * Pins, in BOTH directions, the version gate plus every field invariant the
  * Kotlin client still carries:
- *   - the version gate (4 accepted, 3 rejected — v4 dropped the AIDL facets
- *     `aidl_descriptor` / `aidl_txn` / `anchors` and the AIDL `kind` values,
- *     leaving the map a pure real→obfuscated mapping),
+ *   - the version gate (5 accepted, 4 rejected — v4 dropped the AIDL facets
+ *     `aidl_descriptor` / `aidl_txn` / `anchors` and the AIDL `kind` values, and
+ *     v5 dropped the free-form `sources[].notes` string, leaving the map a pure
+ *     real→obfuscated mapping),
+ *   - `notes` removed from a source (a map carrying it is rejected, strict),
  *   - `confidence` removed (a map carrying it is rejected under strict parsing),
  *   - `captured_at` ISO-date shape check,
  *   - `signer_sha256` accepts a single string OR an array (match-any),
@@ -27,10 +29,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class SchemaV4Test {
+class SchemaV5Test {
     private fun mapJson(
         extra: String = "",
-        schemaVersion: Int = 4,
+        schemaVersion: Int = 5,
     ): String =
         """
         {
@@ -46,14 +48,27 @@ class SchemaV4Test {
     // ---- version gate (both directions) -------------------------------------
 
     @Test
-    fun `schema_version 4 is accepted`() {
-        assertEquals(4, MapLoader.fromJson(mapJson()).schemaVersion)
+    fun `schema_version 5 is accepted`() {
+        assertEquals(5, MapLoader.fromJson(mapJson()).schemaVersion)
     }
 
     @Test
-    fun `schema_version 3 is rejected (previous version)`() {
-        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(mapJson(schemaVersion = 3)) }
+    fun `schema_version 4 is rejected (previous version)`() {
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(mapJson(schemaVersion = 4)) }
         assertTrue(ex.issues.any { it.path == "schema_version" })
+    }
+
+    // ---- v5 dropped the free-form sources[].notes string --------------------
+
+    @Test
+    fun `a source notes key is rejected under strict parsing`() {
+        // v5 removed `sources[].notes`: the published map is a pure
+        // real→obfuscated mapping and human provenance prose has no reader in
+        // the artifact (it belongs in a signatures.yaml comment). A map still
+        // carrying it is rejected under strict parsing.
+        val json = mapJson(extra = """"sources": [{ "tool": "sigmatcher", "notes": "verified" }],""")
+        val ex = assertFailsWith<MapValidationException> { MapLoader.fromJson(json) }
+        assertTrue(ex.message!!.contains("parse"))
     }
 
     // ---- v4 dropped the AIDL facets (strict-parse rejection) ----------------
@@ -61,8 +76,8 @@ class SchemaV4Test {
     @Test
     fun `a class-entry aidl_descriptor key is rejected under strict parsing`() {
         // v4 made the map a pure real→obfuscated mapping; aidl_descriptor is no
-        // longer a class field, so a map carrying it is rejected (a stale v3 map
-        // must be re-emitted at v4). The AIDL anchor stays runtime-discovery
+        // longer a class field, so a map carrying it is rejected (a stale map
+        // must be re-emitted at v5). The AIDL anchor stays runtime-discovery
         // evidence (DiscoveryHints), never a map field.
         val json =
             mapJson()

@@ -45,9 +45,9 @@ plugins {
 // workflow overrides it from the pushed git tag via
 // `-Prosetta.version=<tag-without-v>` so a `v0.2.0` tag publishes `0.2.0`; an
 // ordinary local build uses the default below. Version scheme: SemVer with the
-// MINOR line coordinated to the map `schema_version` (0.3.x ⇄ schema 4) — see
+// MINOR line coordinated to the map `schema_version` (0.4.x ⇄ schema 5) — see
 // docs/reference/building.md.
-val rosettaVersion: String = (findProperty("rosetta.version") as String?)?.takeIf { it.isNotBlank() } ?: "0.3.0"
+val rosettaVersion: String = (findProperty("rosetta.version") as String?)?.takeIf { it.isNotBlank() } ?: "0.4.0"
 
 allprojects {
     group = "io.github.xiddoc.rosetta"

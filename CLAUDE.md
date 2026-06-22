@@ -12,7 +12,7 @@ Xposed-family **modules** — which run *inside the app JVM*, not as an
 injected Frida JS host — by consuming the **exact same per-version maps**.
 
 This repo is a **client** of the map schema, not its owner. The canonical,
-language-neutral `schema_version: 3` schema is owned by `rosetta-maps`
+language-neutral `schema_version: 5` schema is owned by `rosetta-maps`
 (`schema/rosetta-map.schema.json`, the single source of truth);
 rosetta-frida (TS/Zod) and rosetta-xposed (Kotlin) are both clients that
 must track it.
@@ -28,7 +28,7 @@ mirror of rosetta-frida's "just makes `Java.use` smarter" stance.
 Four-module Gradle (Kotlin/JVM) build:
 
 - **`:core`** — pure-JVM Kotlin, the framework-neutral layers (RFC 0001
-  layers 2–3): the `schema_version: 3` map model
+  layers 2–3): the `schema_version: 5` map model
   (`core/.../model/RosettaMap.kt`), a strict-JSON `MapLoader`, and the
   `Resolver` (`core/.../resolver/`). A faithful twin of rosetta-frida's
   `src/types/map.ts` + `src/validate/schema.ts` + `src/resolver/`. No
@@ -59,7 +59,7 @@ Four-module Gradle (Kotlin/JVM) build:
 These come from RFC 0001 and were confirmed with the project owner.
 
 1. **Unify at the map artifact, not at the signature.** The same
-   `schema_version: 3` JSON that rosetta-frida emits/consumes is loaded
+   `schema_version: 5` JSON that rosetta-frida emits/consumes is loaded
    here. That format is owned by `rosetta-maps`
    (`schema/rosetta-map.schema.json`); this Kotlin side is a client that
    tracks it. Keep the Kotlin model in lockstep with the schema (and with
@@ -157,7 +157,7 @@ with LSPosed (or an LSPatch-patched APK) — see `examples/README.md`.
 ## Related repos
 
 - **`rosetta-maps`** — **owns** the canonical, language-neutral map schema
-  (`schema/rosetta-map.schema.json`, source of truth for `schema_version: 3`)
+  (`schema/rosetta-map.schema.json`, source of truth for `schema_version: 5`)
   and is the community knowledge base of signatures + generated maps both
   clients consume.
 - **`rosetta-frida`** — the Frida adapter and the other, first-class client

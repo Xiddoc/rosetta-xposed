@@ -457,7 +457,6 @@ public object MapLoader {
                 nonEmpty("sources[$i].tool", src.tool)
                 len("sources[$i].tool", src.tool, MAX_FREE_STRING_LEN)
                 len("sources[$i].config", src.config, MAX_FREE_STRING_LEN)
-                len("sources[$i].notes", src.notes, MAX_FREE_STRING_LEN)
             }
         }
 

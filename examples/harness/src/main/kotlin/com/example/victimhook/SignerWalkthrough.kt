@@ -98,14 +98,14 @@ public object SignerWalkthrough {
     private fun mapJsonWithSigner(signerSha256: String): String =
         """
         {
-          "schema_version": 4,
+          "schema_version": 5,
           "app": "$APP",
           "version": "$VERSION",
           "version_code": $VERSION_CODE,
           "captured_at": "2026-06-06",
           "signer_sha256": "$signerSha256",
           "sources": [
-            { "tool": "hand-authored", "classes": 1, "notes": "signer walkthrough fixture" }
+            { "tool": "hand-authored", "classes": 1 }
           ],
           "classes": {
             "$REAL_CLASS": {

@@ -1,7 +1,7 @@
 {
     "description": "Reverse introspection: reverseLookup maps an obfuscated class short name back to its real fully-qualified name (tier-3 introspection), returning null when no class has that obf name. Provider-neutral; see README.md.",
     "map": {
-        "schema_version": 4,
+        "schema_version": 5,
         "app": "com.example.app",
         "version": "1.0.0",
         "version_code": 100,

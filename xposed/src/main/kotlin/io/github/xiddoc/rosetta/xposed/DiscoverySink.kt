@@ -89,6 +89,5 @@ public class MapDiscoverySink : DiscoverySink {
         MapSource(
             tool = RUNTIME_DISCOVERED_TOOL,
             classes = synchronized(lock) { recorded.size },
-            notes = "discovered at runtime by the dynamic (DexKit) backend; unverified.",
         )
 }

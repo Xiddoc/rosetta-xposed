@@ -32,7 +32,7 @@ class DeferredBindingTest {
         MapLoader.fromJson(
             """
             {
-              "schema_version": 4,
+              "schema_version": 5,
               "app": "com.example.app",
               "version": "1.0.0",
               "version_code": 100,
@@ -306,7 +306,7 @@ class DeferredBindingTest {
             MapLoader.fromJson(
                 """
                 {
-                  "schema_version": 4,
+                  "schema_version": 5,
                   "app": "com.example.app",
                   "version": "1.0.0",
                   "version_code": 100,
