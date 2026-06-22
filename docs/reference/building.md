@@ -105,10 +105,10 @@ POM (name, description, URL, MIT license, SCM, developer, issue tracker).
 SemVer, with the **MINOR line deliberately tied to the map `schema_version`**
 the release consumes:
 
-- `0.3.x` consumes `schema_version: 4`. (`0.2.x` consumed `schema_version: 3`;
-  `0.1.x` consumed `schema_version: 2`.)
-- A breaking schema bump (e.g. to `schema_version: 5`) moves the library to the
-  next MINOR (`0.4.x`); a breaking *library API* change before 1.0 also moves the
+- `0.4.x` consumes `schema_version: 5`. (`0.3.x` consumed `schema_version: 4`;
+  `0.2.x` consumed `schema_version: 3`; `0.1.x` consumed `schema_version: 2`.)
+- A breaking schema bump (e.g. to `schema_version: 6`) moves the library to the
+  next MINOR (`0.5.x`); a breaking *library API* change before 1.0 also moves the
   MINOR.
 - Once the surface is stable the library graduates to `1.0.0` and ordinary
   SemVer applies.
