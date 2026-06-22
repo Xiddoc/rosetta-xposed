@@ -5,7 +5,7 @@
 
 [![CI](https://github.com/Xiddoc/rosetta-xposed/actions/workflows/ci.yml/badge.svg)](https://github.com/Xiddoc/rosetta-xposed/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Status](https://img.shields.io/badge/status-beta-blue)](https://xiddoc.github.io/rosetta-xposed/reference/status/)
+[![Status](https://img.shields.io/badge/status-beta-blue)](https://iliketo.party/rosetta-xposed/reference/status/)
 
 Large Android apps rotate their obfuscation every release, so Xposed hooks
 written against hard-coded obfuscated names break on the next update.
@@ -61,7 +61,7 @@ The three pure-JVM modules are set up to publish under the group
 > **Not on Central yet.** The tag-driven publish + auto-promote workflow is
 > wired but **unverified against a live Central account** — no release has been
 > cut. Until the first `v*` tag proves it, use `publishToMavenLocal` (below) to
-> consume the library. See [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/).
+> consume the library. See [Status](https://iliketo.party/rosetta-xposed/reference/status/).
 
 Most modules want just `:xposed` (it depends on `:core`):
 
@@ -72,7 +72,7 @@ dependencies {
 ```
 
 `:dexkit` (the optional, native DexKit adapter) is **not** published — it is
-kept out of the default build (see [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/)).
+kept out of the default build (see [Status](https://iliketo.party/rosetta-xposed/reference/status/)).
 
 Or clone and build locally:
 
@@ -83,18 +83,18 @@ Or clone and build locally:
 
 **Versioning:** SemVer, with the MINOR line coordinated to the map
 `schema_version` it consumes — `0.3.x` speaks `schema_version: 4`. See
-[Building → Publishing](https://xiddoc.github.io/rosetta-xposed/reference/building/).
+[Building → Publishing](https://iliketo.party/rosetta-xposed/reference/building/).
 
 ## Documentation
 
-Full docs live at **<https://xiddoc.github.io/rosetta-xposed/>**:
+Full docs live at **<https://iliketo.party/rosetta-xposed/>**:
 
-- [Concepts](https://xiddoc.github.io/rosetta-xposed/getting-started/concepts/) — the four-layer picture and modules
-- [Usage](https://xiddoc.github.io/rosetta-xposed/getting-started/usage/) — resolve-and-hook walkthrough
-- [Resolution backends](https://xiddoc.github.io/rosetta-xposed/reference/backends/) — static, dynamic (self-healing), and composite
-- [Building](https://xiddoc.github.io/rosetta-xposed/reference/building/) — toolchain and tasks
-- [Status](https://xiddoc.github.io/rosetta-xposed/reference/status/) — what is built vs. planned
-- [Related repos](https://xiddoc.github.io/rosetta-xposed/reference/related/) — frida, maps, and schema ownership
+- [Concepts](https://iliketo.party/rosetta-xposed/getting-started/concepts/) — the four-layer picture and modules
+- [Usage](https://iliketo.party/rosetta-xposed/getting-started/usage/) — resolve-and-hook walkthrough
+- [Resolution backends](https://iliketo.party/rosetta-xposed/reference/backends/) — static, dynamic (self-healing), and composite
+- [Building](https://iliketo.party/rosetta-xposed/reference/building/) — toolchain and tasks
+- [Status](https://iliketo.party/rosetta-xposed/reference/status/) — what is built vs. planned
+- [Related repos](https://iliketo.party/rosetta-xposed/reference/related/) — frida, maps, and schema ownership
 
 ## License
 

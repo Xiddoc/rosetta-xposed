@@ -4,7 +4,7 @@ This -javadoc artifact is intentionally a placeholder. The published library
 ships an empty javadoc jar (Maven Central requires the artifact to exist, not
 to contain rendered docs); the human-facing documentation lives at:
 
-  https://xiddoc.github.io/rosetta-xposed/
+  https://iliketo.party/rosetta-xposed/
 
 Generating real API docs requires the Dokka Gradle plugin, which is kept out of
 the default offline build (it would need network resolution + dependency-

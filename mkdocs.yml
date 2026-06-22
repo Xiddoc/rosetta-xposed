@@ -4,7 +4,7 @@ site_description: >-
   real Java class, method, and field names. A per-version map translates them
   to the obfuscated names the running build actually uses.
 site_author: rosetta-xposed contributors
-site_url: https://xiddoc.github.io/rosetta-xposed/
+site_url: https://iliketo.party/rosetta-xposed/
 repo_url: https://github.com/Xiddoc/rosetta-xposed
 repo_name: Xiddoc/rosetta-xposed
 edit_uri: edit/master/docs/
