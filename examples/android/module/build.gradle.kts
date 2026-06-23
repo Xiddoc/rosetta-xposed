@@ -22,8 +22,7 @@ plugins {
 // hook reads and the version-bump map (101) the e2e exercises.
 rosettaMaps {
     app.set("com.example.victim")
-    // Move this to a rosetta-maps tag / master SHA once the maps PR is merged.
-    ref.set("f16288d4893fc6fc510c2fb13a5a5b6aa3f765fe")
+    ref.set("8000d2b93e12b9b6f8b88a4297156d01b686041a")
 }
 
 android {
