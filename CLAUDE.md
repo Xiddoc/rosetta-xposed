@@ -25,7 +25,7 @@ mirror of rosetta-frida's "just makes `Java.use` smarter" stance.
 
 ## Layout
 
-Four-module Gradle (Kotlin/JVM) build:
+Five-module Gradle (Kotlin/JVM) build:
 
 - **`:core`** — pure-JVM Kotlin, the framework-neutral layers (RFC 0001
   layers 2–3): the `schema_version: 5` map model
@@ -53,6 +53,17 @@ Four-module Gradle (Kotlin/JVM) build:
   committed obfuscated DEX fixture; the test skips automatically when the
   native `.so` is absent (CI builds the `.so` from pinned source and
   caches it).
+- **`:gradle-plugin`** (build-time tooling, xposed#39) — the
+  `io.github.xiddoc.rosetta.maps` Gradle plugin that fetches published maps
+  from `rosetta-maps` at **build time** into a generated resources dir
+  (`build/generated/rosetta-maps/maps`), so a module never hand-copies map
+  JSON. Pinned by ref, ref-keyed cache, offline + vendor modes, and a
+  schema-version gate (reuses `:core`'s `CURRENT_SCHEMA_VERSION` +
+  `MapLoader`). The pure fetch/cache/filter/manifest logic is unit-tested
+  against a fake source + a hand-built tarball; the Gradle wiring is checked
+  with `ProjectBuilder`. NEVER runs on-device (no runtime download — RFC
+  0001). Kept OUT of the root 100% Kover gate (like `:dexkit`) since it glues
+  tested logic to Gradle's API. See `docs/getting-started/build-time-maps.md`.
 
 ## Decisions already settled (don't re-litigate)
 

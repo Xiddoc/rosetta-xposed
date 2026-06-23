@@ -98,6 +98,7 @@ nav:
   - Getting started:
       - Concepts: getting-started/concepts.md
       - Usage: getting-started/usage.md
+      - Build-time maps: getting-started/build-time-maps.md
   - Reference:
       - Resolution backends: reference/backends.md
       - DexKit integration: reference/dexkit-integration.md

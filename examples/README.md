@@ -38,7 +38,7 @@ because the Google Maven SDK hosts are routinely network-restricted in CI.
 | --- | ---- | ---------- |
 | [`harness/`](harness) | Pure-JVM walkthroughs **without R8** (obf names simulated by source spelling, so deterministic and offline): the full static resolve→hook path (`Walkthrough`) **and** the fail-closed signer guard — MATCH / MISMATCH / MISSING / MALFORMED / normalization (`SignerWalkthrough`). | **Anywhere, no Android.** Fast; the required gate. |
 | [`r8/`](r8) | The same flow **with real R8 obfuscation** (`--classfile`), across **two versions**: `R8WalkthroughTest` proves resolution against genuine obfuscator output; `VersionRotationTest` proves ONE real-name hook resolves both v100 (`a.b#c`) and v101 (`x.y#q`) by selecting the right map from a `MapRegistry`. Also guards the maps against drifting from what R8 emits. | **Anywhere, no Android SDK.** Needs network once to fetch R8. |
-| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side), consuming the optional `:android-runtime` module — now covering BOTH the static hook (`TicketService`, in the map) and the **dynamic** self-healing path (`AuditService`, absent from the map → live DexKit discovery + persistent cache, rosetta-xposed#22). | A device/emulator with LSPosed (Android SDK to build). |
+| [`android/`](android) | The real thing: `victim/` app + `module/` LSPosed module (legacy `XposedBridge` wired live; modern libxposed shown side-by-side), consuming the optional `:android-runtime` module — now covering BOTH the static hook (`TicketService`, in the map) and the **dynamic** self-healing path (`AuditService`, absent from the map → live DexKit discovery + persistent cache, rosetta-xposed#22). The module commits **zero** map JSON: it **fetches** `com.example.victim`'s maps from rosetta-maps at build time via the `io.github.xiddoc.rosetta.maps` plugin (rosetta-xposed#39) — see [Build-time maps](../docs/getting-started/build-time-maps.md). | A device/emulator with LSPosed (Android SDK to build). |
 
 ### Run the JVM tests (no SDK needed)
 
@@ -66,6 +66,13 @@ The `r8` test fetches `com.android.tools:r8` from Google Maven on first run
 # install both APKs, enable "Rosetta Example Module" in LSPosed, scope it to
 # com.example.victim, force-stop + reopen the victim.
 ```
+
+The `module` build **fetches** its maps from rosetta-maps at build time (pinned
+`ref` in `module/build.gradle.kts`) into `build/generated/rosetta-maps/maps` and
+bundles them — no committed map JSON. The first build needs network to
+`codeload.github.com`; later builds reuse the ref-keyed cache (and
+`offline`/`vendor` modes cover air-gapped builds). See
+[Build-time maps](../docs/getting-started/build-time-maps.md).
 
 Open the victim, tap **Call formatTicket("T-123")**:
 

@@ -45,6 +45,15 @@ rootProject.name = "rosetta-xposed"
 include(":core")
 include(":xposed")
 
+// :gradle-plugin — the BUILD-TIME map fetcher (xposed#39). A standalone Gradle
+// plugin (`io.github.xiddoc.rosetta.maps`) that pulls published maps from the
+// rosetta-maps repo at build time into a generated resources dir, so a module
+// never hand-copies map JSON. It is build-time tooling that runs on the
+// developer's/CI JVM (NEVER on-device — maps stay baked into the artifact), so
+// it is kept OUT of the root 100% Kover gate (like :dexkit) and reuses :core
+// only for the schema-version gate.
+include(":gradle-plugin")
+
 // :android-runtime — an OPTIONAL, pure-JVM module of reusable Android-runtime
 // LOGIC (bundled-map loading + signer-hash/AppIdentity assembly from
 // PackageManager primitives). It applies NO Android plugin and never compiles
