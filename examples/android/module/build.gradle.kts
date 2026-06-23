@@ -8,6 +8,21 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // Build-time map fetch (rosetta-xposed#39). Resolved from the parent build via
+    // the composite `includeBuild("../..")` in settings.gradle.kts. The maps are
+    // pulled from rosetta-maps at build time into build/generated/rosetta-maps/maps
+    // and bundled into the APK — this module commits ZERO map JSON.
+    id("io.github.xiddoc.rosetta.maps")
+}
+
+// Declare WHAT to bundle; the build fetches it. Pinned to a rosetta-maps commit
+// SHA for reproducibility/provenance (git content-addressing = integrity). With
+// `versions` left at its default the build pulls every published version under
+// maps/com.example.victim/ — here 100.json + 101.json, the static map (100) the
+// hook reads and the version-bump map (101) the e2e exercises.
+rosettaMaps {
+    app.set("com.example.victim")
+    ref.set("8000d2b93e12b9b6f8b88a4297156d01b686041a")
 }
 
 android {
@@ -39,7 +54,21 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Bundle the fetched maps as Java resources, exactly where the hand-copied
+    // maps/<version_code>.json used to live — so BundledMaps.load("100.json")
+    // reads them off the module class loader at runtime, unchanged. The plugin
+    // does NOT auto-wire AGP source sets (it never compiles against the Android
+    // toolchain); the consumer adds the one srcDir line, where AGP's types are
+    // on the classpath. See docs/getting-started/build-time-maps.md.
+    sourceSets["main"].resources.srcDirs(layout.buildDirectory.dir("generated/rosetta-maps"))
 }
+
+// Fetch the maps before anything that consumes resources/dex. `preBuild` is the
+// AGP anchor every variant build depends on, so this guarantees the generated
+// maps exist before they are packaged — without depending on AGP-version-specific
+// generated-source wiring.
+tasks.named("preBuild") { dependsOn("fetchRosettaMaps") }
 
 dependencies {
     // Resolution layer — the one Rosetta coordinate (pulls :core transitively).
