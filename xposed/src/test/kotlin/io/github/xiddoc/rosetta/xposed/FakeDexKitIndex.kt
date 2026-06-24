@@ -14,6 +14,7 @@ package io.github.xiddoc.rosetta.xposed
 class FakeDexKitIndex(
     private val byAidl: Map<String, String> = emptyMap(),
     private val byAnchors: Map<List<String>, String> = emptyMap(),
+    private val byPatterns: Map<List<String>, String> = emptyMap(),
     private val bySuper: Map<String, String> = emptyMap(),
     private val methods: Map<String, List<MethodMatch>> = emptyMap(),
 ) : DexKitIndex {
@@ -29,6 +30,11 @@ class FakeDexKitIndex(
     override fun findClassByAnchors(anchors: List<String>): String? {
         calls++
         return byAnchors[anchors]
+    }
+
+    override fun findClassByStringPatterns(patterns: List<String>): String? {
+        calls++
+        return byPatterns[patterns]
     }
 
     override fun findClassBySuperclass(superName: String): String? {

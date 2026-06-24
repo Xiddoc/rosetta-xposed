@@ -57,6 +57,29 @@ public class RetractedMapException(
     message: String,
 ) : RosettaException(message)
 
+/**
+ * A community-signature artifact (the sigmatcher dialect) failed to load:
+ * it was not valid JSON, did not match the expected rule shape, or violated a
+ * hardening bound. The sibling of [MapValidationException] for the
+ * `signatures/<app>/signatures.yaml` source the self-healing backend reads
+ * when a version has no published map.
+ */
+public class SignatureValidationException(
+    message: String,
+    public val issues: List<ValidationIssue> = emptyList(),
+    cause: Throwable? = null,
+) : RosettaException(message, cause)
+
+/**
+ * The raw input handed to [SignatureLoader.fromJson] was rejected by the
+ * shared pre-parse denial-of-service guard ([JsonInputGuard]) before any
+ * deserialization ran — either larger than the byte cap or nested deeper than
+ * the depth cap. The signature sibling of [MapInputTooLargeException].
+ */
+public class SignatureInputTooLargeException(
+    message: String,
+) : RosettaException(message)
+
 /** Which kind of symbol a [ResolveException] failed to resolve. */
 public enum class ResolveTarget {
     CLASS,

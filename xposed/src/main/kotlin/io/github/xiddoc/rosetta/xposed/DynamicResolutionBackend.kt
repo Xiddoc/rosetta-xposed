@@ -19,9 +19,11 @@
  *
  *   (a) AIDL descriptor   — the stable cross-version anchor for binder stubs.
  *   (b) stable string anchors — literals the class references, RE2-validated.
+ *   (b′) regex string anchors — string CONSTANTS matched by RE2 regex (the
+ *       genuine-regex form of (b); routed through [SafePattern.compileAll]).
  *   (c) superclass / extends narrowing — find a class by its (obf) parent.
- *   (d) method signature scan within a found class — only after (a)/(b)/(c)
- *       have located the class, so the scan has a known starting point.
+ *   (d) method signature scan within a found class — only after the class is
+ *       located, so the scan has a known starting point.
  *
  * SECURITY / FAIL-CLOSED. Every contributor pattern flows through
  * [SafePattern] (bounds-then-RE2). A miss, an over-bound input, or a partial
@@ -72,6 +74,11 @@ public data class MethodDiscoveryHint(
  * @property aidlDescriptor stable AIDL interface descriptor (strategy a).
  * @property anchors stable string literals the class references (strategy b);
  *   contributor input, RE2-bounded via [SafePattern].
+ * @property regexAnchors stable string CONSTANTS the class references, matched
+ *   as RE2 regexes (strategy b′) — the genuine-regex form of [anchors] (e.g.
+ *   an endpoint URL with a `.*` wildcard). Each is RE2-compiled and bounded
+ *   via [SafePattern.compileAll] before use, then matched on-device with
+ *   `StringMatchType.SimilarRegex`.
  * @property superclass obfuscated FQN of the class's superclass (strategy c).
  * @property methods per-method discovery hints (strategy d), keyed nowhere —
  *   carried as a list and matched by [MethodDiscoveryHint.realName].
@@ -79,12 +86,13 @@ public data class MethodDiscoveryHint(
 public data class DiscoveryHints(
     val aidlDescriptor: String? = null,
     val anchors: List<String> = emptyList(),
+    val regexAnchors: List<String> = emptyList(),
     val superclass: String? = null,
     val methods: List<MethodDiscoveryHint> = emptyList(),
 ) {
     /** True when at least one class-locating strategy could run. */
     public val canLocateClass: Boolean
-        get() = aidlDescriptor != null || anchors.isNotEmpty() || superclass != null
+        get() = aidlDescriptor != null || anchors.isNotEmpty() || regexAnchors.isNotEmpty() || superclass != null
 }
 
 /**
@@ -342,6 +350,15 @@ public class DynamicResolutionBackend(
         if (hint.anchors.isNotEmpty()) {
             SafePattern.checkBounds(hint.anchors)
             index.findClassByAnchors(hint.anchors)?.let { return it }
+        }
+
+        // (b′) regex string anchors — string constants matched by RE2 regex.
+        // SafePattern.compileAll enforces the bounds AND linear-time RE2 compile
+        // (rejecting a malformed or pathological pattern fail-closed) before the
+        // patterns reach the on-device SimilarRegex match.
+        if (hint.regexAnchors.isNotEmpty()) {
+            SafePattern.compileAll(hint.regexAnchors)
+            index.findClassByStringPatterns(hint.regexAnchors)?.let { return it }
         }
 
         // (c) superclass / extends narrowing.

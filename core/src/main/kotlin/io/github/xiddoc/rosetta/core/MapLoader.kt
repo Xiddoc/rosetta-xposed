@@ -138,15 +138,6 @@ public object MapLoader {
      */
     private val SIGNATURES_REV_PATTERN: Regex = Regex("^[0-9a-f]{7,40}$")
 
-    /** Highest code point encoded as 1 UTF-8 byte (U+007F). See [utf8ByteLength]. */
-    private const val UTF8_1BYTE_MAX = 0x7F
-
-    /** Highest code point encoded as 2 UTF-8 bytes (U+07FF). See [utf8ByteLength]. */
-    private const val UTF8_2BYTE_MAX = 0x7FF
-
-    /** UTF-8 byte count for a BMP code unit above U+07FF (incl. each surrogate). See [utf8ByteLength]. */
-    private const val UTF8_3BYTE_LEN = 3
-
     /**
      * Parse and validate a JSON map.
      *
@@ -202,99 +193,18 @@ public object MapLoader {
     }
 
     /**
-     * Cheap pre-parse denial-of-service guard: reject oversized input by
-     * byte length, then scan once for excessive structural nesting (which
-     * would risk a stack overflow in the recursive decoder).
-     *
-     * The byte-length check counts UTF-8 bytes in a SINGLE pass WITHOUT
-     * allocating a copy (xposed#14 L4): the previous `toByteArray().size`
-     * allocated a full byte[] just to read its length, scanning the input an
-     * extra time. [utf8ByteLength] counts in place and short-circuits the moment
-     * the count passes [MAX_INPUT_BYTES], so an oversized input is rejected
-     * fail-fast before the depth scan ever runs.
+     * Cheap pre-parse denial-of-service guard: reject oversized or
+     * excessively-nested input before any deserialization runs. Delegates to
+     * the shared [JsonInputGuard] (the same guard [SignatureLoader] uses) and
+     * wraps its reason in a [MapInputTooLargeException]; the guard counts UTF-8
+     * bytes in place (no `toByteArray` copy) and short-circuits the moment the
+     * cap is passed, so an oversized input is rejected fail-fast before the
+     * depth scan ever runs.
      */
     private fun guardInput(text: String) {
-        val bytes = utf8ByteLength(text)
-        if (bytes > MAX_INPUT_BYTES) {
-            throw MapInputTooLargeException(
-                "Map input exceeds the $MAX_INPUT_BYTES-byte limit (over $MAX_INPUT_BYTES bytes)",
-            )
+        JsonInputGuard.check(text, MAX_INPUT_BYTES, MAX_NESTING_DEPTH)?.let { reason ->
+            throw MapInputTooLargeException("Map $reason")
         }
-        val depth = maxNestingDepth(text)
-        if (depth > MAX_NESTING_DEPTH) {
-            throw MapInputTooLargeException(
-                "Map input nests to depth $depth, over the $MAX_NESTING_DEPTH limit",
-            )
-        }
-    }
-
-    /**
-     * UTF-8 byte length of [text] computed in place (no `toByteArray` copy).
-     * Each `char` contributes 1 byte (≤ U+007F), 2 bytes (≤ U+07FF), or 3 bytes
-     * (any higher BMP code unit — INCLUDING each half of a surrogate pair).
-     *
-     * This is a CONSERVATIVE OVERCOUNT for supplementary characters, NOT exact
-     * parity with `String.toByteArray(UTF_8)`: a real surrogate pair encodes to
-     * 4 UTF-8 bytes, but counting 3 bytes per surrogate charges it 6 — an
-     * overcount of 2 bytes per supplementary char. That is intentional and safe
-     * for a fail-fast SIZE guard: it can only make the count larger, so it never
-     * lets an over-cap input slip through; the worst case is rejecting an input
-     * very slightly under the byte cap that happens to be dense in emoji, which
-     * is far below any real map size. Short-circuits at [MAX_INPUT_BYTES] + 1:
-     * once the running total exceeds the cap the exact size is irrelevant (the
-     * input is rejected), so we stop counting.
-     */
-    private fun utf8ByteLength(text: String): Int {
-        var bytes = 0
-        for (ch in text) {
-            val code = ch.code
-            bytes +=
-                when {
-                    code <= UTF8_1BYTE_MAX -> 1
-                    code <= UTF8_2BYTE_MAX -> 2
-                    else -> UTF8_3BYTE_LEN
-                }
-            // Bound the work: the moment we pass the cap the exact length no
-            // longer matters, so stop (returns a value strictly over the cap).
-            if (bytes > MAX_INPUT_BYTES) return bytes
-        }
-        return bytes
-    }
-
-    /**
-     * Single-pass scan of the maximum `{`/`[` nesting depth, skipping over
-     * string literals so structural punctuation inside strings is ignored.
-     * Returns the deepest level reached.
-     */
-    private fun maxNestingDepth(text: String): Int {
-        var depth = 0
-        var max = 0
-        var inString = false
-        var escaped = false
-        for (ch in text) {
-            if (inString) {
-                if (escaped) {
-                    escaped = false
-                } else if (ch == '\\') {
-                    escaped = true
-                } else if (ch == '"') {
-                    inString = false
-                }
-                continue
-            }
-            when (ch) {
-                '"' -> inString = true
-                '{', '[' -> {
-                    depth++
-                    if (depth > max) max = depth
-                    // Once we've already exceeded the cap there is nothing
-                    // deeper to learn — stop scanning early to bound the work.
-                    if (max > MAX_NESTING_DEPTH) return max
-                }
-                '}', ']' -> if (depth > 0) depth--
-            }
-        }
-        return max
     }
 
     /**

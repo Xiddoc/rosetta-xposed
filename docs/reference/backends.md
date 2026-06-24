@@ -55,9 +55,15 @@ first hit wins, and a strategy that has no hint for a class is skipped:
 1. **AIDL descriptor** — tried first *only when present*, because a binder
    stub's descriptor is the cheapest exact match. Most classes have none; this
    is the narrow special case, not the common one.
-2. **Stable string anchors** — literals the class references. Together with (3)
-   this is the **general** path for the deep minified classes that are the
-   typical targets.
+2. **Stable string anchors** — exact string literals the class references.
+   Together with (3) this is the **general** path for the deep minified classes
+   that are the typical targets.
+2b. **Regex string anchors** — string *constants* matched by RE2 regex (the
+   genuine-regex form of (2), e.g. an endpoint URL with a `.*` wildcard). Each
+   pattern is routed through `SafePattern.compileAll` (bounds + linear-time RE2
+   compile) before the on-device `StringMatchType.SimilarRegex` match. This is
+   the runtime home of a sigmatcher `type: regex` signature whose pattern is a
+   real regex rather than a literal.
 3. **Superclass / `extends` narrowing** — find a class by its (obfuscated)
    parent (e.g. a framework base class the target extends). The other half of
    the general, no-API-surface path.
@@ -95,6 +101,42 @@ chokepoint that neutralises this with two fail-closed layers:
    `com.google.re2j.Pattern` (RE2 — a linear-time automaton with no
    backtracking), never `java.util.regex` / `kotlin.text.Regex`. A
    pathological pattern returns promptly instead of hanging.
+
+`SafePattern.compile` / `compileAll` are exercised on the live path by the
+**regex-anchor** strategy (2b) and by `SignatureCompiler`, which validates every
+regex anchor at compile time so a malformed or pathological signature fails
+closed *before* it can reach a hook, not inside one.
+
+## Signature-driven self-healing (community signatures)
+
+The dynamic backend searches by `DiscoveryHints`. A module rarely hand-writes
+those: it ships Rosetta's **community signatures** — the same
+`signatures/<app>/signatures.yaml` (sigmatcher dialect) that `rosetta-maps`
+owns — and lets the binding harvest them. This is what lets a module detect
+obfuscation for a version that has **no published map yet**.
+
+- `core/SignatureLoader` parses the JSON form of a signatures file into a typed
+  `SignatureSet` (a client of the maps-owned dialect, the signature sibling of
+  `MapLoader`). It is lenient about authoring-only keys (the smali `count`) and
+  strict about the shape it reads.
+- `SignatureCompiler` **harvests** that set into `Map<realFqn, DiscoveryHints>`.
+  It extracts the *string-constant* signals DexKit can match — `type: string`
+  literals, quoted `type: regex` constants (exact → `anchors`, genuine-regex →
+  `regexAnchors`), and unquoted bare-word tokens — and deliberately **skips**
+  structural patterns (`type: smali`, descriptor regexes like
+  `requestTicket\(Landroid/os/Bundle;\)`) that are not strings the live code
+  references. The real community corpus is overwhelmingly quoted string
+  constants, so the mechanical harvest covers it; the structural minority is the
+  one-time human harvest's job (RFC 0001 Decision 5). A class with no usable
+  class-locating signal is omitted (fail-closed), never fabricated.
+- `RosettaXposed.fromMapWithSignatures(map, index, signatures, classLoader, …)`
+  wires it end-to-end: it compiles the signatures, merges any hand-authored
+  `DiscoveryConfig.hints` on top (explicit wins per name), and delegates to
+  `fromMapWithDiscovery` — inheriting that path's *entire* security posture
+  (retraction refusal, the signer guard, the static map's arg translator, the
+  cache / sink / observer, and the C1 namespace guard over every discovered
+  FQN). Known names still resolve from the static map; the signatures cover the
+  rest.
 
 ### Provenance (`DiscoverySink`)
 

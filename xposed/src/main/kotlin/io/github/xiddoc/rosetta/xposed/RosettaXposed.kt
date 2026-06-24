@@ -26,6 +26,7 @@ import io.github.xiddoc.rosetta.core.RetractedMapException
 import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
 import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.signature.SignatureSet
 import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 
@@ -361,6 +362,71 @@ public class RosettaXposed internal constructor(
                         ),
                 )
             return RosettaXposed(composite, classLoader, map.app, policy)
+        }
+
+        /**
+         * Build a self-healing binding whose discovery is driven by Rosetta's
+         * COMMUNITY SIGNATURES — the bridge that lets a module detect
+         * obfuscation for a version that has **no published map yet** (RFC 0001
+         * Decision 5).
+         *
+         * It [compiles][SignatureCompiler.compile] [signatures] (the typed form
+         * of a `signatures/<app>/signatures.yaml`, loaded by
+         * `core/SignatureLoader`) into the on-device DexKit discovery hints,
+         * then delegates to [fromMapWithDiscovery] — so it inherits that path's
+         * ENTIRE posture unchanged: retraction refusal, the signer guard
+         * (enforced when [identity] != null; [allowUnverified] for a signed,
+         * identity-less map), the static map's real→obf arg translator, the
+         * discovery cache / sink / observer, and the C1 namespace guard over
+         * every discovered FQN. See the posture matrix on this companion.
+         *
+         * Any hints in [discovery]`.hints` are MERGED on top of the compiled
+         * signature hints (an explicit hint for a real name overrides the
+         * compiled one), so a module can hand-tune a single class while letting
+         * the community signatures drive the rest. A class whose signatures
+         * yield no usable class-locating anchor is omitted by the compiler and
+         * simply stays unresolvable (fail-closed) unless the static map or an
+         * explicit hint covers it.
+         *
+         * @param map the (possibly empty / older) static map; known names still
+         *   resolve statically, signatures cover the rest.
+         * @param index the device-side discovery seam (faked in tests).
+         * @param signatures the community signatures to harvest into hints.
+         * @param classLoader the app class loader targets are realised through.
+         * @param identity when non-null, enforces the map's signer guard before
+         *   wiring discovery; see [fromMapWithDiscovery] / [allowUnverified].
+         * @param discovery the provenance sink / cache / observer plus any
+         *   hand-authored hints to merge over the compiled ones.
+         * @param policy the C1 target namespace policy applied to every target.
+         * @param allowUnverified opt-in to the unverified path for a signed,
+         *   identity-less map (forwarded verbatim to [fromMapWithDiscovery]).
+         * @throws DiscoveryException if a harvested anchor is over the
+         *   [SafePattern] bounds or is not a valid RE2 expression.
+         * @throws UnverifiedDiscoveryException under the same conditions as
+         *   [fromMapWithDiscovery].
+         */
+        public fun fromMapWithSignatures(
+            map: RosettaMap,
+            index: DexKitIndex,
+            signatures: SignatureSet,
+            classLoader: ClassLoader,
+            identity: AppIdentity? = null,
+            discovery: DiscoveryConfig = DiscoveryConfig(),
+            policy: TargetPolicy = TargetPolicy(),
+            allowUnverified: Boolean = false,
+        ): RosettaXposed {
+            // Explicit hints win over compiled ones for the same real name, so a
+            // module can override a single class while signatures drive the rest.
+            val mergedHints = SignatureCompiler.compile(signatures) + discovery.hints
+            return fromMapWithDiscovery(
+                map = map,
+                index = index,
+                classLoader = classLoader,
+                identity = identity,
+                discovery = discovery.copy(hints = mergedHints),
+                policy = policy,
+                allowUnverified = allowUnverified,
+            )
         }
     }
 }

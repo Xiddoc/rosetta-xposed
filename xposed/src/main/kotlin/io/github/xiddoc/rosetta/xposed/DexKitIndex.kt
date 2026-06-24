@@ -86,6 +86,21 @@ public interface DexKitIndex {
      */
     public fun findClassByAnchors(anchors: List<String>): String?
 
+    /**
+     * Find a class that references a string constant matching EACH of
+     * [patterns] as a regular expression; null on miss. Unlike
+     * [findClassByAnchors] (exact-literal match), this matches string
+     * CONSTANTS by regex — the on-device counterpart of a sigmatcher
+     * `type: regex` signature whose pattern is a genuine regex (e.g. an
+     * endpoint URL with a `.*` wildcard). The patterns are contributor input
+     * and MUST already have passed [SafePattern.compileAll] (bounds + RE2
+     * linear-time compile) before reaching here — the backend routes them
+     * through that chokepoint so a pathological pattern can never reach a
+     * backtracking engine. The DexKit-backed adapter matches with
+     * `StringMatchType.SimilarRegex`.
+     */
+    public fun findClassByStringPatterns(patterns: List<String>): String?
+
     /** Find a class by its (obfuscated) superclass FQN; null on miss. */
     public fun findClassBySuperclass(superName: String): String?
 

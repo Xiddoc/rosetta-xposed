@@ -29,10 +29,13 @@ Five-module Gradle (Kotlin/JVM) build:
 
 - **`:core`** — pure-JVM Kotlin, the framework-neutral layers (RFC 0001
   layers 2–3): the `schema_version: 5` map model
-  (`core/.../model/RosettaMap.kt`), a strict-JSON `MapLoader`, and the
-  `Resolver` (`core/.../resolver/`). A faithful twin of rosetta-frida's
-  `src/types/map.ts` + `src/validate/schema.ts` + `src/resolver/`. No
-  Android, no Xposed: it builds and tests on any JVM.
+  (`core/.../model/RosettaMap.kt`), a strict-JSON `MapLoader`, the
+  `Resolver` (`core/.../resolver/`), and the **community-signature model +
+  loader** (`core/.../signature/`: the typed twin of the rosetta-maps
+  sigmatcher dialect + `SignatureLoader`, the signature sibling of
+  `MapLoader`). A faithful twin of rosetta-frida's `src/types/map.ts` +
+  `src/validate/schema.ts` + `src/resolver/`. No Android, no Xposed: it builds
+  and tests on any JVM.
 - **`:xposed`** — the layer-4 binding (`xposed/.../`): `ResolutionBackend`
   (static + dynamic/composite, both implemented and unit-tested with a
   `FakeDexKitIndex`), `RosettaXposed` entry point, bind `Targets`, the
@@ -101,8 +104,16 @@ These come from RFC 0001 and were confirmed with the project owner.
    (`DynamicResolutionBackend`), composite backend
    (`CompositeResolutionBackend`), and deferred binding (`DeferredBinding`
    + `ClassAvailabilityWatcher`) are fully implemented and unit-tested via
-   a `FakeDexKitIndex`. The `:dexkit` module (`DexKitBackedIndex`) is also
-   built and has an integration test against a committed obfuscated DEX
+   a `FakeDexKitIndex`. **Self-healing is driven by Rosetta's community
+   signatures**: `SignatureCompiler` (in `:xposed`) harvests a `SignatureSet`
+   (loaded by `core/SignatureLoader` from the maps-owned sigmatcher dialect)
+   into `DiscoveryHints` — extracting the string-constant signals DexKit can
+   match (exact `anchors` + RE2 `regexAnchors`, the latter matched on-device
+   with `SimilarRegex`) and skipping structural patterns it can't — and
+   `RosettaXposed.fromMapWithSignatures(...)` wires the whole thing over
+   `fromMapWithDiscovery`, so a module detects obfuscation for an UNMAPPED
+   version by shipping signatures. The `:dexkit` module (`DexKitBackedIndex`)
+   is also built and has an integration test against a committed obfuscated DEX
    fixture; the test skips when the native lib is absent. What is not yet
    proven: end-to-end on-device wiring with a real DexKit native loaded on
    Android, and wiring `AppIdentity` from a real `PackageManager` in the
