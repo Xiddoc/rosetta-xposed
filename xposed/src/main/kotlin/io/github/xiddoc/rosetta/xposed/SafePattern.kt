@@ -24,15 +24,17 @@
  * This object is the SINGLE place contributor input becomes a [Pattern]; the
  * backend must route every contributor string through here.
  *
- * CURRENT LIVE PATH. The current [DynamicResolutionBackend] treats all
- * contributor strings (AIDL descriptors, stable anchors, superclass names,
- * method descriptors) as LITERALS: they are passed directly to the
- * [DexKitIndex] seam, which does the on-device matching. Accordingly, the
- * live path uses only [checkLen] and [checkBounds] (bounds-before-use, no
- * regex engine). [compile] and [compileAll] have no production caller yet
- * by design — they are the ready, tested seam the future DexKit device
- * adapter MUST route any contributor-supplied regex anchors through; RE2J
- * is already on the classpath and the seam is fully exercised by unit tests.
+ * LIVE PATHS. Most contributor strings (AIDL descriptors, exact anchors,
+ * superclass names, method descriptors) are LITERALS passed straight to the
+ * [DexKitIndex] seam, which does the on-device matching — those use only
+ * [checkLen] and [checkBounds] (bounds-before-use, no regex engine). REGEX
+ * anchors (a `DiscoveryHints.regexAnchors` facet, harvested by
+ * [SignatureCompiler] from a sigmatcher `type: regex` signature) are a genuine
+ * regex matched on-device with `StringMatchType.SimilarRegex`; those flow
+ * through [compile] / [compileAll] so a malformed or pathological pattern is
+ * rejected by RE2 (linear-time) BEFORE it can reach a hook — the
+ * [DynamicResolutionBackend] validates them at locate time and
+ * [SignatureCompiler] validates them at compile time.
  */
 package io.github.xiddoc.rosetta.xposed
 
@@ -69,13 +71,10 @@ public object SafePattern {
      * Compile [pattern] (a contributor-supplied string) to a linear-time RE2
      * [Pattern], after enforcing [MAX_SIGNATURE_LEN].
      *
-     * **H4 seam — future adapter MUST use this.** This is the gateway the
-     * upcoming DexKit device adapter MUST route every contributor-supplied
-     * regex anchor through. The current [DynamicResolutionBackend] passes
-     * anchors to the index as literals (bounded by [checkLen]/[checkBounds]),
-     * so this method has no production caller yet; it is kept, tested, and
-     * documented here so the device adapter can drop in without introducing
-     * a new ReDoS surface.
+     * **H4 chokepoint.** Used by [SignatureCompiler] to validate a regex anchor
+     * harvested from a sigmatcher `type: regex` signature at compile time, so a
+     * malformed or pathological pattern is rejected before it can reach a hook.
+     * (Exact anchors stay literals bounded by [checkLen] / [checkBounds].)
      *
      * @throws DiscoveryException if [pattern] exceeds [MAX_SIGNATURE_LEN]
      *   (checked BEFORE compilation), or if RE2 rejects it as malformed.
@@ -102,11 +101,10 @@ public object SafePattern {
      * entry, returning the compiled patterns. Enforces [MAX_ANCHORS] on the
      * list size and [MAX_SIGNATURE_LEN] on every element BEFORE compiling.
      *
-     * **H4 seam — future adapter MUST use this.** Like [compile], this method
-     * has no production caller in the current backend (which passes anchors as
-     * literals via [checkBounds]). The future DexKit device adapter MUST route
-     * every contributor-supplied regex anchor list through here instead of
-     * calling the backtracking JDK engine directly.
+     * **H4 chokepoint.** The [DynamicResolutionBackend] routes a hint's
+     * `regexAnchors` through here at locate time (bounds + RE2 compile) before
+     * the on-device `SimilarRegex` match, so a contributor-supplied regex anchor
+     * never reaches a backtracking engine.
      *
      * @throws DiscoveryException if the list is over [MAX_ANCHORS] or any
      *   element is over [MAX_SIGNATURE_LEN] / malformed.

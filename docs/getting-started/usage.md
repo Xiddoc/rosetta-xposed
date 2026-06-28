@@ -47,6 +47,43 @@ guard (`signer_sha256`) come from the shared schema. Use
 `RosettaXposed.fromRegistry(...)` to select a map from a registry by the
 running app's identity.
 
+## Self-healing for unmapped versions (community signatures)
+
+When the running version has **no published map yet**, you don't have to wait
+for one — ship Rosetta's community **signatures** (the same
+`signatures/<app>/signatures.yaml` that `rosetta-maps` owns) and let the
+binding discover the obfuscated names live via DexKit. The hook source is,
+again, unchanged: you resolve by real name.
+
+```kotlin
+import io.github.xiddoc.rosetta.core.signature.SignatureLoader
+import io.github.xiddoc.rosetta.dexkit.DexKitBackedIndex
+import org.luckypray.dexkit.DexKitBridge
+
+val signatures = SignatureLoader.fromJson(signaturesJson)   // the app's signatures, as JSON
+
+DexKitBridge.create(app.applicationInfo.sourceDir).use { bridge ->
+    val rosetta = RosettaXposed.fromMapWithSignatures(
+        map = map,                       // a (maybe empty / older) static map; known names still win
+        index = DexKitBackedIndex(bridge),
+        signatures = signatures,         // drive discovery for everything the map misses
+        classLoader = lpparam.classLoader,
+        identity = identity,             // enforces the map's signer_sha256 before any discovery
+    )
+    // Resolve by REAL name — discovered the same as a mapped one, then cached.
+    rosetta.method("com.example.app.RemoteServiceClient", "requestTicket")
+        .hook { member -> XposedBridge.hookMethod(member, myHook) }
+}
+```
+
+The binding harvests the signatures into discovery hints, resolves a static
+hit when the map has one, and otherwise locates the class by its
+rotation-stable string anchors (exact or regex) and writes the result back so
+the next lookup is O(1). It inherits the full `fromMapWithDiscovery` posture
+(signer guard, the C1 namespace guard over every discovered name, the
+discovery cache/observer). See [Resolution backends](../reference/backends.md)
+for the harvest rules and what a signature can and cannot drive.
+
 ## Signer enforcement (fail-closed)
 
 When a map carries a `signer_sha256`, it is **enforced** (no opt-out):

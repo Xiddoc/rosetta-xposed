@@ -38,6 +38,11 @@ superclass alone.
   `StringMatchType.Equals` (an anchor/descriptor is an exact literal, not a
   fuzzy substring). Anchors and superclass are the general path; the descriptor
   query only fires for the binder-stub special case.
+- `findClassByStringPatterns` matches string *constants* by regex with
+  `StringMatchType.SimilarRegex` — the on-device home of a sigmatcher
+  `type: regex` signature whose pattern is a genuine regex. The patterns are
+  RE2-validated + bounded by `SafePattern` in the backend before they reach the
+  bridge, so the regex path adds no ReDoS surface.
 - `findMethod` matches on the **return-type, parameter-type, and using-strings**
   facets only. The JVM `MethodQuery.descriptor` is intentionally *not*
   decomposed — DexKit matches by dotted type names, which the discovery hints

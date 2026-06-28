@@ -71,6 +71,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -218,6 +219,25 @@ class DexKitBackedIndexIntegrationTest {
             widget.obfuscated,
             backend.resolveClass("AnchoredWidget").obfName,
             "dynamic backend must surface the discovered obfuscated AnchoredWidget",
+        )
+    }
+
+    // --- 1b. Regex-anchor discovery (SimilarRegex), fail-closed direction ----
+
+    @Test
+    fun `findClassByStringPatterns returns null when no string matches`() {
+        // The (b′) regex-anchor adapter differs from the proven findClassByAnchors
+        // only by StringMatchType (SimilarRegex vs Equals). Its POSITIVE
+        // resolution logic is covered deterministically on the JVM by
+        // RegexAnchorDiscoveryTest / SignatureCompilerTest over the FakeDexKitIndex
+        // (where the project says the testable value lives). DexKit's exact
+        // SimilarRegex pattern semantics are environment-specific to confirm, so
+        // we do NOT assert a positive real-bridge match here; instead we exercise
+        // the real-bridge call path (query build → singleOrNull) and pin its
+        // fail-closed contract: a pattern no class references resolves to null.
+        assertNull(
+            index.findClassByStringPatterns(listOf("rosetta-dexfixture-no-such-anchor-[0-9]+")),
+            "a regex anchor that matches no string constant must fail closed (null)",
         )
     }
 
@@ -441,6 +461,8 @@ class DexKitBackedIndexIntegrationTest {
                 // name to prove the guard wraps DISCOVERED names.
                 override fun findClassByAnchors(anchors: List<String>): String? = "java.lang.Runtime"
 
+                override fun findClassByStringPatterns(patterns: List<String>): String? = null
+
                 override fun findClassByAidlDescriptor(descriptor: String): String? = null
 
                 override fun findClassBySuperclass(superName: String): String? = null
@@ -552,6 +574,11 @@ private class CountingDexKitIndex(
     override fun findClassByAnchors(anchors: List<String>): String? {
         calls++
         return delegate.findClassByAnchors(anchors)
+    }
+
+    override fun findClassByStringPatterns(patterns: List<String>): String? {
+        calls++
+        return delegate.findClassByStringPatterns(patterns)
     }
 
     override fun findClassBySuperclass(superName: String): String? {

@@ -83,6 +83,25 @@ public class DexKitBackedIndex(
             ?.name
 
     /**
+     * Find the single class whose string constants match ALL of [patterns] as
+     * regexes. Non-unique / empty → `null`.
+     *
+     * Matched with [StringMatchType.SimilarRegex] — the regex counterpart of
+     * [findClassByAnchors]'s exact match. This is the on-device home of a
+     * sigmatcher `type: regex` signature whose pattern is a genuine regex over
+     * a referenced string constant (e.g. an endpoint URL with a `.*`
+     * wildcard). The patterns are already RE2-validated + bounded by the
+     * backend ([io.github.xiddoc.rosetta.xposed.SafePattern]) before they
+     * reach here.
+     */
+    override fun findClassByStringPatterns(patterns: List<String>): String? =
+        bridge
+            .findClass {
+                matcher { usingStrings(patterns, StringMatchType.SimilarRegex) }
+            }.singleOrNull()
+            ?.name
+
+    /**
      * Find the single class whose (obfuscated) superclass FQN is [superName].
      * Non-unique / empty → `null`.
      */

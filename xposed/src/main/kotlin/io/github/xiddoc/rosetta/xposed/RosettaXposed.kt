@@ -26,6 +26,7 @@ import io.github.xiddoc.rosetta.core.RetractedMapException
 import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
 import io.github.xiddoc.rosetta.core.model.MapStatus
 import io.github.xiddoc.rosetta.core.model.RosettaMap
+import io.github.xiddoc.rosetta.core.signature.SignatureSet
 import io.github.xiddoc.rosetta.core.version.MapRegistry
 import io.github.xiddoc.rosetta.core.version.VersionMatch
 
@@ -326,6 +327,22 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
             allowUnverified: Boolean = false,
         ): RosettaXposed {
+            guardConstruction(map, identity, allowUnverified)
+            return buildWithDiscovery(map, index, classLoader, discovery, policy)
+        }
+
+        /**
+         * The construction gate shared by the discovery factories: refuse a
+         * retracted map, then enforce the signer guard (or the explicit
+         * unverified opt-in). Runs BEFORE any work — so a retracted /
+         * signer-mismatched map is refused before, and instead of, signature
+         * compilation (which would otherwise misattribute the failure).
+         */
+        private fun guardConstruction(
+            map: RosettaMap,
+            identity: AppIdentity?,
+            allowUnverified: Boolean,
+        ) {
             refuseIfRetracted(map)
             if (identity != null) {
                 SignerGuard.verify(map, identity)
@@ -335,11 +352,25 @@ public class RosettaXposed internal constructor(
                 // rather than silently skip the guard (xposed#14 M5).
                 throw UnverifiedDiscoveryException(
                     "rosetta-xposed: map for ${map.app}@${map.version} (version_code=${map.versionCode}) " +
-                        "carries a signer_sha256 but fromMapWithDiscovery was called without an AppIdentity. " +
+                        "carries a signer_sha256 but a discovery binding was constructed without an AppIdentity. " +
                         "Pass an identity to verify it, or set allowUnverified=true to deliberately skip the " +
                         "signer guard (or use fromMapUnverified).",
                 )
             }
+        }
+
+        /**
+         * Assemble the static-first composite over a discovery config. Assumes
+         * [guardConstruction] has already run; it does NOT re-gate, so the two
+         * discovery factories each gate exactly once.
+         */
+        private fun buildWithDiscovery(
+            map: RosettaMap,
+            index: DexKitIndex,
+            classLoader: ClassLoader,
+            discovery: DiscoveryConfig,
+            policy: TargetPolicy,
+        ): RosettaXposed {
             val static = StaticResolutionBackend(map, policy)
             val composite =
                 CompositeResolutionBackend(
@@ -361,6 +392,73 @@ public class RosettaXposed internal constructor(
                         ),
                 )
             return RosettaXposed(composite, classLoader, map.app, policy)
+        }
+
+        /**
+         * Build a self-healing binding whose discovery is driven by Rosetta's
+         * COMMUNITY SIGNATURES — the bridge that lets a module detect
+         * obfuscation for a version that has **no published map yet** (RFC 0001
+         * Decision 5).
+         *
+         * It [compiles][SignatureCompiler.compile] [signatures] (the typed form
+         * of a `signatures/<app>/signatures.yaml`, loaded by
+         * `core/SignatureLoader`) into the on-device DexKit discovery hints,
+         * then delegates to [fromMapWithDiscovery] — so it inherits that path's
+         * ENTIRE posture unchanged: retraction refusal, the signer guard
+         * (enforced when [identity] != null; [allowUnverified] for a signed,
+         * identity-less map), the static map's real→obf arg translator, the
+         * discovery cache / sink / observer, and the C1 namespace guard over
+         * every discovered FQN. See the posture matrix on this companion.
+         *
+         * Any hints in [discovery]`.hints` are MERGED on top of the compiled
+         * signature hints, at WHOLE-CLASS granularity: an explicit hint for a
+         * real name REPLACES the compiled hint for that name entirely (it is not
+         * field-merged), so a hand hint that supplies only `methods` drops the
+         * compiled `anchors` for that class. Use it to hand-tune (or fully
+         * override) a single class while the community signatures drive the
+         * rest. A class whose signatures yield no usable class-locating anchor
+         * is omitted by the compiler and simply stays unresolvable (fail-closed)
+         * unless the static map or an explicit hint covers it — call
+         * [SignatureCompiler.report] to see exactly what was dropped and why.
+         *
+         * The signer guard / retraction gate runs BEFORE signature compilation,
+         * so a retracted or signer-mismatched map is refused with its own error
+         * rather than a (possibly later) signature-compilation failure.
+         *
+         * @param map the (possibly empty / older) static map; known names still
+         *   resolve statically, signatures cover the rest.
+         * @param index the device-side discovery seam (faked in tests).
+         * @param signatures the community signatures to harvest into hints.
+         * @param classLoader the app class loader targets are realised through.
+         * @param identity when non-null, enforces the map's signer guard before
+         *   wiring discovery; see [fromMapWithDiscovery] / [allowUnverified].
+         * @param discovery the provenance sink / cache / observer plus any
+         *   hand-authored hints to merge over the compiled ones.
+         * @param policy the C1 target namespace policy applied to every target.
+         * @param allowUnverified opt-in to the unverified path for a signed,
+         *   identity-less map.
+         * @throws io.github.xiddoc.rosetta.core.SignatureValidationException if a
+         *   harvested anchor is over the [SafePattern] bounds or is not a valid
+         *   RE2 expression (a malformed signature, raised AFTER the guards pass).
+         * @throws UnverifiedDiscoveryException under the same conditions as
+         *   [fromMapWithDiscovery].
+         */
+        public fun fromMapWithSignatures(
+            map: RosettaMap,
+            index: DexKitIndex,
+            signatures: SignatureSet,
+            classLoader: ClassLoader,
+            identity: AppIdentity? = null,
+            discovery: DiscoveryConfig = DiscoveryConfig(),
+            policy: TargetPolicy = TargetPolicy(),
+            allowUnverified: Boolean = false,
+        ): RosettaXposed {
+            // Gate FIRST (retraction + signer), so a refused map never pays for —
+            // or is misdiagnosed by — signature compilation. Then harvest, with
+            // explicit hints winning per real name, and assemble (no re-gate).
+            guardConstruction(map, identity, allowUnverified)
+            val mergedHints = SignatureCompiler.compile(signatures) + discovery.hints
+            return buildWithDiscovery(map, index, classLoader, discovery.copy(hints = mergedHints), policy)
         }
     }
 }
