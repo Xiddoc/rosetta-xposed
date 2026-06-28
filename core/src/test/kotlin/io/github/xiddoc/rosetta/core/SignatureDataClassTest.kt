@@ -168,11 +168,15 @@ class SignatureDataClassTest {
     }
 
     @Test
-    fun `SignatureType serializes to its dialect names`() {
+    fun `SignatureType serializes to its dialect names and coerces unknown values`() {
         assertEquals("\"regex\"", json.encodeToString(SignatureType.serializer(), SignatureType.REGEX))
         assertEquals("\"string\"", json.encodeToString(SignatureType.serializer(), SignatureType.STRING))
         assertEquals("\"smali\"", json.encodeToString(SignatureType.serializer(), SignatureType.SMALI))
+        assertEquals("\"unknown\"", json.encodeToString(SignatureType.serializer(), SignatureType.UNKNOWN))
+        // Known values decode to their kind...
         assertEquals(SignatureType.SMALI, json.decodeFromString(SignatureType.serializer(), "\"smali\""))
+        // ...and any UNRECOGNISED value coerces to UNKNOWN (forward-compat), not a throw.
+        assertEquals(SignatureType.UNKNOWN, json.decodeFromString(SignatureType.serializer(), "\"method-ref\""))
     }
 
     @Test

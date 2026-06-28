@@ -29,27 +29,74 @@
  */
 package io.github.xiddoc.rosetta.core.signature
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 /**
  * The matcher kind of a single [SignatureRule], mirroring the sigmatcher
  * dialect's `type` field (and the `KNOWN_SIGNATURE_TYPES` the maps linter
- * enforces). Only these three are valid; an unknown `type` fails to load.
+ * enforces: `regex` / `string` / `smali`).
+ *
+ * FORWARD-COMPATIBLE. This client does NOT own the dialect — `rosetta-maps`
+ * does, and it is expected to grow richer matcher kinds (structural / AST
+ * signatures). So an UNRECOGNISED `type` value does not fail the load: it
+ * deserializes to [UNKNOWN] (see [SignatureTypeSerializer]) and is skipped at
+ * harvest time, per-rule. That way a signatures file authored against a NEWER
+ * maps revision still lets this client discover every class whose matchers it
+ * *does* understand, instead of one new matcher kind bricking the whole file.
+ * (A MISSING `type` key is still a hard parse error — the value degrades, the
+ * shape does not.)
  */
-@Serializable
-public enum class SignatureType {
+@Serializable(with = SignatureTypeSerializer::class)
+public enum class SignatureType(
+    /** The on-the-wire string for this kind (the sigmatcher `type` value). */
+    public val wire: String,
+) {
     /** A regular expression matched over the class/method's smali. */
-    @SerialName("regex")
-    REGEX,
+    REGEX("regex"),
 
     /** A plain string literal the class/method references verbatim. */
-    @SerialName("string")
-    STRING,
+    STRING("string"),
 
     /** A raw smali fragment (structural). Not a string-constant signal. */
-    @SerialName("smali")
-    SMALI,
+    SMALI("smali"),
+
+    /**
+     * A matcher kind this client does not recognise — a `type` value newer than
+     * this client knows. Not authored directly; produced by
+     * [SignatureTypeSerializer] for any unrecognised value so the rule degrades
+     * (skipped at harvest) instead of failing the whole file.
+     */
+    UNKNOWN("unknown"),
+}
+
+/**
+ * Maps the sigmatcher `type` string to a [SignatureType], coercing any
+ * UNRECOGNISED value to [SignatureType.UNKNOWN] (forward-compat, per-rule
+ * degrade) rather than throwing. A missing `type` key is unaffected — that is
+ * the enclosing object's required-field check, which fires before this runs.
+ */
+public object SignatureTypeSerializer : KSerializer<SignatureType> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("io.github.xiddoc.rosetta.core.signature.SignatureType", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): SignatureType {
+        val wire = decoder.decodeString()
+        return SignatureType.entries.firstOrNull { it.wire == wire } ?: SignatureType.UNKNOWN
+    }
+
+    override fun serialize(
+        encoder: Encoder,
+        value: SignatureType,
+    ) {
+        encoder.encodeString(value.wire)
+    }
 }
 
 /**
@@ -119,6 +166,11 @@ public data class ClassSignature(
  * rules). A thin, framework-neutral holder produced by
  * [io.github.xiddoc.rosetta.core.signature.SignatureLoader]; the layer-4
  * binding compiles it into on-device discovery hints.
+ *
+ * Deliberately NOT `@Serializable`: the wire form is the bare top-level JSON
+ * ARRAY of [ClassSignature] (the YAML file's shape), which the loader decodes
+ * as a `List<ClassSignature>` and wraps here — this type is the in-memory
+ * convenience wrapper, not a wire object.
  *
  * @property classes the per-class signature rules, in file order.
  */

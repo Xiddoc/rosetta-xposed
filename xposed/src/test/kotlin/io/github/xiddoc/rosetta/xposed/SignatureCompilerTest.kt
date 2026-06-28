@@ -13,6 +13,7 @@
  */
 package io.github.xiddoc.rosetta.xposed
 
+import io.github.xiddoc.rosetta.core.SignatureValidationException
 import io.github.xiddoc.rosetta.core.signature.ClassSignature
 import io.github.xiddoc.rosetta.core.signature.MemberSignature
 import io.github.xiddoc.rosetta.core.signature.SignatureRule
@@ -250,26 +251,26 @@ class SignatureCompilerTest {
     fun `a malformed regex anchor fails closed at compile time`() {
         // "(unclosed" is a string constant (quoted) whose inner is an invalid
         // RE2 expression — SafePattern.compile rejects it before any hook.
-        assertFailsWith<DiscoveryException> { compile(cls("A", listOf(rx("\"(unclosed\"")))) }
+        assertFailsWith<SignatureValidationException> { compile(cls("A", listOf(rx("\"(unclosed\"")))) }
     }
 
     @Test
     fun `an over-length anchor fails closed at compile time`() {
         val tooLong = "a".repeat(SafePattern.MAX_SIGNATURE_LEN + 1)
-        assertFailsWith<DiscoveryException> { compile(cls("A", listOf(str(tooLong)))) }
+        assertFailsWith<SignatureValidationException> { compile(cls("A", listOf(str(tooLong)))) }
     }
 
     @Test
     fun `too many exact anchors fail closed at compile time`() {
         val many = (0..SafePattern.MAX_ANCHORS).map { str("a$it") }
-        assertFailsWith<DiscoveryException> { compile(cls("A", many)) }
+        assertFailsWith<SignatureValidationException> { compile(cls("A", many)) }
     }
 
     @Test
     fun `too many regex anchors fail closed at compile time`() {
         // Each is a distinct quoted genuine regex so they land in regexAnchors.
         val many = (0..SafePattern.MAX_ANCHORS).map { rx("\"a$it.*\"") }
-        assertFailsWith<DiscoveryException> { compile(cls("A", many)) }
+        assertFailsWith<SignatureValidationException> { compile(cls("A", many)) }
     }
 
     // ---- end-to-end: the worked com.example.app signatures ------------------
@@ -314,5 +315,92 @@ class SignatureCompilerTest {
         assertEquals(listOf("https://.*\\.example/api"), out["com.example.app.Config"]?.regexAnchors)
         // The AIDL stub's descriptor literal → an exact anchor.
         assertEquals(listOf("com.example.app.IRemoteService"), out["com.example.app.IRemoteService\$Stub"]?.anchors)
+    }
+
+    // ---- forward-compat: unknown type degrades per-rule ---------------------
+
+    @Test
+    fun `an unknown signature type is skipped, not fatal, leaving the class un-locatable`() {
+        // SignatureType.UNKNOWN (a matcher kind newer than this client) harvests
+        // nothing — like smali — so a class anchored only by it is omitted.
+        val unknown = SignatureRule("whatever", SignatureType.UNKNOWN)
+        assertTrue(compile(cls("A", listOf(unknown))).isEmpty())
+    }
+
+    @Test
+    fun `a known anchor still harvests when a sibling signature is an unknown type`() {
+        // Per-rule degrade: the unknown-type signature is dropped, the string
+        // anchor survives — the class is still discoverable.
+        val hints = hintsFor("A", listOf(str("keep"), SignatureRule("future", SignatureType.UNKNOWN)))
+        assertEquals(listOf("keep"), hints?.anchors)
+    }
+
+    // ---- observability: the compilation report ------------------------------
+
+    @Test
+    fun `report surfaces skipped signatures, unlocatable classes, and duplicates`() {
+        val set =
+            SignatureSet(
+                listOf(
+                    // Locatable, but with one skipped (smali) signature.
+                    ClassSignature("Keep", "com.example", listOf(str("anchor"), smali("structural"))),
+                    // All-structural → unlocatable, omitted from hints.
+                    ClassSignature("Gone", "com.example", listOf(smali("x"), rx("a.*b"))),
+                    // Duplicate real name (both locatable) → last wins, flagged.
+                    ClassSignature("Dup", "com.example", listOf(str("first"))),
+                    ClassSignature("Dup", "com.example", listOf(str("second"))),
+                ),
+            )
+        val report = SignatureCompiler.report(set)
+
+        assertEquals(setOf("com.example.Keep", "com.example.Dup"), report.hints.keys)
+        assertEquals(listOf("second"), report.hints["com.example.Dup"]?.anchors) // last wins
+        assertEquals(listOf("com.example.Gone"), report.unlocatableClasses)
+        assertEquals(listOf("com.example.Dup"), report.duplicateRealNames)
+        // Every dropped signature is recorded with its class, value and a reason.
+        assertTrue(report.skippedSignatures.any { it.realName == "com.example.Keep" && it.signature == "structural" })
+        assertTrue(report.skippedSignatures.all { it.reason.isNotBlank() })
+        // compile() is exactly report().hints.
+        assertEquals(report.hints, SignatureCompiler.compile(set))
+    }
+
+    @Test
+    fun `report records a method's dropped regex string constant with an exact-only reason`() {
+        val set =
+            SignatureSet(
+                listOf(
+                    ClassSignature(
+                        "A",
+                        "com.example",
+                        signatures = listOf(str("anchor")),
+                        methods = listOf(MemberSignature("m", listOf(rx("\"thing/.*/v2\"")))),
+                    ),
+                ),
+            )
+        val skipped = SignatureCompiler.report(set).skippedSignatures.single()
+        assertEquals("com.example.A", skipped.realName)
+        assertTrue(skipped.reason.contains("exact-only"))
+    }
+
+    @Test
+    fun `SkippedSignature and SignatureCompilationReport are value types`() {
+        val s = SkippedSignature("com.example.A", "sig", "reason")
+        assertEquals(s, SkippedSignature("com.example.A", "sig", "reason"))
+        assertEquals(s.hashCode(), SkippedSignature("com.example.A", "sig", "reason").hashCode())
+        assertTrue(s != SkippedSignature("com.example.B", "sig", "reason"))
+        assertTrue(s != SkippedSignature("com.example.A", "x", "reason"))
+        assertTrue(s != SkippedSignature("com.example.A", "sig", "x"))
+        assertEquals("sig", s.copy(signature = "sig").signature)
+        assertTrue(s.toString().isNotEmpty())
+
+        val r = SignatureCompilationReport(emptyMap(), listOf(s), listOf("u"), listOf("d"))
+        assertEquals(r, SignatureCompilationReport(emptyMap(), listOf(s), listOf("u"), listOf("d")))
+        assertEquals(r.hashCode(), SignatureCompilationReport(emptyMap(), listOf(s), listOf("u"), listOf("d")).hashCode())
+        assertTrue(r != r.copy(hints = mapOf("x" to DiscoveryHints(anchors = listOf("a")))))
+        assertTrue(r != r.copy(skippedSignatures = emptyList()))
+        assertTrue(r != r.copy(unlocatableClasses = emptyList()))
+        assertTrue(r != r.copy(duplicateRealNames = emptyList()))
+        assertEquals(listOf(s), r.copy(skippedSignatures = listOf(s)).skippedSignatures)
+        assertTrue(r.toString().isNotEmpty())
     }
 }

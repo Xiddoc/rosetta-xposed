@@ -327,6 +327,22 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
             allowUnverified: Boolean = false,
         ): RosettaXposed {
+            guardConstruction(map, identity, allowUnverified)
+            return buildWithDiscovery(map, index, classLoader, discovery, policy)
+        }
+
+        /**
+         * The construction gate shared by the discovery factories: refuse a
+         * retracted map, then enforce the signer guard (or the explicit
+         * unverified opt-in). Runs BEFORE any work — so a retracted /
+         * signer-mismatched map is refused before, and instead of, signature
+         * compilation (which would otherwise misattribute the failure).
+         */
+        private fun guardConstruction(
+            map: RosettaMap,
+            identity: AppIdentity?,
+            allowUnverified: Boolean,
+        ) {
             refuseIfRetracted(map)
             if (identity != null) {
                 SignerGuard.verify(map, identity)
@@ -336,11 +352,25 @@ public class RosettaXposed internal constructor(
                 // rather than silently skip the guard (xposed#14 M5).
                 throw UnverifiedDiscoveryException(
                     "rosetta-xposed: map for ${map.app}@${map.version} (version_code=${map.versionCode}) " +
-                        "carries a signer_sha256 but fromMapWithDiscovery was called without an AppIdentity. " +
+                        "carries a signer_sha256 but a discovery binding was constructed without an AppIdentity. " +
                         "Pass an identity to verify it, or set allowUnverified=true to deliberately skip the " +
                         "signer guard (or use fromMapUnverified).",
                 )
             }
+        }
+
+        /**
+         * Assemble the static-first composite over a discovery config. Assumes
+         * [guardConstruction] has already run; it does NOT re-gate, so the two
+         * discovery factories each gate exactly once.
+         */
+        private fun buildWithDiscovery(
+            map: RosettaMap,
+            index: DexKitIndex,
+            classLoader: ClassLoader,
+            discovery: DiscoveryConfig,
+            policy: TargetPolicy,
+        ): RosettaXposed {
             val static = StaticResolutionBackend(map, policy)
             val composite =
                 CompositeResolutionBackend(
@@ -381,12 +411,19 @@ public class RosettaXposed internal constructor(
          * every discovered FQN. See the posture matrix on this companion.
          *
          * Any hints in [discovery]`.hints` are MERGED on top of the compiled
-         * signature hints (an explicit hint for a real name overrides the
-         * compiled one), so a module can hand-tune a single class while letting
-         * the community signatures drive the rest. A class whose signatures
-         * yield no usable class-locating anchor is omitted by the compiler and
-         * simply stays unresolvable (fail-closed) unless the static map or an
-         * explicit hint covers it.
+         * signature hints, at WHOLE-CLASS granularity: an explicit hint for a
+         * real name REPLACES the compiled hint for that name entirely (it is not
+         * field-merged), so a hand hint that supplies only `methods` drops the
+         * compiled `anchors` for that class. Use it to hand-tune (or fully
+         * override) a single class while the community signatures drive the
+         * rest. A class whose signatures yield no usable class-locating anchor
+         * is omitted by the compiler and simply stays unresolvable (fail-closed)
+         * unless the static map or an explicit hint covers it — call
+         * [SignatureCompiler.report] to see exactly what was dropped and why.
+         *
+         * The signer guard / retraction gate runs BEFORE signature compilation,
+         * so a retracted or signer-mismatched map is refused with its own error
+         * rather than a (possibly later) signature-compilation failure.
          *
          * @param map the (possibly empty / older) static map; known names still
          *   resolve statically, signatures cover the rest.
@@ -399,9 +436,10 @@ public class RosettaXposed internal constructor(
          *   hand-authored hints to merge over the compiled ones.
          * @param policy the C1 target namespace policy applied to every target.
          * @param allowUnverified opt-in to the unverified path for a signed,
-         *   identity-less map (forwarded verbatim to [fromMapWithDiscovery]).
-         * @throws DiscoveryException if a harvested anchor is over the
-         *   [SafePattern] bounds or is not a valid RE2 expression.
+         *   identity-less map.
+         * @throws io.github.xiddoc.rosetta.core.SignatureValidationException if a
+         *   harvested anchor is over the [SafePattern] bounds or is not a valid
+         *   RE2 expression (a malformed signature, raised AFTER the guards pass).
          * @throws UnverifiedDiscoveryException under the same conditions as
          *   [fromMapWithDiscovery].
          */
@@ -415,18 +453,12 @@ public class RosettaXposed internal constructor(
             policy: TargetPolicy = TargetPolicy(),
             allowUnverified: Boolean = false,
         ): RosettaXposed {
-            // Explicit hints win over compiled ones for the same real name, so a
-            // module can override a single class while signatures drive the rest.
+            // Gate FIRST (retraction + signer), so a refused map never pays for —
+            // or is misdiagnosed by — signature compilation. Then harvest, with
+            // explicit hints winning per real name, and assemble (no re-gate).
+            guardConstruction(map, identity, allowUnverified)
             val mergedHints = SignatureCompiler.compile(signatures) + discovery.hints
-            return fromMapWithDiscovery(
-                map = map,
-                index = index,
-                classLoader = classLoader,
-                identity = identity,
-                discovery = discovery.copy(hints = mergedHints),
-                policy = policy,
-                allowUnverified = allowUnverified,
-            )
+            return buildWithDiscovery(map, index, classLoader, discovery.copy(hints = mergedHints), policy)
         }
     }
 }

@@ -122,12 +122,22 @@ class SignatureLoaderTest {
     }
 
     @Test
-    fun `rejects an unknown signature type`() {
-        assertFailsWith<SignatureValidationException> {
+    fun `tolerates an unknown signature type by degrading it to UNKNOWN (forward-compat)`() {
+        // A `type` value newer than this client must NOT fail the file — it
+        // degrades per-rule to UNKNOWN (skipped at harvest), so a signatures
+        // file from a newer maps revision still loads.
+        val set =
             SignatureLoader.fromJson(
                 """[ { "name": "A", "package": "com.example", "signatures": [ { "signature": "x", "type": "bogus" } ] } ]""",
             )
-        }
+        assertEquals(
+            SignatureType.UNKNOWN,
+            set.classes
+                .single()
+                .signatures
+                .single()
+                .type,
+        )
     }
 
     // ---- Validation bounds --------------------------------------------------

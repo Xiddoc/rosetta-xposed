@@ -18,6 +18,28 @@
  * required `signature` / `type` keys still fail the load when absent. A
  * pre-parse [JsonInputGuard] bounds input size + nesting before the recursive
  * decoder ever runs.
+ *
+ * FORWARD-COMPATIBILITY. The dialect has NO version field today, so there is no
+ * version handshake — this client TRACKS the structure that rosetta-maps'
+ * `scripts/lint_signatures.py` validates, by hand. The chosen posture survives
+ * additive evolution without a gate: an unknown KEY is ignored, and an unknown
+ * `type` VALUE degrades per-rule to [SignatureType.UNKNOWN] (skipped at harvest)
+ * rather than failing the whole file (see [SignatureType] /
+ * [SignatureTypeSerializer]) — so a file authored against a NEWER maps revision
+ * still loads and the client harvests every class whose matchers it understands.
+ * If the dialect ever gains a BREAKING change, it should also gain a version /
+ * capability signal so clients can gate on it; until then, lenient-without-a-gate
+ * is a deliberate trade, not an oversight.
+ *
+ * INTENTIONAL ASYMMETRIES vs `lint_signatures.py` (decisions, not accidents):
+ *  - `count` is validated by the linter but IGNORED here (the runtime never
+ *    reads it), so a `count: 0` file the linter rejects still loads.
+ *  - `package` must be a DOTTED name here ([PACKAGE_PATTERN]); the linter only
+ *    requires a non-empty string, so a single-segment package the linter accepts
+ *    is rejected here (it can't form a real FQN).
+ *  - an empty top-level `[]` is a valid empty set here; the linter rejects it.
+ * These are safe (the linter remains the source-of-truth gate for contributions);
+ * they are documented so the two stay diff-able as the dialect evolves.
  */
 package io.github.xiddoc.rosetta.core.signature
 

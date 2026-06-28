@@ -59,10 +59,12 @@ class SignatureModelTest {
     }
 
     @Test
-    fun `SignatureType has the three sigmatcher matcher kinds`() {
+    fun `SignatureType has the three sigmatcher kinds plus the UNKNOWN forward-compat sentinel`() {
         assertEquals(
-            setOf(SignatureType.REGEX, SignatureType.STRING, SignatureType.SMALI),
+            setOf(SignatureType.REGEX, SignatureType.STRING, SignatureType.SMALI, SignatureType.UNKNOWN),
             SignatureType.entries.toSet(),
         )
+        // Each carries its on-the-wire sigmatcher `type` string.
+        assertEquals(listOf("regex", "string", "smali", "unknown"), SignatureType.entries.map { it.wire })
     }
 }
