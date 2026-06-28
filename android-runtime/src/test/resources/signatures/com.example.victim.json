@@ -1,0 +1,9 @@
+[
+  {
+    "name": "RemoteServiceClient",
+    "package": "com.example.victim",
+    "signatures": [
+      { "signature": "\"sessionId\"", "type": "regex" }
+    ]
+  }
+]

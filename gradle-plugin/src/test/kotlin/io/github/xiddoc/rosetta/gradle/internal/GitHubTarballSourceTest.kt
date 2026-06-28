@@ -116,9 +116,33 @@ class GitHubTarballSourceTest {
     }
 
     @Test
+    fun `extracts the app signatures yaml from the same tarball`() {
+        val sigYaml = "- name: 'A'\n  package: 'com.example.victim'\n".encodeToByteArray()
+        val tar =
+            TarBuilder()
+                .add("rosetta-maps-sha/maps/com.example.victim/100.json", map100)
+                .add("rosetta-maps-sha/signatures/com.example.victim/signatures.yaml", sigYaml)
+                .add("rosetta-maps-sha/signatures/net.daylio/signatures.yaml", "other".encodeToByteArray())
+                .gzip()
+
+        val result = sourceOver(tar).fetchAppMaps("Xiddoc/rosetta-maps", "com.example.victim", "sha")
+
+        assertEquals(listOf("100.json"), result.files.map { it.fileName })
+        assertTrue(result.signatureYaml!!.contentEquals(sigYaml))
+    }
+
+    @Test
+    fun `signatureYaml is null when the app publishes none`() {
+        val tar = TarBuilder().add("r/maps/com.x/1.json", "{}".encodeToByteArray()).gzip()
+        val result = sourceOver(tar).fetchAppMaps("o/r", "com.x", "ref")
+        assertTrue(result.signatureYaml == null)
+    }
+
+    @Test
     fun `an empty archive yields no files`() {
         val result = sourceOver(TarBuilder().gzip()).fetchAppMaps("o/r", "com.x", "ref")
         assertTrue(result.files.isEmpty())
+        assertTrue(result.signatureYaml == null)
     }
 
     @Test

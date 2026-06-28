@@ -29,25 +29,32 @@ internal class GitHubTarballSource(
         ref: String,
     ): FetchedMaps {
         val url = "https://codeload.github.com/$repo/tar.gz/$ref"
-        val files = extractAppMaps(download(url), app)
-        return FetchedMaps(ref, files)
+        return extract(download(url), app, ref)
     }
 
-    /** Pulls every `<file>.json` directly under `maps/<app>/` (sans attestation sidecars). */
-    private fun extractAppMaps(
+    /**
+     * Single pass over the tarball: collect every `<file>.json` directly under
+     * `maps/<app>/` (sans attestation sidecars) AND the app's
+     * `signatures/<app>/signatures.yaml` if present.
+     */
+    private fun extract(
         tarGz: ByteArray,
         app: String,
-    ): List<RemoteMapFile> {
-        val needle = "/maps/$app/"
-        val out = mutableListOf<RemoteMapFile>()
+        ref: String,
+    ): FetchedMaps {
+        val mapNeedle = "/maps/$app/"
+        val sigNeedle = "/signatures/$app/signatures.yaml"
+        val maps = mutableListOf<RemoteMapFile>()
+        var signature: ByteArray? = null
         GZIPInputStream(ByteArrayInputStream(tarGz)).use { gz ->
             val tar = TarReader(gz)
             while (true) {
                 val entry = tar.next() ?: break
-                toMapFile(entry, needle)?.let { out.add(it) }
+                toMapFile(entry, mapNeedle)?.let { maps.add(it) }
+                if (entry.name.endsWith(sigNeedle)) signature = entry.data
             }
         }
-        return out.sortedBy { it.fileName }
+        return FetchedMaps(ref, maps.sortedBy { it.fileName }, signature)
     }
 
     /** An [entry] under `maps/<app>/`, or `null` if it is not a map file there. */

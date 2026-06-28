@@ -38,11 +38,17 @@ public abstract class FetchRosettaMapsTask : DefaultTask() {
     @get:Input
     public abstract val offline: Property<Boolean>
 
+    @get:Input
+    public abstract val fetchSignatures: Property<Boolean>
+
     @get:Internal
     public abstract val cacheDirectory: DirectoryProperty
 
     @get:OutputDirectory
     public abstract val outputDirectory: DirectoryProperty
+
+    @get:OutputDirectory
+    public abstract val signaturesOutputDirectory: DirectoryProperty
 
     @TaskAction
     public fun fetch() {
@@ -56,13 +62,16 @@ public abstract class FetchRosettaMapsTask : DefaultTask() {
                 outputDir = outputDirectory.get().asFile.toPath(),
                 cacheDir = cacheDirectory.get().asFile.toPath(),
                 currentSchemaVersion = CURRENT_SCHEMA_VERSION,
+                fetchSignatures = fetchSignatures.get(),
+                signaturesOutputDir = signaturesOutputDirectory.get().asFile.toPath(),
             )
         val fetcher = RosettaMapsFetcher(GitHubTarballSource(), logger::lifecycle)
         val summary = fetcher.fetch(config)
         logger.lifecycle(
             "rosetta-maps: bundled ${summary.written.size} map(s) for ${config.app} " +
                 "from ${config.repo}@${config.ref} ${summary.written}" +
-                if (summary.skippedSchema.isEmpty()) "" else " (skipped non-current schema: ${summary.skippedSchema})",
+                (if (summary.skippedSchema.isEmpty()) "" else " (skipped non-current schema: ${summary.skippedSchema})") +
+                (if (summary.signaturesWritten) " + signatures" else ""),
         )
     }
 }

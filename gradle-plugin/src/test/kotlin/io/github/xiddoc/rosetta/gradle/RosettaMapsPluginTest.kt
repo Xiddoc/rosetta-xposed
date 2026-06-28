@@ -21,11 +21,26 @@ class RosettaMapsPluginTest {
         assertEquals("Xiddoc/rosetta-maps", ext.repo.get())
         assertFalse(ext.offline.get())
         assertFalse(ext.vendor.get())
+        assertTrue(ext.signatures.get()) // signatures baked by default
         assertTrue(ext.versions.get().isEmpty())
 
         val task = project.tasks.findByName("fetchRosettaMaps")
         assertNotNull(task)
         assertTrue(task is FetchRosettaMapsTask)
+    }
+
+    @Test
+    fun `wires the signatures output dir under the generated root`() {
+        val project = project()
+        project.pluginManager.apply(RosettaMapsPlugin::class.java)
+        val ext = project.extensions.getByType(RosettaMapsExtension::class.java)
+        ext.app.set("com.example.victim")
+        ext.ref.set("abc123")
+
+        val task = project.tasks.findByName("fetchRosettaMaps") as FetchRosettaMapsTask
+        assertTrue(task.fetchSignatures.get())
+        val sigDir = task.signaturesOutputDirectory.get().asFile
+        assertTrue(sigDir.path.endsWith("generated/rosetta-maps/signatures"), "got ${sigDir.path}")
     }
 
     @Test
