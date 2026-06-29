@@ -13,6 +13,7 @@ package io.github.xiddoc.rosetta.xposed
 import io.github.xiddoc.rosetta.core.MapLoader
 import io.github.xiddoc.rosetta.core.UnverifiedDiscoveryException
 import io.github.xiddoc.rosetta.core.signature.ClassSignature
+import io.github.xiddoc.rosetta.core.signature.MemberSignature
 import io.github.xiddoc.rosetta.core.signature.SignatureRule
 import io.github.xiddoc.rosetta.core.signature.SignatureSet
 import io.github.xiddoc.rosetta.core.signature.SignatureType
@@ -107,6 +108,46 @@ class SignatureDiscoveryWiringTest {
                 policy = policy,
             )
         assertEquals(obf, rosetta.useClass(real).load().name)
+    }
+
+    @Test
+    fun `self-heals a kept-name stringless method from a community signature - the TickTick Pro-gate shape`() {
+        // The mechanical harvest can pin the CLASS (a string anchor) but NOT the
+        // method: `isPro` is anchored only by a STRUCTURAL `.method` line, which
+        // is dropped at harvest — exactly TickTick's `User#isPro()Z`. DexKit then
+        // enumerates the kept member, so the kept-name harvest (#47) lets
+        // fromMapWithSignatures resolve it end-to-end with NO hand-authored hint.
+        val index =
+            FakeDexKitIndex(
+                byAnchors = mapOf(listOf("user isPro= ") to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "isPro", "()Z"))),
+            )
+        val signatures =
+            SignatureSet(
+                listOf(
+                    ClassSignature(
+                        name = "RealClient",
+                        pkg = "com.example",
+                        signatures = listOf(SignatureRule("\"user isPro= \"", SignatureType.REGEX)),
+                        methods =
+                            listOf(
+                                MemberSignature(
+                                    name = "isPro",
+                                    signatures = listOf(SignatureRule("\\.method public isPro\\(\\)Z", SignatureType.REGEX)),
+                                ),
+                            ),
+                    ),
+                ),
+            )
+        val rosetta =
+            RosettaXposed.fromMapWithSignatures(
+                map = emptyStaticMap(),
+                index = index,
+                signatures = signatures,
+                classLoader = javaClass.classLoader,
+                policy = policy,
+            )
+        assertEquals("isPro", rosetta.method(real, "isPro").resolved.obfName)
     }
 
     @Test

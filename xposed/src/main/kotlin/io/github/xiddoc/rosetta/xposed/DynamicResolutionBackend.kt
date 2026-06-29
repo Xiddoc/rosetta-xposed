@@ -24,14 +24,26 @@
  *   (c) superclass / extends narrowing — find a class by its (obf) parent.
  *   (d) method signature scan within a found class — only after the class is
  *       located, so the scan has a known starting point.
+ *   (e) kept-name member harvest — once the class is located, enumerate its
+ *       members and key each by its own (obfuscated) short name. For a method
+ *       whose name R8 KEPT (an app's "kept carve-out" — e.g. GreenDAO entity
+ *       accessors that don't rotate), that key IS the real name, so the method
+ *       resolves with no per-method signature at all (#47). A renamed
+ *       member is keyed by its non-real obf name (inert — never looked up by a
+ *       real name); only strategy (d) maps those.
  *
  * SECURITY / FAIL-CLOSED. Every contributor pattern flows through
- * [SafePattern] (bounds-then-RE2). A miss, an over-bound input, or a partial
- * discovery (class found, member not) throws [DiscoveryException] and records
- * NOTHING — the cache is never poisoned with a half entry. The discovered
- * obfuscated FQN is NOT trusted blindly: the binding layer routes it through
- * the same C1 target guard as a static name (see [RosettaXposed] /
- * [TargetLoader]); this backend only produces the name.
+ * [SafePattern] (bounds-then-RE2). A class miss or an over-bound input throws
+ * [DiscoveryException] and records NOTHING — the cache is never poisoned with a
+ * half entry. A per-method hint that finds nothing (strategy d) is SKIPPED, not
+ * fatal (#48): a single un-findable helper signature must not sink the
+ * whole class, so the failure surfaces fail-closed only if THAT method is
+ * requested and neither (d) nor the kept-name harvest (e) produced it. Only
+ * members an index query actually matched are ever written back — never a
+ * fabricated or guessed one. The discovered obfuscated FQN is NOT trusted
+ * blindly: the binding layer routes it through the same C1 target guard as a
+ * static name (see [RosettaXposed] / [TargetLoader]); this backend only
+ * produces the name.
  */
 package io.github.xiddoc.rosetta.xposed
 
@@ -189,15 +201,18 @@ public class DynamicResolutionBackend(
         argTypes: List<String>?,
     ): ResolvedMethod {
         val classEntry = discoverClassEntry(realClass)
-        // Discovery may record SEVERAL overloads under one real method name
-        // (xposed#14 M18), each with a distinct signature. A missing methods map
-        // or an unhinted method name is the only miss case.
+        // The class entry's methods come from BOTH a per-method signature scan
+        // (strategy d, keyed by real name; SEVERAL overloads may share one name —
+        // xposed#14 M18) AND the kept-name member harvest (strategy e, a kept
+        // method's obf short name IS its real name). A name absent from both is
+        // the only miss case — fail closed.
         val overloads =
             classEntry.methods?.get(realMethod)
                 ?: throw DiscoveryException(
                     "rosetta-xposed: dynamic discovery resolved class '$realClass' to " +
-                        "'${classEntry.obfuscated}' but found no method '$realMethod' on it " +
-                        "(partial discovery fails closed; the cache is not poisoned).",
+                        "'${classEntry.obfuscated}' but found no method '$realMethod' on it — neither a " +
+                        "signature hint nor a kept (unrenamed) member of that name matched (fail-closed; " +
+                        "the cache is not poisoned). A RENAMED, stringless method needs a richer signature.",
                 )
         val entries = overloads.entries
         // Select the overload the SAME way the static Resolver does: with
@@ -302,7 +317,23 @@ public class DynamicResolutionBackend(
                         "(tried AIDL descriptor / anchors / superclass).",
                 )
 
-        val methods = discoverMethods(obfClass, hint.methods)
+        // Methods come from two complementary sources, merged (strategy e wins
+        // nothing the hint already mapped):
+        //   • HINTED scan (d) — a string / descriptor signature locates a method
+        //     even when R8 RENAMED it (real → obf), keyed by real name. A hint
+        //     that finds nothing is SKIPPED, not fatal (#48).
+        //   • KEPT-NAME harvest (e) — every member on the located class, keyed by
+        //     its own obf short name. For a kept (unrenamed) method that key IS
+        //     the real name, so it resolves with no per-method signature
+        //     (#47 — the TickTick `User#isPro` / GreenDAO carve-out case).
+        // Hinted entries win on a key collision: an explicit real → obf mapping
+        // is authoritative over the kept-name identity. A null result (both
+        // empty) is a class-only discovery — the prior contract the write-back /
+        // cache rely on.
+        val merged = linkedMapOf<String, MethodOverloads>()
+        merged.putAll(harvestKeptNameMethods(obfClass))
+        merged.putAll(discoverHintedMethods(obfClass, hint.methods))
+        val methods = if (merged.isEmpty()) null else merged
 
         // The synthesized map ClassEntry carries only the pure real→obf mapping
         // fields the schema_version: 5 model still has (obfuscated / extends /
@@ -372,9 +403,12 @@ public class DynamicResolutionBackend(
 
     /**
      * Strategy (d): for each hinted method, scan within [obfClass] for the
-     * matching obfuscated method. A hint that finds nothing fails closed —
-     * a class whose hinted members can't all be found is a partial discovery.
-     * Returns null when there are no method hints (a class-only discovery).
+     * matching obfuscated method, keyed by the hint's REAL name. A hint that
+     * finds nothing is SKIPPED, not fatal (#48): one un-findable helper
+     * signature must not sink the whole class — the kept-name harvest (e) may
+     * still cover that method, and if neither does, the miss surfaces
+     * fail-closed only when that specific method is REQUESTED (see
+     * [resolveMethod]). Returns an empty map when no hint resolved.
      *
      * OVERLOADS (xposed#14 M18). Several [MethodDiscoveryHint]s may share one
      * [MethodDiscoveryHint.realName] — overloads of the same method, each with a
@@ -383,13 +417,15 @@ public class DynamicResolutionBackend(
      * of all but one being lost. A duplicate hint that rediscovers the SAME
      * signature is collapsed (idempotent), so a recipe listing the same overload
      * twice does not double-register it.
+     *
+     * The [SafePattern] bounds on a hint's descriptor / using-strings run BEFORE
+     * the index query, so an over-bound contributor pattern still fails closed
+     * (a malformed signature, distinct from a benign "method not found" skip).
      */
-    private fun discoverMethods(
+    private fun discoverHintedMethods(
         obfClass: String,
         methodHints: List<MethodDiscoveryHint>,
-    ): MutableMap<String, MethodOverloads>? {
-        if (methodHints.isEmpty()) return null
-
+    ): Map<String, MethodOverloads> {
         // Preserve insertion order of both names and their overloads.
         val acc = linkedMapOf<String, MutableList<MethodEntry>>()
         for (mh in methodHints) {
@@ -405,24 +441,48 @@ public class DynamicResolutionBackend(
                         paramTypes = mh.paramTypes,
                         usingStrings = mh.usingStrings,
                     ),
-                ) ?: throw DiscoveryException(
-                    "rosetta-xposed: dynamic discovery located class '$obfClass' " +
-                        "but found no method matching hint '${mh.realName}' " +
-                        "(partial discovery fails closed).",
-                )
-
-            val entries = acc.getOrPut(mh.realName) { mutableListOf() }
-            // Idempotent on (obf name, signature): a recipe that lists the same
-            // overload twice registers it once; genuinely distinct overloads of
-            // the same real name are all retained.
-            if (entries.none { it.obfuscated == match.obfName && it.signature == match.descriptor }) {
-                entries +=
-                    MethodEntry(
-                        obfuscated = match.obfName,
-                        signature = match.descriptor,
-                    )
-            }
+                ) ?: continue // resilient: a hint that finds nothing is skipped, not fatal (#48).
+            accumulateOverload(acc, mh.realName, match)
         }
-        return acc.mapValuesTo(mutableMapOf()) { (_, entries) -> MethodOverloads(entries.toList()) }
+        return acc.mapValues { (_, entries) -> MethodOverloads(entries.toList()) }
+    }
+
+    /**
+     * Strategy (e): enumerate every method DexKit reports on the located
+     * [obfClass] and key each by its OWN obfuscated short name as a kept-name
+     * identity (obfuscated == that name). For a method whose name R8 KEPT, that
+     * key is the real name, so the method resolves with no per-method signature
+     * — the on-device answer to an app's "kept carve-out" (#47; e.g.
+     * TickTick's `com.ticktick.task.data.User#isPro()Z`, a stringless kept
+     * GreenDAO accessor that no harvestable signature could pin). Members are
+     * device FACTS from [DexKitIndex.membersOf], not contributor patterns, so
+     * they carry no [SafePattern] bound; the obf CLASS name was already located
+     * via a guarded strategy and is still routed through the C1 target guard
+     * before any class load. Overloads accumulate; an exact (obf name,
+     * signature) duplicate collapses. Empty when the class has no members (or
+     * the index cannot enumerate it).
+     */
+    private fun harvestKeptNameMethods(obfClass: String): Map<String, MethodOverloads> {
+        val acc = linkedMapOf<String, MutableList<MethodEntry>>()
+        for (member in index.membersOf(obfClass)) {
+            accumulateOverload(acc, member.obfName, member)
+        }
+        return acc.mapValues { (_, entries) -> MethodOverloads(entries.toList()) }
+    }
+
+    /**
+     * Append [match] under [realName] in [acc], idempotent on (obf name,
+     * signature): a repeat of the SAME overload registers once; genuinely
+     * distinct overloads of the same name are all retained.
+     */
+    private fun accumulateOverload(
+        acc: MutableMap<String, MutableList<MethodEntry>>,
+        realName: String,
+        match: MethodMatch,
+    ) {
+        val entries = acc.getOrPut(realName) { mutableListOf() }
+        if (entries.none { it.obfuscated == match.obfName && it.signature == match.descriptor }) {
+            entries += MethodEntry(obfuscated = match.obfName, signature = match.descriptor)
+        }
     }
 }

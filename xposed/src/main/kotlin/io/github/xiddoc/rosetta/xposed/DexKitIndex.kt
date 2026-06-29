@@ -107,6 +107,14 @@ public interface DexKitIndex {
     /** Find a single method matching [query]; null on miss / no unique match. */
     public fun findMethod(query: MethodQuery): MethodMatch?
 
-    /** All methods declared on the OBFUSCATED class [obfClass] (may be empty). */
+    /**
+     * All methods declared on the OBFUSCATED class [obfClass] (may be empty).
+     *
+     * Backs the dynamic backend's KEPT-NAME member harvest (strategy e,
+     * #47): once a class is located, every member is keyed by its own
+     * obfuscated short name, so a method R8 did NOT rename resolves by its real
+     * (== obfuscated) name with no per-method signature. Empty on a miss (the
+     * class is not in the dex).
+     */
     public fun membersOf(obfClass: String): List<MethodMatch>
 }
