@@ -46,6 +46,10 @@ internal class FetchConfig(
     val outputDir: Path,
     val cacheDir: Path,
     val currentSchemaVersion: Int,
+    /** Also convert + bake the app's `signatures.yaml` (skipped when none is published). */
+    val fetchSignatures: Boolean = false,
+    /** Where the converted `<app>.json` signatures land (a `signatures/` resource subdir). */
+    val signaturesOutputDir: Path? = null,
 )
 
 /** What a fetch did — surfaced for the task's lifecycle log and for tests. */
@@ -53,24 +57,35 @@ internal class FetchSummary(
     val written: List<Long>,
     val skippedSchema: List<Long>,
     val fromCache: Boolean,
+    /** True when the app's signatures were converted + baked this fetch. */
+    val signaturesWritten: Boolean = false,
+)
+
+/** What [obtain] produced: the raw artifacts + whether they came from the cache. */
+private class Obtained(
+    val maps: List<RemoteMapFile>,
+    val signatureYaml: ByteArray?,
+    val fromCache: Boolean,
 )
 
 internal class RosettaMapsFetcher(
     private val source: MapsSource,
     private val log: (String) -> Unit = {},
 ) {
+    private val signatures = SignatureBaker(log)
+
     fun fetch(config: FetchConfig): FetchSummary {
         require(config.app.isNotBlank()) { "rosettaMaps.app must be set" }
         require(config.ref.isNotBlank()) {
             "rosettaMaps.ref must be set — pin a commit SHA or tag for reproducible, auditable builds"
         }
 
-        val (files, fromCache) = obtain(config)
-        if (files.isEmpty()) {
+        val obtained = obtain(config)
+        if (obtained.maps.isEmpty()) {
             error("no maps found under maps/${config.app}/ in ${config.repo} at ref ${config.ref}")
         }
 
-        val parsed = files.map { it to HEADER_JSON.decodeFromString<MapHeader>(it.bytes.decodeToString()) }
+        val parsed = obtained.maps.map { it to HEADER_JSON.decodeFromString<MapHeader>(it.bytes.decodeToString()) }
         val selected = select(parsed, config)
         val (matching, mismatched) = selected.partition { it.second.schemaVersion == config.currentSchemaVersion }
         mismatched.forEach { (file, header) ->
@@ -81,26 +96,29 @@ internal class RosettaMapsFetcher(
         }
 
         write(matching, config)
+        val signaturesWritten = signatures.bake(obtained.signatureYaml, config)
         return FetchSummary(
             written = matching.map { it.second.versionCode }.sorted(),
             skippedSchema = mismatched.map { it.second.versionCode }.sorted(),
-            fromCache = fromCache,
+            fromCache = obtained.fromCache,
+            signaturesWritten = signaturesWritten,
         )
     }
 
     // ---- obtain (cache + source) ------------------------------------------
 
     /**
-     * Returns the raw map files plus whether they came from the cache. A pinned
-     * ref is immutable content, so a warm cache for `(repo, ref, app)` is reused
-     * even online (no re-fetch); offline REQUIRES that warm cache.
+     * Returns the raw artifacts (maps + the app's signatures YAML) plus whether
+     * they came from the cache. A pinned ref is immutable content, so a warm
+     * cache for `(repo, ref, app)` is reused even online (no re-fetch); offline
+     * REQUIRES that warm cache. Maps and the signatures YAML are cached together.
      */
-    private fun obtain(config: FetchConfig): Pair<List<RemoteMapFile>, Boolean> {
+    private fun obtain(config: FetchConfig): Obtained {
         val cacheRoot = cacheRoot(config)
         val cached = readCache(cacheRoot)
         if (cached.isNotEmpty()) {
             log("rosetta-maps: using cached maps for ${config.app} at ${config.ref}")
-            return cached to true
+            return Obtained(cached, signatures.readCached(cacheRoot), fromCache = true)
         }
         if (config.offline) {
             error(
@@ -110,7 +128,8 @@ internal class RosettaMapsFetcher(
         }
         val fetched = source.fetchAppMaps(config.repo, config.app, config.ref)
         writeCache(cacheRoot, fetched.files)
-        return fetched.files to false
+        signatures.writeCached(cacheRoot, fetched.signatureYaml)
+        return Obtained(fetched.files, fetched.signatureYaml, fromCache = false)
     }
 
     private fun cacheRoot(config: FetchConfig): Path =

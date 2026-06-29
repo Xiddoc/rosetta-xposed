@@ -129,6 +129,38 @@ before bundling: a map whose `schema_version` this client wouldn't accept is
 it at runtime. Maps at the current version are additionally validated with the
 real `MapLoader`, so a corrupt map fails the build loudly rather than on-device.
 
+## Bundling community signatures (self-healing)
+
+A map only covers the **versions someone has already mapped**. To resolve an
+*unmapped* future version on-device, a module ships the app's **community
+signatures** and lets DexKit rediscover the obfuscated names — the self-healing
+path (`RosettaXposed.fromMapWithSignatures`, RFC 0001 Decision 5). Those
+signatures live in rosetta-maps as
+[`signatures/<app>/signatures.yaml`](https://github.com/Xiddoc/rosetta-maps)
+(the sigmatcher dialect), and the plugin bakes them in the same fetch as the
+maps — on by default:
+
+```kotlin
+rosettaMaps {
+    app.set("com.ticktick.task")
+    ref.set("<rosetta-maps commit SHA or tag>")
+    // signatures.set(false) // opt out: bundle maps only, no self-healing fallback
+}
+```
+
+The plugin converts the published YAML to the JSON the runtime
+[`SignatureLoader`](https://github.com/Xiddoc/rosetta-xposed/blob/master/core/src/main/kotlin/io/github/xiddoc/rosetta/core/signature/SignatureLoader.kt)
+reads — **at build time**, so no YAML parser ships in the APK — validates it
+with that real loader (a malformed or over-bound signatures file fails the build
+here, not on a device), and writes it to **`signatures/<app>.json`** on the class
+path.
+[`BundledSignatures.load("<app>")`](https://github.com/Xiddoc/rosetta-xposed/blob/master/android-runtime/src/main/kotlin/io/github/xiddoc/rosetta/android/BundledSignatures.kt)
+reads it back, mirroring `BundledMaps`. The raw YAML is cached alongside the maps
+under the same ref-keyed cache, so warm/offline builds reuse it.
+
+Not every app publishes signatures; when none exist for the pinned `app`, the
+fetch logs a soft skip and bundles **maps only** (no build failure).
+
 ## Configuration reference
 
 | Property          | Default                          | Meaning                                                            |
@@ -136,6 +168,7 @@ real `MapLoader`, so a corrupt map fails the build loudly rather than on-device.
 | `app`             | — (required)                     | App package whose maps to fetch.                                   |
 | `ref`             | — (required)                     | rosetta-maps commit SHA / tag / branch to pin.                     |
 | `versions`        | empty = all                      | Version codes to fetch, e.g. `listOf(8080L, 8081L)`.               |
+| `signatures`      | `true`                           | Also convert + bake `signatures/<app>.json` for self-healing.      |
 | `repo`            | `Xiddoc/rosetta-maps`            | `owner/name` of the maps repo.                                     |
 | `offline`         | `false`                          | Reuse the cache without the network.                               |
 | `vendor`          | `false`                          | Write into the source tree instead of a generated dir.            |

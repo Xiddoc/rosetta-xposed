@@ -24,6 +24,7 @@ public class RosettaMapsPlugin : Plugin<Project> {
         ext.repo.convention(DEFAULT_REPO)
         ext.offline.convention(false)
         ext.vendor.convention(false)
+        ext.signatures.convention(true)
         ext.versions.convention(emptyList())
         // outputDirectory / vendorDirectory are RESOURCE ROOTS; the maps land in a
         // `maps/` subdir of the chosen root so `BundledMaps.load("100.json")` reads
@@ -45,11 +46,13 @@ public class RosettaMapsPlugin : Plugin<Project> {
                 task.versions.set(ext.versions)
                 task.repo.set(ext.repo)
                 task.offline.set(ext.offline)
+                task.fetchSignatures.set(ext.signatures)
                 task.cacheDirectory.set(ext.cacheDirectory)
-                // Write into `<root>/maps`. Vendor mode targets the source tree;
-                // otherwise the generated root.
+                // Write into `<root>/maps` (+ `<root>/signatures`). Vendor mode
+                // targets the source tree; otherwise the generated root.
                 val root = ext.vendor.flatMap { if (it) ext.vendorDirectory else ext.outputDirectory }
                 task.outputDirectory.set(root.map { it.dir(MAPS_SUBDIR) })
+                task.signaturesOutputDirectory.set(root.map { it.dir(SIGNATURES_SUBDIR) })
             }
 
         // Auto-wire the generated dir onto a pure-JVM module's resources. Gated on
@@ -87,6 +90,7 @@ public class RosettaMapsPlugin : Plugin<Project> {
         const val GENERATED_ROOT = "generated/rosetta-maps"
         const val VENDOR_ROOT = "src/main/resources"
         const val MAPS_SUBDIR = "maps"
+        const val SIGNATURES_SUBDIR = "signatures"
         const val CACHE_DIR = "rosetta-maps-cache"
     }
 }

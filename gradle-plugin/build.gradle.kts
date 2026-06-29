@@ -34,6 +34,14 @@ dependencies {
     // `index.json` manifest. Same pinned coordinate :core already verifies.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
+    // BUILD-TIME ONLY YAML parsing: the fetched `signatures/<app>/signatures.yaml`
+    // (sigmatcher dialect) is converted to the JSON `SignatureLoader` reads,
+    // baked into resources at build time. snakeyaml-engine runs on the
+    // developer's/CI JVM, NEVER on a device, so it adds no on-device weight. It
+    // is already in the strict dependency-verification set, so no new artifact
+    // verification is required.
+    implementation("org.snakeyaml:snakeyaml-engine:2.7")
+
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
 }

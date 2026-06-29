@@ -16,17 +16,24 @@ internal class RemoteMapFile(
     val bytes: ByteArray,
 )
 
-/** The maps fetched for one app at one ref, plus the ref they came from. */
+/**
+ * The artifacts fetched for one app at one ref: the published maps, the app's
+ * `signatures/<app>/signatures.yaml` raw bytes (or null when none is published),
+ * and the ref they came from. Both come out of the SAME repo tarball, so a
+ * single fetch yields both with no extra download.
+ */
 internal class FetchedMaps(
     val ref: String,
     val files: List<RemoteMapFile>,
+    val signatureYaml: ByteArray? = null,
 )
 
-/** Fetches the published map JSON for an app at a pinned ref. */
+/** Fetches the published map JSON (+ signatures) for an app at a pinned ref. */
 internal interface MapsSource {
     /**
      * Returns every `maps/<app>/<version_code>.json` published in [repo] at
-     * [ref] (a commit SHA, tag, or branch). Attestation sidecars
+     * [ref] (a commit SHA, tag, or branch), plus the app's
+     * `signatures/<app>/signatures.yaml` bytes if present. Attestation sidecars
      * (`<version_code>.json.att.json`) are excluded.
      */
     fun fetchAppMaps(

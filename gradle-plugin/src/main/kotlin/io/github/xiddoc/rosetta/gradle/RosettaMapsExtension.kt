@@ -23,6 +23,16 @@ public abstract class RosettaMapsExtension {
     /** Version codes to fetch. Empty (default) means every version under `maps/<app>/`. */
     public abstract val versions: ListProperty<Long>
 
+    /**
+     * Also bake the app's community signatures (`signatures/<app>/signatures.yaml`,
+     * converted to JSON at build time) so the module can self-heal UNMAPPED
+     * versions via `RosettaXposed.fromMapWithSignatures(...)` / `BundledSignatures`.
+     * Default `true`; a soft no-op when the app publishes no signatures. The
+     * signatures come from the SAME fetch as the maps (no extra download) and
+     * land in a `signatures/` resource subdir.
+     */
+    public abstract val signatures: Property<Boolean>
+
     /** The `owner/name` slug of the maps repo. Defaults to `Xiddoc/rosetta-maps`. */
     public abstract val repo: Property<String>
 
