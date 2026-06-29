@@ -264,7 +264,11 @@ class DynamicResolutionBackendTest {
     }
 
     @Test
-    fun `class found but member not found is a partial discovery that fails closed`() {
+    fun `a method hint that finds nothing no longer sinks the whole class`() {
+        // #48 robustness: a hinted method DexKit can't locate is SKIPPED,
+        // not fatal — the class still discovers (so its other members, incl.
+        // kept-name ones, stay resolvable). The unfound method fails closed only
+        // WHEN REQUESTED, not at class-discovery time.
         val index = FakeDexKitIndex(byAidl = mapOf("Lcom/example/IFoo;" to obf), methods = emptyMap())
         val backend =
             DynamicResolutionBackend(
@@ -277,7 +281,10 @@ class DynamicResolutionBackendTest {
                         ),
                 ),
             )
-        assertFailsWith<DiscoveryException> { backend.resolveClass(real) }
+        // The class resolves despite the unfindable method hint.
+        assertEquals(obf, backend.resolveClass(real).obfName)
+        // The specific unresolved method still fails closed when asked for.
+        assertFailsWith<DiscoveryException> { backend.resolveMethod(real, "single") }
     }
 
     @Test

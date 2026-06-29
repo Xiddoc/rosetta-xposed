@@ -14,10 +14,14 @@
  * O(1) static hit — the dynamic index is consulted at most once per real
  * class. Tests assert the fake index is not re-queried on a repeat lookup.
  *
- * FAIL-CLOSED. A dynamic miss surfaces as a [DiscoveryException] from the
- * dynamic backend; the composite does not swallow it. A partial discovery
- * never reaches write-back (the dynamic backend throws before returning), so
- * the static path is never poisoned with a half entry.
+ * FAIL-CLOSED. A class-locating miss surfaces as a [DiscoveryException] from
+ * the dynamic backend; the composite does not swallow it. Only members an index
+ * query actually matched — a resolved signature hint or a kept-name member
+ * (#47/#48) — are written back; a method hint the dynamic backend could
+ * not locate is simply absent from the healed entry (resolvable later only via
+ * the kept-name harvest, else fail-closed when that method is requested), never
+ * written back wrong. So the static path is healed with a correct, possibly
+ * partial entry — never poisoned with a fabricated one.
  */
 package io.github.xiddoc.rosetta.xposed
 

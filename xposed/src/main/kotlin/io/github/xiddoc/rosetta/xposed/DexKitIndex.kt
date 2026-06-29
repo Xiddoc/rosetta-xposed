@@ -58,11 +58,19 @@ public data class MethodQuery(
  *   `<init>` for a constructor).
  * @property descriptor the method's JVM descriptor signature (obfuscated
  *   class refs), e.g. `(Landroid/os/Bundle;)V`.
+ * @property isSynthetic whether the method is compiler-synthesised — an
+ *   `ACC_SYNTHETIC` / `ACC_BRIDGE` member (a covariant-return or generic
+ *   bridge forwarder, an `access$NNN` accessor, etc.). The kept-name member
+ *   harvest skips these so a bridge that shares the real method's name is not
+ *   admitted as a phantom same-name overload (#47). Default `false`: a match
+ *   from [findMethod] is a single targeted hit, so only [membersOf]'s bulk
+ *   enumeration needs to populate it.
  */
 public data class MethodMatch(
     val declaringClass: String,
     val obfName: String,
     val descriptor: String,
+    val isSynthetic: Boolean = false,
 )
 
 /**
@@ -107,6 +115,14 @@ public interface DexKitIndex {
     /** Find a single method matching [query]; null on miss / no unique match. */
     public fun findMethod(query: MethodQuery): MethodMatch?
 
-    /** All methods declared on the OBFUSCATED class [obfClass] (may be empty). */
+    /**
+     * All methods declared on the OBFUSCATED class [obfClass] (may be empty).
+     *
+     * Backs the dynamic backend's KEPT-NAME member harvest (strategy e,
+     * #47): once a class is located, every member is keyed by its own
+     * obfuscated short name, so a method R8 did NOT rename resolves by its real
+     * (== obfuscated) name with no per-method signature. Empty on a miss (the
+     * class is not in the dex).
+     */
     public fun membersOf(obfClass: String): List<MethodMatch>
 }

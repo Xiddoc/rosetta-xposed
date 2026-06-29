@@ -149,10 +149,19 @@ public class DexKitBackedIndex(
             .orEmpty()
 }
 
+/**
+ * `ACC_SYNTHETIC` (0x1000) | `ACC_BRIDGE` (0x0040) — the access-flag bits that
+ * mark a member as compiler-synthesised (a covariant-return / generic bridge, an
+ * `access$NNN` accessor, etc.). The kept-name member harvest in
+ * [io.github.xiddoc.rosetta.xposed.DynamicResolutionBackend] skips these.
+ */
+private const val SYNTHETIC_OR_BRIDGE: Int = 0x1040
+
 /** Wrap a DexKit [MethodData] into the seam's neutral [MethodMatch]. */
 private fun MethodData.toMethodMatch(): MethodMatch =
     MethodMatch(
         declaringClass = className,
         obfName = methodName,
         descriptor = methodSign,
+        isSynthetic = (modifiers and SYNTHETIC_OR_BRIDGE) != 0,
     )

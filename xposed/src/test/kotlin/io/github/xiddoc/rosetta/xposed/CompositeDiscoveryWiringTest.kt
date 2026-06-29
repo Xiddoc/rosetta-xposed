@@ -158,6 +158,31 @@ class CompositeDiscoveryWiringTest {
     }
 
     @Test
+    fun `composite heals a kept-name stringless method via the membersOf harvest`() {
+        // #47 end-to-end: empty static map; an anchor locates the class;
+        // `isPro` has NO method hint but R8 KEPT its name, so the kept-name
+        // harvest exposes it. The composite heals it into the static backend, so
+        // the second lookup is an O(1) static hit (no further index scan). This
+        // is the TickTick `User#isPro` self-heal path through the real composite.
+        val index =
+            FakeDexKitIndex(
+                byAnchors = mapOf(listOf("user_anchor") to obf),
+                methods = mapOf(obf to listOf(MethodMatch(obf, "isPro", "()Z"))),
+            )
+        val static = StaticResolutionBackend(emptyStaticMap(), policy)
+        val composite =
+            CompositeResolutionBackend(
+                static,
+                DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(anchors = listOf("user_anchor")))),
+            )
+        assertEquals("isPro", composite.resolveMethod(real, "isPro").obfName)
+        val afterFirst = index.calls
+        assertTrue(static.canResolve(real))
+        assertEquals("isPro", composite.resolveMethod(real, "isPro").obfName)
+        assertEquals(afterFirst, index.calls)
+    }
+
+    @Test
     fun `composite resolveField discovers the class then serves the field statically`() {
         val index =
             FakeDexKitIndex(
