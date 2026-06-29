@@ -25,12 +25,14 @@
  *   (d) method signature scan within a found class — only after the class is
  *       located, so the scan has a known starting point.
  *   (e) kept-name member harvest — once the class is located, enumerate its
- *       members and key each by its own (obfuscated) short name. For a method
- *       whose name R8 KEPT (an app's "kept carve-out" — e.g. GreenDAO entity
- *       accessors that don't rotate), that key IS the real name, so the method
- *       resolves with no per-method signature at all (#47). A renamed
- *       member is keyed by its non-real obf name (inert — never looked up by a
- *       real name); only strategy (d) maps those.
+ *       NON-SYNTHETIC members and key each by its own (obfuscated) short name.
+ *       For a method whose name R8 KEPT (an app's "kept carve-out" — e.g.
+ *       GreenDAO entity accessors that don't rotate), that key IS the real name,
+ *       so the method resolves with no per-method signature at all (#47). A
+ *       renamed member is keyed by its non-real obf name (inert — never looked
+ *       up by a real name); only strategy (d) maps those. Compiler bridges /
+ *       synthetics are skipped so they can't shadow the real member they forward
+ *       to (the [DexKitIndex.membersOf] result carries `isSynthetic`).
  *
  * SECURITY / FAIL-CLOSED. Every contributor pattern flows through
  * [SafePattern] (bounds-then-RE2). A class miss or an over-bound input throws
@@ -317,23 +319,11 @@ public class DynamicResolutionBackend(
                         "(tried AIDL descriptor / anchors / superclass).",
                 )
 
-        // Methods come from two complementary sources, merged (strategy e wins
-        // nothing the hint already mapped):
-        //   • HINTED scan (d) — a string / descriptor signature locates a method
-        //     even when R8 RENAMED it (real → obf), keyed by real name. A hint
-        //     that finds nothing is SKIPPED, not fatal (#48).
-        //   • KEPT-NAME harvest (e) — every member on the located class, keyed by
-        //     its own obf short name. For a kept (unrenamed) method that key IS
-        //     the real name, so it resolves with no per-method signature
-        //     (#47 — the TickTick `User#isPro` / GreenDAO carve-out case).
-        // Hinted entries win on a key collision: an explicit real → obf mapping
-        // is authoritative over the kept-name identity. A null result (both
-        // empty) is a class-only discovery — the prior contract the write-back /
-        // cache rely on.
-        val merged = linkedMapOf<String, MethodOverloads>()
-        merged.putAll(harvestKeptNameMethods(obfClass))
-        merged.putAll(discoverHintedMethods(obfClass, hint.methods))
-        val methods = if (merged.isEmpty()) null else merged
+        // Resolve the class's methods from BOTH discovery strategies (kept-name
+        // member harvest + hinted scan), overloads unioned — see
+        // [discoverClassMethods]. Null when neither yields a method (a class-only
+        // discovery — the prior contract the write-back / cache rely on).
+        val methods = discoverClassMethods(obfClass, hint.methods)
 
         // The synthesized map ClassEntry carries only the pure real→obf mapping
         // fields the schema_version: 5 model still has (obfuscated / extends /
@@ -402,36 +392,58 @@ public class DynamicResolutionBackend(
     }
 
     /**
-     * Strategy (d): for each hinted method, scan within [obfClass] for the
-     * matching obfuscated method, keyed by the hint's REAL name. A hint that
-     * finds nothing is SKIPPED, not fatal (#48): one un-findable helper
-     * signature must not sink the whole class — the kept-name harvest (e) may
-     * still cover that method, and if neither does, the miss surfaces
-     * fail-closed only when that specific method is REQUESTED (see
-     * [resolveMethod]). Returns an empty map when no hint resolved.
+     * Discover the located [obfClass]'s methods from BOTH strategies, keyed by
+     * real name, overloads UNIONed (dedup on obf name + signature) across the two
+     * sources so a method present in both keeps every overload:
      *
-     * OVERLOADS (xposed#14 M18). Several [MethodDiscoveryHint]s may share one
-     * [MethodDiscoveryHint.realName] — overloads of the same method, each with a
-     * distinct descriptor. They are ACCUMULATED under that name (keyed by
-     * signature), not overwritten, so every discovered overload survives instead
-     * of all but one being lost. A duplicate hint that rediscovers the SAME
-     * signature is collapsed (idempotent), so a recipe listing the same overload
-     * twice does not double-register it.
+     *   (e) KEPT-NAME harvest — every NON-SYNTHETIC member [DexKitIndex.membersOf]
+     *       reports on the class, keyed by its OWN obfuscated short name. For a
+     *       method whose name R8 KEPT, that key IS the real name, so it resolves
+     *       with no per-method signature (#47 — the TickTick `User#isPro` /
+     *       GreenDAO carve-out case). Compiler-synthesised members (a bridge /
+     *       `ACC_SYNTHETIC` method) are SKIPPED: a covariant-return or generic
+     *       bridge shares the real method's name but only forwards to it, so
+     *       admitting it would register a phantom same-name overload that an
+     *       argTypes lookup (which matches on parameter types, ignoring the
+     *       return type) could select INSTEAD of the real member. Members are
+     *       device FACTS (no [SafePattern] bound); the obf CLASS name was located
+     *       via a guarded strategy and is still routed through the C1 target
+     *       guard before any class load.
      *
-     * The [SafePattern] bounds on a hint's descriptor / using-strings run BEFORE
-     * the index query, so an over-bound contributor pattern still fails closed
-     * (a malformed signature, distinct from a benign "method not found" skip).
+     *   (d) HINTED scan — for each [MethodDiscoveryHint], a string / descriptor
+     *       signature locates a method even when R8 RENAMED it (real → obf). A
+     *       hint that finds nothing is SKIPPED, not fatal (#48): one un-findable
+     *       helper signature must not sink the whole class — the miss surfaces
+     *       fail-closed only when that specific method is REQUESTED (see
+     *       [resolveMethod]). The [SafePattern] bounds on a hint run BEFORE the
+     *       index query, so an over-bound contributor pattern still fails closed
+     *       (a malformed signature, distinct from a benign "method not found").
+     *
+     * UNION, not replace (#48 / xposed#14 M18). Both sources accumulate through
+     * [accumulateOverload], which dedups on (obf name, signature): a hinted entry
+     * that re-finds a kept overload collapses, and genuinely distinct overloads
+     * of one name — from EITHER source — are all retained (an earlier bug replaced
+     * the whole overload set on a real-name collision, dropping the kept
+     * overloads). A kept method's obf name equals its real name, so a hint for it
+     * resolves to the SAME obf name; the two sources never disagree on the obf
+     * name for a given (real name, signature), so a union is always correct here.
+     *
+     * @return the per-real-name overloads, or null when neither source yielded a
+     *   method (a class-only discovery).
      */
-    private fun discoverHintedMethods(
+    private fun discoverClassMethods(
         obfClass: String,
         methodHints: List<MethodDiscoveryHint>,
-    ): Map<String, MethodOverloads> {
-        // Preserve insertion order of both names and their overloads.
+    ): Map<String, MethodOverloads>? {
+        // Insertion order preserved: kept-name members first, then hinted.
         val acc = linkedMapOf<String, MutableList<MethodEntry>>()
+        for (member in index.membersOf(obfClass)) {
+            if (member.isSynthetic) continue // skip compiler bridges/synthetics (see KDoc).
+            accumulateOverload(acc, member.obfName, member)
+        }
         for (mh in methodHints) {
             mh.descriptor?.let { SafePattern.checkLen(it) }
             SafePattern.checkBounds(mh.usingStrings)
-
             val match =
                 index.findMethod(
                     MethodQuery(
@@ -444,30 +456,7 @@ public class DynamicResolutionBackend(
                 ) ?: continue // resilient: a hint that finds nothing is skipped, not fatal (#48).
             accumulateOverload(acc, mh.realName, match)
         }
-        return acc.mapValues { (_, entries) -> MethodOverloads(entries.toList()) }
-    }
-
-    /**
-     * Strategy (e): enumerate every method DexKit reports on the located
-     * [obfClass] and key each by its OWN obfuscated short name as a kept-name
-     * identity (obfuscated == that name). For a method whose name R8 KEPT, that
-     * key is the real name, so the method resolves with no per-method signature
-     * — the on-device answer to an app's "kept carve-out" (#47; e.g.
-     * TickTick's `com.ticktick.task.data.User#isPro()Z`, a stringless kept
-     * GreenDAO accessor that no harvestable signature could pin). Members are
-     * device FACTS from [DexKitIndex.membersOf], not contributor patterns, so
-     * they carry no [SafePattern] bound; the obf CLASS name was already located
-     * via a guarded strategy and is still routed through the C1 target guard
-     * before any class load. Overloads accumulate; an exact (obf name,
-     * signature) duplicate collapses. Empty when the class has no members (or
-     * the index cannot enumerate it).
-     */
-    private fun harvestKeptNameMethods(obfClass: String): Map<String, MethodOverloads> {
-        val acc = linkedMapOf<String, MutableList<MethodEntry>>()
-        for (member in index.membersOf(obfClass)) {
-            accumulateOverload(acc, member.obfName, member)
-        }
-        return acc.mapValues { (_, entries) -> MethodOverloads(entries.toList()) }
+        return if (acc.isEmpty()) null else acc.mapValues { (_, entries) -> MethodOverloads(entries.toList()) }
     }
 
     /**

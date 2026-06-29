@@ -110,6 +110,70 @@ class KeptNameDiscoveryTest {
     }
 
     @Test
+    fun `the kept-name harvest skips a synthetic bridge so it cannot shadow the real method`() {
+        // #47 correctness: a kept class exposes the real `compareTo(MyType)` AND a
+        // compiler covariant-return BRIDGE `compareTo(Object)` under the SAME obf
+        // name. Without the synthetic filter both register as overloads of
+        // `compareTo`, and an argTypes lookup (params only, return ignored) could
+        // pick the bridge. The filter drops the synthetic, so only the real one
+        // remains and no-argTypes resolution is unambiguous.
+        val anchors = listOf("anchor")
+        val index =
+            FakeDexKitIndex(
+                byAnchors = mapOf(anchors to obf),
+                methods =
+                    mapOf(
+                        obf to
+                            listOf(
+                                MethodMatch(obf, "compareTo", "(Lp;)I"),
+                                MethodMatch(obf, "compareTo", "(Ljava/lang/Object;)I", isSynthetic = true),
+                            ),
+                    ),
+            )
+        val backend = DynamicResolutionBackend(index, mapOf(real to DiscoveryHints(anchors = anchors)))
+        val m = backend.resolveMethod(real, "compareTo")
+        assertEquals("(Lp;)I", m.signature)
+        assertEquals(1, m.allOverloads.size) // the synthetic bridge was filtered out
+    }
+
+    @Test
+    fun `a hint for a kept name unions with, not replaces, the harvested overloads`() {
+        // #48: a kept method `valueOf` has TWO kept overloads; the contributor
+        // also ships a (descriptor) hint for one of them. The merge must UNION —
+        // an earlier bug let the single hinted overload REPLACE the whole
+        // harvested set, dropping valueOf(J). Both must stay resolvable.
+        val anchors = listOf("anchor")
+        val index =
+            FakeDexKitIndex(
+                byAnchors = mapOf(anchors to obf),
+                methods =
+                    mapOf(
+                        obf to
+                            listOf(
+                                MethodMatch(obf, "valueOf", "(I)Lp;"),
+                                MethodMatch(obf, "valueOf", "(J)Lp;"),
+                            ),
+                    ),
+            )
+        val backend =
+            DynamicResolutionBackend(
+                index,
+                mapOf(
+                    real to
+                        DiscoveryHints(
+                            anchors = anchors,
+                            methods = listOf(MethodDiscoveryHint(realName = "valueOf", descriptor = "(I)Lp;")),
+                        ),
+                ),
+            )
+        // Both kept overloads survive the merge (the hinted (I) collapsed into the
+        // harvested (I); the harvested (J) was NOT dropped).
+        assertEquals("(I)Lp;", backend.resolveMethod(real, "valueOf", listOf("int")).signature)
+        assertEquals("(J)Lp;", backend.resolveMethod(real, "valueOf", listOf("long")).signature)
+        assertEquals(2, backend.resolveMethod(real, "valueOf", listOf("int")).allOverloads.size)
+    }
+
+    @Test
     fun `a signature hint overrides the kept-name identity for a renamed method`() {
         // `single` was RENAMED to `c`; its descriptor hint maps real → obf. The
         // kept harvest also keys `c` → `c` (inert). Both resolve: the real name
