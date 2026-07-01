@@ -102,6 +102,7 @@ nav:
   - Reference:
       - Resolution backends: reference/backends.md
       - DexKit integration: reference/dexkit-integration.md
+      - Self-healing under non-root LSPatch: reference/lspatch-non-root.md
       - Building: reference/building.md
       - Status: reference/status.md
       - Related repos: reference/related.md

@@ -200,10 +200,21 @@ exits 0 — an honest skip, **not** a silent pass or a false claim of discovery.
 This mirrors the `:dexkit` integration-test convention exactly (present ⇒ run,
 absent ⇒ skip): the discovery / cache / invalidation **logic** is covered by the
 JVM unit tests above plus the `:dexkit` integration test against the committed
-DEX fixture. The moment DexKit's native *can* load (a future loader, or a
+DEX fixture. The moment DexKit's native *can* load (see below, or a
 non-LSPatch host), the sentinel is absent and every dynamic assertion runs as a
 **hard** gate, so on-device discovery gets full coverage and a regression fails
 the job.
+
+> **Loading the native under non-root LSPatch.** The "LSPatch doesn't extract
+> the module's `.so`" limitation above is no longer a dead end. A process
+> targeting API 29+ can't `dlopen` an extracted copy from app-writable storage
+> (SELinux W^X), but it *can* map the `.so` directly out of an **installed** APK
+> via the bionic `apk!/entry` linker form — the same trick LSPatch uses for its
+> own `liblspatch.so`. `NativeLibraryLoadPlan` (in `:android-runtime`) encodes
+> this as an ordered load ladder, and `tools/lspatch/embed-dexkit-native.sh`
+> embeds `libdexkit.so` into the patched host APK so the ladder has a file to
+> hit. See **[Self-healing under non-root LSPatch](lspatch-non-root.md)** for the
+> full mechanism and the remaining on-device validation step.
 
 ### Advisory, not gated
 
